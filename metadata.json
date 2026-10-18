@@ -1,0 +1,6 @@
+{
+  "name": "CampusConnect - Instagram Management Platform",
+  "description": "Run your Instagram communication and engagement from one place with CampusConnect. Connect your accounts and manage direct messages, community comments, insights, and engagement in a single unified dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
