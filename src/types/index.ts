@@ -1,4 +1,26 @@
-export type UserRole = 'Owner' | 'Admin' | 'Manager' | 'Editor' | 'Viewer';
+export type UserRole = 'Student' | 'Admin' | 'Moderator' | 'Owner';
+
+export interface University {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string;
+  coverUrl?: string;
+  description: string;
+  location: string;
+  officialWebsiteUrl: string;
+  instagramProfileUrl: string;
+  instagramHandle: string;
+  communityEnabled: boolean;
+  studentCount?: number;
+  featuredCount?: number;
+  established?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StudentVerificationStatus = 'UNVERIFIED' | 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED';
+export type OnboardingStep = 1 | 2 | 3 | 4; // 1: University & Account, 2: Profile, 3: Student Verification, 4: Complete
 
 export interface User {
   id: string;
@@ -7,15 +29,142 @@ export interface User {
   phone?: string;
   role: UserRole;
   avatarUrl: string;
+  universityId?: string;
+  universityName?: string;
+  universitySlug?: string;
+  course?: string;
+  major?: string;
+  graduationYear?: string;
+  bio?: string;
+  interests?: string[];
+  personalInstagramHandle?: string;
+  housingPreference?: 'On Campus' | 'Off Campus' | 'Looking for Roommate' | 'Not Specified';
+  friendshipPreference?: 'Study Buddy' | 'Social & Events' | 'Campus Life' | 'All';
+  studentVerificationStatus?: StudentVerificationStatus;
+  verificationDocumentUrl?: string;
+  onboardingStep?: OnboardingStep;
+  onboardingCompleted?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
+export type SubmissionPaymentStatus = 
+  | 'DRAFT' 
+  | 'AWAITING_PAYMENT' 
+  | 'PAYMENT_PENDING' 
+  | 'PAYMENT_CONFIRMED' 
+  | 'PAYMENT_FAILED' 
+  | 'REFUND_PENDING' 
+  | 'REFUNDED';
+
+export type SubmissionModerationStatus = 
+  | 'PENDING' 
+  | 'UNDER_REVIEW' 
+  | 'CHANGES_REQUESTED' 
+  | 'APPROVED' 
+  | 'REJECTED';
+
+export type SubmissionPublishingStatus = 
+  | 'NOT_READY' 
+  | 'READY_TO_PUBLISH' 
+  | 'PUBLISHING' 
+  | 'PUBLISHED' 
+  | 'PUBLISHING_FAILED';
+
+export interface FeaturedSubmission {
+  id: string;
+  studentUid: string;
+  studentDisplayName: string;
+  studentEmail: string;
+  studentAvatarUrl?: string;
+  universityId: string;
+  universityName: string;
+  universitySlug: string;
+  universityInstagramHandle: string;
+  
+  // Photos
+  originalImagePath: string;
+  watermarkedImagePath: string;
+  
+  // Content & Legal
+  caption: string;
+  publicationConsent: boolean;
+  rightsConfirmed: boolean;
+  termsAgreed: boolean;
+  
+  // States
+  paymentStatus: SubmissionPaymentStatus;
+  moderationStatus: SubmissionModerationStatus;
+  publishingStatus: SubmissionPublishingStatus;
+  
+  // Moderation feedback
+  rejectionReason?: string;
+  adminNotes?: string;
+  
+  // Instagram publishing output
+  instagramPostUrl?: string;
+  publishedAt?: string;
+  
+  // Timestamps
+  submittedAt: string;
+  updatedAt: string;
+}
+
+export type PaymentMethod = 'MPESA' | 'CARD';
+
+export interface PaymentRecord {
+  id: string;
+  submissionId: string;
+  studentUid: string;
+  studentName: string;
+  universityId: string;
+  provider: 'MPESA' | 'STRIPE_CARD' | 'DARAJA';
+  providerTransactionReference: string;
+  amountUsd: number; // 6.00
+  amountKes: number; // 780.00
+  currency: 'USD' | 'KES';
+  phoneNumber?: string;
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REFUNDED';
+  idempotencyKey: string;
+  verifiedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuditLogItem {
+  id: string;
+  actorUid: string;
+  actorEmail?: string;
+  actorRole: string;
+  action: string;
+  targetType: 'SUBMISSION' | 'PAYMENT' | 'UNIVERSITY' | 'USER' | 'INSTAGRAM_POST';
+  targetId: string;
+  details?: string;
+  timestamp: string;
+}
+
+export type ActivityLogItem = AuditLogItem;
+
+export interface NotificationItem {
+  id: string;
+  recipientUid: string;
+  type: 'SUBMISSION_STATUS' | 'PAYMENT_CONFIRMED' | 'POST_PUBLISHED' | 'ACTION_REQUIRED' | 'SYSTEM';
+  title: string;
+  message: string;
+  relatedSubmissionId?: string;
+  link?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+// Retain legacy compatibility for existing dashboard/inbox views if needed
 export interface BusinessAccount {
   id: string;
   name: string;
   email: string;
   industry: string;
   createdAt: string;
-  onboardingStep: number; // 1 to 4
+  onboardingStep: number;
   onboardingCompleted: boolean;
 }
 
@@ -38,36 +187,6 @@ export interface InstagramAccount {
   permissions: string[];
 }
 
-export type PostMediaType = 'IMAGE' | 'VIDEO' | 'CAROUSEL';
-export type PostStatus = 'PUBLISHED' | 'SCHEDULED' | 'DRAFT' | 'FAILED';
-
-export interface PostMediaItem {
-  id: string;
-  url: string;
-  type: 'IMAGE' | 'VIDEO';
-  thumbnailUrl?: string;
-}
-
-export interface InstagramPost {
-  id: string;
-  accountId: string;
-  accountUsername: string;
-  mediaType: PostMediaType;
-  mediaUrls: string[];
-  caption: string;
-  status: PostStatus;
-  publishedAt?: string;
-  scheduledFor?: string;
-  likesCount: number;
-  commentsCount: number;
-  sharesCount: number;
-  savesCount: number;
-  reach: number;
-  impressions: number;
-  engagementRate: number; // e.g. 4.8
-  failureReason?: string;
-}
-
 export interface Comment {
   id: string;
   postId: string;
@@ -78,14 +197,7 @@ export interface Comment {
   text: string;
   createdAt: string;
   status: 'UNANSWERED' | 'REPLIED' | 'HIDDEN' | 'FLAGGED';
-  replies?: CommentReply[];
-}
-
-export interface CommentReply {
-  id: string;
-  fromAccount: string;
-  text: string;
-  createdAt: string;
+  replies?: Array<{ id: string; fromAccount: string; text: string; createdAt: string }>;
 }
 
 export interface DirectMessage {
@@ -114,23 +226,24 @@ export interface Conversation {
   messages: DirectMessage[];
 }
 
-export interface NotificationItem {
+export interface InstagramPost {
   id: string;
-  type: 'DM' | 'COMMENT' | 'POST_PUBLISHED' | 'POST_FAILED' | 'ACCOUNT_ALERT' | 'SYSTEM';
-  title: string;
-  message: string;
-  createdAt: string;
-  read: boolean;
-  link?: string;
-}
-
-export interface ActivityLogItem {
-  id: string;
-  user: string;
-  action: string;
-  target: string;
-  timestamp: string;
-  category: 'CONTENT' | 'AUTH' | 'ACCOUNT' | 'INBOX' | 'SETTINGS';
+  accountId: string;
+  accountUsername: string;
+  mediaType: 'IMAGE' | 'VIDEO' | 'CAROUSEL';
+  mediaUrls: string[];
+  caption: string;
+  status: 'PUBLISHED' | 'SCHEDULED' | 'DRAFT' | 'FAILED';
+  publishedAt?: string;
+  scheduledFor?: string;
+  likesCount: number;
+  commentsCount: number;
+  sharesCount: number;
+  savesCount: number;
+  reach: number;
+  impressions: number;
+  engagementRate: number;
+  failureReason?: string;
 }
 
 export interface MediaAsset {

@@ -10,8 +10,9 @@ import { CommandPalette } from './components/common/CommandPalette';
 import { InstagramOAuthModal } from './components/common/InstagramOAuthModal';
 import { SupportWidget } from './components/common/SupportWidget';
 
-// Public Pages
+// Public & Community Pages
 import { LandingPage } from './pages/public/LandingPage';
+import { UniversityCommunityPage } from './pages/public/UniversityCommunityPage';
 import { 
   TermsPage, 
   PrivacyPage, 
@@ -20,7 +21,15 @@ import {
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 
-// App Workspace Pages (Streamlined CampusConnect)
+// Student Portal Pages
+import { StudentDashboardPage } from './pages/student/StudentDashboardPage';
+import { SubmitPhotoPage } from './pages/student/SubmitPhotoPage';
+import { OnboardingPage } from './pages/student/OnboardingPage';
+
+// Admin Portal Page
+import { AdminPortalPage } from './pages/admin/AdminPortalPage';
+
+// Instagram Workspace Pages
 import { DashboardPage } from './pages/app/DashboardPage';
 import { InboxPage } from './pages/app/InboxPage';
 import { CommentsPage } from './pages/app/CommentsPage';
@@ -30,68 +39,137 @@ import { NotificationsPage } from './pages/app/NotificationsPage';
 import { SettingsPage } from './pages/app/SettingsPage';
 
 const AppContent: React.FC = () => {
-  const { currentRoute, isAuthenticated } = useApp();
+  const { 
+    currentRoute, 
+    isAuthenticated, 
+    getUniversityBySlug, 
+    selectedUniversity, 
+    universities 
+  } = useApp();
 
-  const isAppRoute = currentRoute.startsWith('/app');
+  // 1. Resolve University Community route (/university/:slug or /u/:slug)
+  if (currentRoute.startsWith('/university/') || currentRoute.startsWith('/u/')) {
+    const slug = currentRoute
+      .replace('/university/', '')
+      .replace('/u/', '')
+      .split('/')[0]
+      .split('?')[0];
 
-  // If visiting /app while not authenticated, direct to LoginPage
+    const matchedUniversity = getUniversityBySlug(slug) || selectedUniversity || universities[0];
+
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
+        <Navbar />
+        <main className="flex-1">
+          <UniversityCommunityPage university={matchedUniversity} />
+        </main>
+        <Footer />
+        <ToastContainer />
+        <SupportWidget />
+        <CommandPalette />
+      </div>
+    );
+  }
+
+  // 2. Admin Operations Portal (/admin)
+  if (currentRoute === '/admin') {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
+        <Navbar />
+        <main className="flex-1">
+          <AdminPortalPage />
+        </main>
+        <Footer />
+        <ToastContainer />
+        <SupportWidget />
+        <CommandPalette />
+      </div>
+    );
+  }
+
+  // 3. Student Photo Submission Page (/app/submit)
+  if (currentRoute === '/app/submit') {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
+        <Navbar />
+        <main className="flex-1">
+          <SubmitPhotoPage />
+        </main>
+        <Footer />
+        <ToastContainer />
+        <SupportWidget />
+        <CommandPalette />
+      </div>
+    );
+  }
+
+  // 4. Student Onboarding Page (/app/onboarding)
+  if (currentRoute === '/app/onboarding') {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
+        <Navbar />
+        <main className="flex-1">
+          <OnboardingPage />
+        </main>
+        <Footer />
+        <ToastContainer />
+      </div>
+    );
+  }
+
+  // 5. Protected workspace routes: Retains the original AppSidebar + AppHeader dashboard layout
+  const isAppRoute = currentRoute.startsWith('/app') || currentRoute.startsWith('/business/dashboard') || currentRoute === '/student';
+
   if (isAppRoute && !isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
+        <Navbar />
         <main className="flex-1">
           <LoginPage />
         </main>
+        <Footer />
         <ToastContainer />
       </div>
     );
   }
 
-  // Authenticated Workspace Router
   if (isAppRoute && isAuthenticated) {
     let PageComponent = DashboardPage;
 
-    if (currentRoute === '/app/inbox') PageComponent = InboxPage;
-    else if (currentRoute === '/app/comments') PageComponent = CommentsPage;
-    else if (currentRoute === '/app/insights') PageComponent = InsightsPage;
-    else if (currentRoute === '/app/accounts') PageComponent = AccountsPage;
-    else if (currentRoute === '/app/notifications') PageComponent = NotificationsPage;
-    else if (currentRoute === '/app/settings') PageComponent = SettingsPage;
+    if (currentRoute === '/app/inbox') PageComponent = InboxPage as any;
+    else if (currentRoute === '/app/comments') PageComponent = CommentsPage as any;
+    else if (currentRoute === '/app/insights') PageComponent = InsightsPage as any;
+    else if (currentRoute === '/app/accounts') PageComponent = AccountsPage as any;
+    else if (currentRoute === '/app/notifications') PageComponent = NotificationsPage as any;
+    else if (currentRoute === '/app/settings') PageComponent = SettingsPage as any;
+    else if (currentRoute === '/app/student' || currentRoute === '/student') PageComponent = StudentDashboardPage as any;
     else PageComponent = DashboardPage;
 
     return (
-      <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col md:flex-row antialiased font-sans">
-        {/* Desktop Sidebar */}
-        <div className="hidden md:flex">
-          <AppSidebar />
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0">
+      <div className="flex h-screen bg-[#F8FAFC] overflow-hidden font-sans">
+        <AppSidebar />
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <AppHeader />
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
             <PageComponent />
           </main>
         </div>
-
-        {/* Mobile Navigation */}
         <MobileNav />
-
-        {/* Modals & Overlays */}
         <InstagramOAuthModal />
-        <CommandPalette />
         <SupportWidget />
         <ToastContainer />
+        <CommandPalette />
       </div>
     );
   }
 
-  // Public Marketing & Auth Router
+  // 6. Public Pages Router
   let PublicComponent = LandingPage;
 
   if (currentRoute === '/terms') PublicComponent = TermsPage;
   else if (currentRoute === '/privacy') PublicComponent = PrivacyPage;
-  else if (currentRoute === '/login') PublicComponent = LoginPage;
-  else if (currentRoute === '/register') PublicComponent = RegisterPage;
+  else if (currentRoute === '/login' || currentRoute === '/business/login') PublicComponent = LoginPage;
+  else if (currentRoute === '/register' || currentRoute === '/business/register') PublicComponent = RegisterPage;
   else if (currentRoute === '/forgot-password') PublicComponent = ForgotPasswordPage;
 
   return (
@@ -108,10 +186,10 @@ const AppContent: React.FC = () => {
         <Footer />
       )}
 
-      {/* Support widget & Instagram Modal */}
       <InstagramOAuthModal />
       <SupportWidget />
       <ToastContainer />
+      <CommandPalette />
     </div>
   );
 };

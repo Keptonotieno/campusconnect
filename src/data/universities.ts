@@ -1,0 +1,183 @@
+import { University } from '../types';
+
+export const VERIFIED_UNIVERSITIES: University[] = [
+  {
+    id: 'uni_harvard',
+    name: 'Harvard University',
+    slug: 'harvard',
+    logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'World-renowned Ivy League research university in Cambridge, Massachusetts. Historic Harvard Yard, premier scholarship in law, medicine, business, and arts.',
+    location: 'Cambridge, Massachusetts, United States',
+    officialWebsiteUrl: 'https://www.harvard.edu',
+    instagramProfileUrl: 'https://instagram.com/harvard_campusconnect',
+    instagramHandle: '@harvard_campusconnect',
+    communityEnabled: true,
+    studentCount: 7100,
+    featuredCount: 148,
+    established: '1636',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-18T00:00:00Z'
+  },
+  {
+    id: 'uni_oxford',
+    name: 'University of Oxford',
+    slug: 'oxford',
+    logoUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?auto=format&fit=crop&w=1200&q=80',
+    description: 'The oldest university in the English-speaking world, featuring collegiate architecture, Bodleian Library, and a world-leading collegiate student community.',
+    location: 'Oxford, Oxfordshire, United Kingdom',
+    officialWebsiteUrl: 'https://www.ox.ac.uk',
+    instagramProfileUrl: 'https://instagram.com/oxford_campusconnect',
+    instagramHandle: '@oxford_campusconnect',
+    communityEnabled: true,
+    studentCount: 6800,
+    featuredCount: 132,
+    established: '1096',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-18T00:00:00Z'
+  },
+  {
+    id: 'uni_miami',
+    name: 'University of Miami',
+    slug: 'miami',
+    logoUrl: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1607237138185-eedd9c632b0b?auto=format&fit=crop&w=1200&q=80',
+    description: 'Major private research university in Coral Gables, Florida known as "The U". Celebrated for marine science, medicine, vibrant campus life, and athletics.',
+    location: 'Coral Gables, Florida, United States',
+    officialWebsiteUrl: 'https://www.miami.edu',
+    instagramProfileUrl: 'https://instagram.com/miami_campusconnect',
+    instagramHandle: '@miami_campusconnect',
+    communityEnabled: true,
+    studentCount: 5400,
+    featuredCount: 96,
+    established: '1925',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-18T00:00:00Z'
+  },
+  {
+    id: 'uni_stanford',
+    name: 'Stanford University',
+    slug: 'stanford',
+    logoUrl: 'https://images.unsplash.com/photo-1592280771190-3e2e4d571952?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1525921429624-479b6a26d84d?auto=format&fit=crop&w=1200&q=80',
+    description: 'Preeminent global research and innovation university in Silicon Valley. World-leading entrepreneurship, engineering, computer science, and student leadership.',
+    location: 'Stanford, California, United States',
+    officialWebsiteUrl: 'https://www.stanford.edu',
+    instagramProfileUrl: 'https://instagram.com/stanford_campusconnect',
+    instagramHandle: '@stanford_campusconnect',
+    communityEnabled: true,
+    studentCount: 7600,
+    featuredCount: 164,
+    established: '1885',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-18T00:00:00Z'
+  },
+  {
+    id: 'uni_cambridge',
+    name: 'University of Cambridge',
+    slug: 'cambridge',
+    logoUrl: 'https://images.unsplash.com/photo-1576495199011-eb94736d05d6?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80',
+    description: 'Historic collegiate research university on the River Cam. Renowned for King’s College Chapel, Trinity College, scientific discoveries, and international scholars.',
+    location: 'Cambridge, Cambridgeshire, United Kingdom',
+    officialWebsiteUrl: 'https://www.cam.ac.uk',
+    instagramProfileUrl: 'https://instagram.com/cambridge_campusconnect',
+    instagramHandle: '@cambridge_campusconnect',
+    communityEnabled: true,
+    studentCount: 6200,
+    featuredCount: 118,
+    established: '1209',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-18T00:00:00Z'
+  },
+  {
+    id: 'uni_mit',
+    name: 'Massachusetts Institute of Technology (MIT)',
+    slug: 'mit',
+    logoUrl: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'Global powerhouse of science, technology, robotics, and artificial intelligence, driving breakthrough innovations along the Charles River.',
+    location: 'Cambridge, Massachusetts, United States',
+    officialWebsiteUrl: 'https://www.mit.edu',
+    instagramProfileUrl: 'https://instagram.com/mit_campusconnect',
+    instagramHandle: '@mit_campusconnect',
+    communityEnabled: true,
+    studentCount: 4900,
+    featuredCount: 105,
+    established: '1861',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-18T00:00:00Z'
+  },
+  {
+    id: 'uni_columbia',
+    name: 'Columbia University',
+    slug: 'columbia',
+    logoUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?auto=format&fit=crop&w=1200&q=80',
+    description: 'Historic Ivy League university in Upper Manhattan, New York City. Celebrated for its Core Curriculum, journalism, global affairs, and vibrant campus life.',
+    location: 'New York City, New York, United States',
+    officialWebsiteUrl: 'https://www.columbia.edu',
+    instagramProfileUrl: 'https://instagram.com/columbia_campusconnect',
+    instagramHandle: '@columbia_campusconnect',
+    communityEnabled: true,
+    studentCount: 8200,
+    featuredCount: 125,
+    established: '1754',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-18T00:00:00Z'
+  },
+  {
+    id: 'uni_ucla',
+    name: 'University of California, Los Angeles (UCLA)',
+    slug: 'ucla',
+    logoUrl: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1607237138185-eedd9c632b0b?auto=format&fit=crop&w=1200&q=80',
+    description: 'Leading public university in Westwood, Los Angeles. Celebrated for Royce Hall, world-class film & theater arts, medicine, and champion athletics.',
+    location: 'Los Angeles, California, United States',
+    officialWebsiteUrl: 'https://www.ucla.edu',
+    instagramProfileUrl: 'https://instagram.com/ucla_campusconnect',
+    instagramHandle: '@ucla_campusconnect',
+    communityEnabled: true,
+    studentCount: 9400,
+    featuredCount: 180,
+    established: '1919',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-18T00:00:00Z'
+  }
+];
+
+export const findUniversityBySlug = (slug: string): University | undefined => {
+  const normalized = slug.toLowerCase().trim();
+  // Check exact slug or alias
+  const found = VERIFIED_UNIVERSITIES.find(
+    u => u.slug === normalized || 
+         u.slug.replace(/-/g, '') === normalized.replace(/-/g, '') || 
+         u.id === normalized ||
+         u.name.toLowerCase().includes(normalized)
+  );
+  if (found) return found;
+
+  // Aliases for common spellings (e.g. 'haverd', 'exoford', etc.)
+  if (normalized.includes('hav') || normalized.includes('harv')) {
+    return VERIFIED_UNIVERSITIES.find(u => u.slug === 'harvard');
+  }
+  if (normalized.includes('oxf') || normalized.includes('exof')) {
+    return VERIFIED_UNIVERSITIES.find(u => u.slug === 'oxford');
+  }
+  if (normalized.includes('miam')) {
+    return VERIFIED_UNIVERSITIES.find(u => u.slug === 'miami');
+  }
+  if (normalized.includes('stanf')) {
+    return VERIFIED_UNIVERSITIES.find(u => u.slug === 'stanford');
+  }
+  if (normalized.includes('camb')) {
+    return VERIFIED_UNIVERSITIES.find(u => u.slug === 'cambridge');
+  }
+  
+  return VERIFIED_UNIVERSITIES[0];
+};
+
+export const findUniversityById = (id: string): University | undefined => {
+  return VERIFIED_UNIVERSITIES.find(u => u.id === id) || VERIFIED_UNIVERSITIES[0];
+};

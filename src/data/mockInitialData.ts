@@ -39,6 +39,7 @@ export const INITIAL_CONVERSATIONS: Conversation[] = [];
 export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
   {
     id: 'notif_welcome',
+    recipientUid: 'all',
     type: 'SYSTEM',
     title: 'Welcome to CampusConnect',
     message: 'Your workspace is ready. Connect your Instagram account to start managing direct messages, community comments, and audience insights.',

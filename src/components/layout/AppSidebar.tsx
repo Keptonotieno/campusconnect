@@ -11,7 +11,12 @@ import {
   LogOut,
   Instagram,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  GraduationCap,
+  Sparkles,
+  Building2,
+  X,
+  UserCheck
 } from 'lucide-react';
 
 export const AppSidebar: React.FC = () => {
@@ -25,33 +30,46 @@ export const AppSidebar: React.FC = () => {
     setSelectedAccountId,
     setOAuthModalOpen,
     unreadNotificationsCount,
-    conversations
+    conversations,
+    isAdmin,
+    isMobileSidebarOpen,
+    setMobileSidebarOpen
   } = useApp();
 
   const unreadMessagesCount = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
   const mainNavItems = [
     { label: 'Overview', route: '/app/dashboard', icon: Home },
+    { label: 'Notifications', route: '/app/notifications', icon: Bell, badge: unreadNotificationsCount },
+    { label: 'Settings', route: '/app/settings', icon: Settings },
+  ];
+
+  const workspaceNavItems = [
     { label: 'Direct Messages', route: '/app/inbox', icon: MessageSquare, badge: unreadMessagesCount },
     { label: 'Comments Moderation', route: '/app/comments', icon: MessageCircle },
     { label: 'Insights & Analytics', route: '/app/insights', icon: BarChart3 },
   ];
 
-  const adminNavItems = [
-    { label: 'Connected Accounts', route: '/app/accounts', icon: Instagram, count: accounts.length },
-    { label: 'Notifications', route: '/app/notifications', icon: Bell, badge: unreadNotificationsCount },
-    { label: 'Workspace Settings', route: '/app/settings', icon: Settings },
+  const studentNavItems = [
+    { label: 'Student Hub & Status', route: '/app/student', icon: GraduationCap },
+    { label: 'Submit Featured Photo ($6)', route: '/app/submit', icon: Sparkles },
+    { label: 'Campus Communities', route: '/', icon: Building2 },
   ];
 
-  return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 min-h-screen text-slate-700 select-none shadow-xs font-sans">
-      {/* 1. Brand Header */}
+  const handleNavigate = (route: string) => {
+    setMobileSidebarOpen(false);
+    navigateTo(route);
+  };
+
+  const SidebarContent = () => (
+    <div className="flex flex-col h-full select-none text-slate-700 font-sans">
+      {/* 1. Brand Header (Matching Screenshot 11:37) */}
       <div className="p-4 border-b border-slate-100 flex items-center justify-between">
         <button
-          onClick={() => navigateTo('/app/dashboard')}
+          onClick={() => handleNavigate('/app/dashboard')}
           className="flex items-center gap-2.5 text-left cursor-pointer group"
         >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#1858D9] to-[#2565EE] flex items-center justify-center text-white shadow-xs group-hover:shadow-md transition-all">
+          <div className="w-8 h-8 rounded-xl bg-[#1D64EC] flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform">
             <Instagram className="w-5 h-5" />
           </div>
           <div className="flex items-center gap-1.5">
@@ -59,23 +77,26 @@ export const AppSidebar: React.FC = () => {
               campus<span className="text-[#1D64EC]">connect</span>
             </span>
             <span className="bg-blue-50 text-[#1D64EC] border border-blue-200/60 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full">
-              PRO
+              GLOBAL
             </span>
           </div>
+        </button>
+
+        {/* Close Button on Mobile Drawer */}
+        <button
+          onClick={() => setMobileSidebarOpen(false)}
+          className="md:hidden p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          aria-label="Close menu"
+        >
+          <X className="w-5 h-5" />
         </button>
       </div>
 
       {/* 2. Scrollable Navigation List */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
         
-        {/* Core Workspace Section */}
+        {/* Core Navigation Items (Overview, Notifications, Settings) */}
         <div className="space-y-0.5">
-          <div className="px-3 py-1">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
-              Instagram Workspace
-            </span>
-          </div>
-
           {mainNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentRoute === item.route;
@@ -83,19 +104,20 @@ export const AppSidebar: React.FC = () => {
             return (
               <button
                 key={item.route}
-                onClick={() => navigateTo(item.route)}
+                onClick={() => handleNavigate(item.route)}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? 'bg-[#EBF2FE] text-[#1D64EC] font-bold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-[#1D64EC]' : 'text-slate-400'}`} />
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-[#1D64EC]' : 'text-slate-500'}`} />
                   <span>{item.label}</span>
                 </div>
+
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-[#1D64EC] text-white font-bold text-[10px]">
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-[#1D64EC] text-white">
                     {item.badge}
                   </span>
                 )}
@@ -104,143 +126,174 @@ export const AppSidebar: React.FC = () => {
           })}
         </div>
 
-        {/* INSTAGRAM PROFILES SECTION */}
-        <div className="pt-1">
-          <div className="flex items-center justify-between px-3 mb-1.5">
+        {/* Instagram Accounts Section (Matching Screenshot 11:37) */}
+        <div className="space-y-1">
+          <div className="px-3 py-1 flex items-center justify-between">
             <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
-              INSTAGRAM PROFILES
+              Instagram Accounts
             </span>
-            <button
-              onClick={() => navigateTo('/app/accounts')}
-              className="text-[10px] font-semibold text-slate-400 hover:text-[#1D64EC] cursor-pointer"
-            >
-              Manage
-            </button>
-          </div>
-
-          <div className="space-y-1">
-            {accounts.length === 0 ? (
-              <div className="px-3 py-2 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
-                <p className="text-[11px] text-slate-500 mb-1.5 font-medium">No account connected yet</p>
-                <button
-                  onClick={() => setOAuthModalOpen(true)}
-                  className="w-full py-1.5 rounded-lg bg-[#1D64EC] text-white font-bold text-[10px] hover:bg-blue-700 transition-colors cursor-pointer"
-                >
-                  Connect Instagram
-                </button>
-              </div>
-            ) : (
-              accounts.map((acct) => {
-                const isSelected = selectedAccountId === acct.id;
-                return (
-                  <button
-                    key={acct.id}
-                    onClick={() => {
-                      setSelectedAccountId(acct.id);
-                      navigateTo('/app/dashboard');
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'bg-slate-100/90 font-bold text-slate-900 border border-slate-200/80 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 p-0.5 shrink-0 flex items-center justify-center text-white text-[10px] font-bold">
-                        <span className="w-full h-full rounded-full bg-white text-slate-900 flex items-center justify-center font-bold text-[9px]">
-                          {acct.username.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <span className="truncate">@{acct.username}</span>
-                    </div>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Active & Verified" />
-                  </button>
-                );
-              })
-            )}
-
-            {accounts.length > 0 && (
-              <button
-                onClick={() => setOAuthModalOpen(true)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-[#1D64EC] hover:bg-[#EBF2FE]/60 rounded-xl transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Connect another account</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ADMINISTRATION SECTION */}
-        <div className="pt-1">
-          <div className="px-3 mb-1.5">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
-              Administration
-            </span>
-          </div>
-
-          <div className="space-y-0.5">
-            {adminNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentRoute === item.route;
-              return (
-                <button
-                  key={item.route}
-                  onClick={() => navigateTo(item.route)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-[#EBF2FE] text-[#1D64EC] font-bold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#1D64EC]' : 'text-slate-400'}`} />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-[#1D64EC] text-white font-bold text-[10px] flex items-center justify-center">
-                      {item.badge}
-                    </span>
-                  )}
-                  {item.count !== undefined && item.badge === undefined && (
-                    <span className="text-[11px] text-slate-400 font-mono">
-                      {item.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-      </div>
-
-      {/* 3. User Profile Footer */}
-      <div className="p-3 border-t border-slate-100">
-        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200/60">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-[#1D64EC] text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
-              {currentUser?.name?.charAt(0).toUpperCase() || 'C'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-bold text-slate-900 truncate">
-                {currentUser?.name || 'Workspace Account'}
-              </div>
-              <div className="text-[10px] text-slate-500 truncate font-mono">
-                {currentUser?.email || 'user@campusconnect.app'}
-              </div>
-            </div>
           </div>
 
           <button
-            onClick={logout}
-            title="Log out"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 cursor-pointer"
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              setOAuthModalOpen(true);
+            }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#1D64EC] hover:bg-blue-50 transition-colors cursor-pointer"
           >
-            <LogOut className="w-4 h-4" />
+            <div className="w-5 h-5 rounded-full border border-dashed border-blue-400 flex items-center justify-center text-[#1D64EC]">
+              <Plus className="w-3 h-3" />
+            </div>
+            <span>Connect account</span>
           </button>
+
+          {accounts.map((acc) => (
+            <button
+              key={acc.id}
+              onClick={() => {
+                setSelectedAccountId(acc.id);
+                handleNavigate('/app/dashboard');
+              }}
+              className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs hover:bg-slate-100/80 transition-colors cursor-pointer text-slate-700"
+            >
+              <div className="flex items-center gap-2 truncate">
+                <Instagram className="w-3.5 h-3.5 text-pink-600 shrink-0" />
+                <span className="truncate font-medium">@{acc.username}</span>
+              </div>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+            </button>
+          ))}
         </div>
+
+        {/* Additional Workspace Tools */}
+        <div className="space-y-0.5 pt-1">
+          <div className="px-3 py-1">
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+              Workspace Tools
+            </span>
+          </div>
+
+          {workspaceNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = currentRoute === item.route;
+
+            return (
+              <button
+                key={item.route}
+                onClick={() => handleNavigate(item.route)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-[#EBF2FE] text-[#1D64EC] font-bold'
+                    : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-[#1D64EC]' : 'text-slate-500'}`} />
+                  <span>{item.label}</span>
+                </div>
+
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-blue-100 text-blue-700">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Campus Connect & Student Network */}
+        <div className="space-y-0.5 pt-1">
+          <div className="px-3 py-1">
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+              Campus Connect Network
+            </span>
+          </div>
+
+          {studentNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = currentRoute === item.route;
+
+            return (
+              <button
+                key={item.route}
+                onClick={() => handleNavigate(item.route)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-[#EBF2FE] text-[#1D64EC] font-bold'
+                    : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className={`w-4 h-4 ${item.route === '/app/submit' ? 'text-amber-500' : 'text-slate-500'}`} />
+                  <span>{item.label}</span>
+                </div>
+              </button>
+            );
+          })}
+
+          {isAdmin && (
+            <button
+              onClick={() => handleNavigate('/admin')}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>Admin Review Console</span>
+            </button>
+          )}
+        </div>
+
       </div>
-    </aside>
+
+      {/* 3. User Footer */}
+      <div className="p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
+            {currentUser?.name?.charAt(0).toUpperCase() || 'S'}
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-slate-900 truncate">
+              {currentUser?.name || 'Software'}
+            </div>
+            <div className="text-[10px] text-slate-400 truncate">
+              {currentUser?.email || 'admin@igposthub.com'}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={logout}
+          title="Sign out"
+          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* 1. Desktop Static Sidebar (Hidden on mobile < md) */}
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 shrink-0 min-h-screen text-slate-700 select-none shadow-xs font-sans">
+        <SidebarContent />
+      </aside>
+
+      {/* 2. Mobile Responsive Slide-In Drawer (Overlays screen without crushing content - Fixes Image 1!) */}
+      {isMobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden animate-in fade-in duration-150">
+          {/* Backdrop */}
+          <div 
+            onClick={() => setMobileSidebarOpen(false)}
+            className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs"
+          />
+
+          {/* Drawer Panel */}
+          <div className="relative w-72 max-w-[85vw] h-full bg-white shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-200">
+            <SidebarContent />
+          </div>
+        </div>
+      )}
+    </>
   );
 };

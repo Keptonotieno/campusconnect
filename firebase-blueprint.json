@@ -1,0 +1,184 @@
+{
+  "entities": {
+    "University": {
+      "title": "University",
+      "description": "Represents a university community profile and associated official Instagram account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "location": { "type": "string" },
+        "officialWebsiteUrl": { "type": "string" },
+        "instagramProfileUrl": { "type": "string" },
+        "communityEnabled": { "type": "boolean" },
+        "studentCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "slug", "communityEnabled"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Student user profile and university affiliation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "universityId": { "type": "string" },
+        "profilePhotoUrl": { "type": "string" },
+        "bio": { "type": "string" },
+        "course": { "type": "string" },
+        "graduationYear": { "type": "string" },
+        "interests": { "type": "string" },
+        "personalInstagramUrl": { "type": "string" },
+        "housingPreference": { "type": "string" },
+        "studentVerificationStatus": { "type": "string" },
+        "onboardingStatus": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "displayName", "email", "universityId"]
+    },
+    "FeaturedSubmission": {
+      "title": "FeaturedSubmission",
+      "description": "Student photo submission for official university Instagram featuring",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentUid": { "type": "string" },
+        "studentDisplayName": { "type": "string" },
+        "studentEmail": { "type": "string" },
+        "universityId": { "type": "string" },
+        "universityName": { "type": "string" },
+        "originalImagePath": { "type": "string" },
+        "watermarkedImagePath": { "type": "string" },
+        "caption": { "type": "string" },
+        "publicationConsent": { "type": "boolean" },
+        "termsAgreed": { "type": "boolean" },
+        "rightsConfirmed": { "type": "boolean" },
+        "paymentStatus": { "type": "string" },
+        "moderationStatus": { "type": "string" },
+        "publishingStatus": { "type": "string" },
+        "instagramPostUrl": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "studentUid", "universityId", "publicationConsent", "paymentStatus", "moderationStatus", "publishingStatus"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "One-time $6 USD / KES payment record for student featured post consideration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "submissionId": { "type": "string" },
+        "studentUid": { "type": "string" },
+        "universityId": { "type": "string" },
+        "provider": { "type": "string" },
+        "providerTransactionReference": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "amountKes": { "type": "number" },
+        "status": { "type": "string" },
+        "idempotencyKey": { "type": "string" },
+        "verifiedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "submissionId", "studentUid", "amount", "currency", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Administrative actions and security audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "actorUid": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "relevantMetadata": { "type": "string" }
+      },
+      "required": ["id", "actorUid", "action", "timestamp"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app notifications for students on submission and publishing status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipientUid": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "relatedSubmissionId": { "type": "string" },
+        "read": { "type": "boolean" },
+        "readAt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "recipientUid", "title", "message"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Authorized administrator records for role-based access control",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role"]
+    },
+    "TestConnection": {
+      "title": "TestConnection",
+      "description": "Health check document for connection verification",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/test/{testId}": {
+      "schema": "TestConnection",
+      "description": "Stores health check ping for SDK connection test"
+    },
+    "/universities/{universityId}": {
+      "schema": "University",
+      "description": "Stores accredited university records, logos, and official Instagram handles"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Stores student user accounts, universities, and profile details"
+    },
+    "/featuredSubmissions/{submissionId}": {
+      "schema": "FeaturedSubmission",
+      "description": "Stores student photo submissions, consent, watermarked derivative, and review status"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Stores verified one-time $6 USD / KES payments with server transaction references"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Stores administrative moderation and publishing audit trail"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Stores student in-app status notifications"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Stores authorized administrator IDs and roles"
+    }
+  }
+}

@@ -1,32 +1,89 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
+import { Instagram, Building2, ShieldCheck, GraduationCap } from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const { navigateTo } = useApp();
+  const { navigateTo, universities } = useApp();
 
   return (
-    <footer className="w-full border-t border-slate-200 bg-white py-8 px-6 text-xs text-slate-500">
-      <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* Left Links */}
-        <div className="flex flex-wrap items-center gap-6">
-          <span className="font-bold text-slate-900">
-            campus<span className="text-blue-600 font-bold">connect</span> <span className="font-normal text-slate-500">for business</span>
-          </span>
-          <button onClick={() => navigateTo('/terms')} className="hover:text-slate-900 cursor-pointer">
-            Terms
-          </button>
-          <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-900 cursor-pointer">
-            Privacy
-          </button>
-          <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-900 cursor-pointer">
-            Data deletion
-          </button>
+    <footer className="w-full border-t border-slate-200 bg-white py-12 px-6 text-xs text-slate-500 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
+        
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+          
+          {/* Brand Info */}
+          <div className="md:col-span-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-[#1D64EC] flex items-center justify-center text-white">
+                <Instagram className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-base font-extrabold text-slate-900 tracking-tight">
+                igpost<span className="text-[#1D64EC]">hub</span>
+              </span>
+              <span className="text-xs text-slate-400 font-medium">for business</span>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
+              The unified Instagram workspace for business and creators, combined with the CampusConnect university student discovery and social network.
+            </p>
+            <div className="text-[11px] text-slate-400">
+              Not affiliated with or endorsed by Instagram or Meta Platforms, Inc. © 2026 igposthub.
+            </div>
+          </div>
+
+          {/* Participating Universities */}
+          <div className="md:col-span-4 space-y-2.5">
+            <div className="font-bold text-xs uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+              <GraduationCap className="w-3.5 h-3.5 text-[#1D64EC]" />
+              <span>Campus Connect Hubs</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {universities.map(uni => (
+                <button
+                  key={uni.id}
+                  onClick={() => navigateTo(`/university/${uni.slug}`)}
+                  className="text-left text-slate-600 hover:text-[#1D64EC] truncate transition-colors cursor-pointer"
+                >
+                  {uni.name.split(' ')[0]} Hub
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Legal & Platform */}
+          <div className="md:col-span-3 space-y-2.5">
+            <div className="font-bold text-xs uppercase tracking-wider text-slate-900">
+              Platform & Legal
+            </div>
+            <div className="space-y-1.5 text-xs">
+              <div>
+                <button onClick={() => navigateTo('/terms')} className="hover:text-slate-900 cursor-pointer">
+                  Terms of Service & Refund Policy
+                </button>
+              </div>
+              <div>
+                <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-900 cursor-pointer">
+                  Privacy Policy & Data Security
+                </button>
+              </div>
+              <div>
+                <button onClick={() => navigateTo('/admin')} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                  Administrator Review Queue
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
 
-        {/* Right Disclaimer */}
-        <div className="text-center md:text-right text-[11px] text-slate-400">
-          Not affiliated with or endorsed by Instagram or Meta. © 2026 CampusConnect
+        <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-400">
+          <div>
+            igposthub • Run your Instagram from one place
+          </div>
+          <div className="flex items-center gap-4">
+            <span>Student Featured Consideration: <strong>$6.00 USD (KES 780)</strong></span>
+          </div>
         </div>
+
       </div>
     </footer>
   );

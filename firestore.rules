@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Universities: Publicly readable directory
+    match /universities/{universityId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Connection health check for testConnection()
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    // Users: Profiles and community listings
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId) && request.resource.data.role != 'Admin';
+      allow update: if isOwner(userId) && request.resource.data.role == resource.data.role;
+      allow delete: if isAdmin();
+    }
+
+    // Featured Submissions: Protected student photos, consent, and review
+    match /featuredSubmissions/{submissionId} {
+      allow read: if isAdmin() || 
+        (isSignedIn() && resource.data.studentUid == request.auth.uid) ||
+        (resource.data.moderationStatus == 'APPROVED' && resource.data.publishingStatus == 'PUBLISHED');
+      
+      allow create: if isSignedIn() && 
+        request.resource.data.studentUid == request.auth.uid &&
+        request.resource.data.paymentStatus == 'AWAITING_PAYMENT' &&
+        request.resource.data.moderationStatus == 'PENDING';
+      
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        resource.data.studentUid == request.auth.uid &&
+        // Student can only update draft or resubmission fields, not payment or approval status
+        request.resource.data.paymentStatus == resource.data.paymentStatus &&
+        request.resource.data.moderationStatus == resource.data.moderationStatus &&
+        request.resource.data.publishingStatus == resource.data.publishingStatus
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    // Payments: Audited transaction records
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.studentUid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Audit Logs: Administrative actions
+    match /auditLogs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Notifications: In-app student updates
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.recipientUid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.recipientUid == request.auth.uid && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
+      allow create, delete: if isAdmin();
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
