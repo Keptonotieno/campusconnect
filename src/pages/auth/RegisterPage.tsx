@@ -40,9 +40,8 @@ export const RegisterPage: React.FC = () => {
               <div className="w-full h-full bg-white rounded-[38px] overflow-hidden flex flex-col p-4 pt-10 text-slate-800 select-none shadow-inner">
                 <div className="flex items-center justify-center pt-1 pb-3">
                   <span className="text-sm font-extrabold tracking-tight">
-                    <span className="text-amber-500">ig</span>
-                    <span className="text-rose-500">post</span>
-                    <span className="text-blue-600">hub</span>
+                    <span className="text-slate-900">campus</span>
+                    <span className="text-[#1D64EC]">connect</span>
                   </span>
                 </div>
 
@@ -117,20 +116,19 @@ export const RegisterPage: React.FC = () => {
                   className="inline-block cursor-pointer"
                 >
                   <span className="text-3xl font-extrabold tracking-tight">
-                    <span className="text-amber-500">ig</span>
-                    <span className="text-rose-500">post</span>
-                    <span className="text-[#1D64EC]">hub</span>
+                    <span className="text-slate-900">campus</span>
+                    <span className="text-[#1D64EC]">connect</span>
                   </span>
                 </div>
                 <div className="text-[11px] font-extrabold tracking-widest text-slate-400 uppercase">
-                  FOR BUSINESS
+                  GLOBAL CAMPUS & CREATOR NETWORK
                 </div>
               </div>
 
               {/* Title & 3-Step Pills */}
               <div className="text-center space-y-3">
                 <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight leading-snug">
-                  {isStudentMode ? 'Sign up for Campus Connect Student Hub' : 'Sign up to manage your Instagram business in one place.'}
+                  {isStudentMode ? 'Sign up for Campus Connect Student Hub' : 'Sign up to manage your university & Instagram community.'}
                 </h1>
 
                 {/* 3 Steps indicator matching screenshot */}
@@ -256,7 +254,7 @@ export const RegisterPage: React.FC = () => {
           <button onClick={() => navigateTo('/login')} className="hover:text-slate-900">Log in</button>
         </div>
         <div>
-          © 2026 igposthub. Not affiliated with or endorsed by Instagram or Meta.
+          © 2026 CampusConnect. Not affiliated with or endorsed by Instagram or Meta.
         </div>
       </footer>
 

@@ -47,11 +47,12 @@ const AppContent: React.FC = () => {
     universities 
   } = useApp();
 
-  // 1. Resolve University Community route (/university/:slug or /u/:slug)
-  if (currentRoute.startsWith('/university/') || currentRoute.startsWith('/u/')) {
+  // 1. Resolve University Community route (/university/:slug, /u/:slug, or /ig/:slug)
+  if (currentRoute.startsWith('/university/') || currentRoute.startsWith('/u/') || currentRoute.startsWith('/ig/')) {
     const slug = currentRoute
       .replace('/university/', '')
       .replace('/u/', '')
+      .replace('/ig/', '')
       .split('/')[0]
       .split('?')[0];
 
@@ -71,18 +72,14 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 2. Admin Operations Portal (/admin)
-  if (currentRoute === '/admin') {
+  // 2. Hidden Dedicated Admin Operations Portal (/admin and /admin/*)
+  if (currentRoute.startsWith('/admin')) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
-        <Navbar />
         <main className="flex-1">
           <AdminPortalPage />
         </main>
-        <Footer />
         <ToastContainer />
-        <SupportWidget />
-        <CommandPalette />
       </div>
     );
   }

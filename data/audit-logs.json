@@ -1,0 +1,155 @@
+[
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_0b53538911c1",
+    "timestamp": "2026-10-21T09:09:40.208Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_63ad5c6fdc60",
+    "timestamp": "2026-10-21T09:03:54.742Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_dc4266f3953d",
+    "timestamp": "2026-10-21T09:03:39.100Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_4e4427c8ac78",
+    "timestamp": "2026-10-21T08:26:26.130Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_8a91cea2b4d2",
+    "timestamp": "2026-10-21T08:16:37.503Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_f4d065939614",
+    "timestamp": "2026-10-21T08:16:33.549Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_4567f85aa497",
+    "timestamp": "2026-10-21T08:14:50.327Z"
+  },
+  {
+    "actorUid": "usr_webhook",
+    "actorRole": "System",
+    "action": "PAYMENT_VERIFIED",
+    "targetType": "PAYMENT",
+    "targetId": "pay_63e1b7a75108",
+    "details": "Payment of $6 USD (USD 780) verified. Ref: TXN_TEST_VERIFY_01",
+    "id": "log_b30a2fa97ece",
+    "timestamp": "2026-10-21T07:58:42.120Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "admin@campusconnect.app",
+    "actorRole": "Admin",
+    "action": "CAMPUS_CREATED",
+    "targetType": "UNIVERSITY",
+    "targetId": "uni_duke_university_2028",
+    "details": "Created new campus \"Duke University Class of 2028\" with canonical route /ig/duke-university-2028",
+    "id": "log_7295e20a5f9b",
+    "timestamp": "2026-10-20T16:08:06.583Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "admin@campusconnect.app",
+    "actorRole": "Admin",
+    "action": "CAMPUS_UPDATED",
+    "targetType": "UNIVERSITY",
+    "targetId": "uni_lindseywilsoncollege2031class",
+    "details": "Updated details for campus \"Lindsey Wilson College Class of 2031\"",
+    "id": "log_3af76c811aa6",
+    "timestamp": "2026-10-20T16:07:54.815Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "admin@campusconnect.app",
+    "actorRole": "Admin",
+    "action": "CAMPUS_CREATED",
+    "targetType": "UNIVERSITY",
+    "targetId": "uni_lindseywilsoncollege2031class",
+    "details": "Created new campus \"Lindsey Wilson College Class of 2031\" with canonical route /ig/lindseywilsoncollege2031class",
+    "id": "log_eca8faa16012",
+    "timestamp": "2026-10-20T16:07:33.356Z"
+  },
+  {
+    "actorUid": "admin_82d3fd31fdd3",
+    "actorEmail": "admin@campusconnect.app",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_82d3fd31fdd3",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_76fad3a3fc90",
+    "timestamp": "2026-10-20T16:07:15.682Z"
+  },
+  {
+    "actorUid": "admin_82d3fd31fdd3",
+    "actorEmail": "admin@campusconnect.app",
+    "actorRole": "Admin",
+    "action": "ADMIN_BOOTSTRAP_COMPLETED",
+    "targetType": "USER",
+    "targetId": "admin_82d3fd31fdd3",
+    "details": "Initial administrator bootstrapped for admin@campusconnect.app",
+    "id": "log_f64a7a8e7d9d",
+    "timestamp": "2026-10-20T16:06:54.348Z"
+  },
+  {
+    "id": "log_init_01",
+    "actorUid": "system",
+    "actorEmail": "system@campusconnect.app",
+    "actorRole": "System",
+    "action": "PLATFORM_INITIALIZED",
+    "targetType": "UNIVERSITY",
+    "targetId": "all",
+    "details": "Initial verified university instances mounted with zero-trust database constraints.",
+    "timestamp": "2026-10-01T00:00:00Z"
+  }
+]

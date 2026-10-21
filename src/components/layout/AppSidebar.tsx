@@ -231,16 +231,6 @@ export const AppSidebar: React.FC = () => {
               </button>
             );
           })}
-
-          {isAdmin && (
-            <button
-              onClick={() => handleNavigate('/admin')}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Admin Review Console</span>
-            </button>
-          )}
         </div>
 
       </div>
@@ -256,7 +246,7 @@ export const AppSidebar: React.FC = () => {
               {currentUser?.name || 'Software'}
             </div>
             <div className="text-[10px] text-slate-400 truncate">
-              {currentUser?.email || 'admin@igposthub.com'}
+              {currentUser?.email || 'admin@campusconnect.app'}
             </div>
           </div>
         </div>

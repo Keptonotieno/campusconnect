@@ -15,7 +15,8 @@ import {
   Calendar,
   GraduationCap,
   Heart,
-  Share2
+  Share2,
+  AlertCircle
 } from 'lucide-react';
 import { University } from '../../types';
 
@@ -48,6 +49,10 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
 
   // Handle CTA to get featured for this university
   const handleGetFeatured = () => {
+    if (!university.communityEnabled) {
+      addToast('Campus Inactive', 'This campus network is currently deactivated by administration. Submissions are paused.', 'info');
+      return;
+    }
     setEntryUniversityContext(university);
     if (!isAuthenticated) {
       addToast('Sign In Required', `Create an account to submit your photo for ${university.name}.`, 'info');
@@ -62,36 +67,36 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     return [
       {
         id: 'mem_1',
-        name: 'Brian Kiprop',
-        major: 'BSc. Civil Engineering',
-        gradYear: '2027',
-        bio: 'Juja campus enthusiast, marathon runner, and chess player.',
-        interests: ['Engineering', 'Running', 'Chess'],
-        housing: 'Off Campus (Gate C)',
+        name: 'Lucas Wright',
+        major: 'BSc. Computer Science & AI',
+        gradYear: '2028',
+        bio: 'Campus tech enthusiast, collegiate runner, and robotics society member.',
+        interests: ['AI & Tech', 'Running', 'Chess'],
+        housing: 'North Campus Quad',
         avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80',
-        instagram: '@briankiprop_'
+        instagram: '@lucas_wright'
       },
       {
         id: 'mem_2',
-        name: 'Amina Mohamed',
-        major: 'BSc. Information Technology',
-        gradYear: '2026',
-        bio: 'Fullstack builder, UI designer, and tech club lead.',
-        interests: ['React', 'Design', 'Photography'],
-        housing: 'On Campus Hostels',
+        name: 'Chloe Davenport',
+        major: 'BA. International Relations & Politics',
+        gradYear: '2027',
+        bio: 'Collegiate debate society lead, campus photographer, and student affairs advocate.',
+        interests: ['Debate', 'Model UN', 'Photography'],
+        housing: 'College Residence Hall',
         avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80',
-        instagram: '@amina_tech'
+        instagram: '@chloe_davenport'
       },
       {
         id: 'mem_3',
-        name: 'Dennis Mutua',
-        major: 'Bachelor of Architecture',
+        name: 'Julian Vance',
+        major: 'BSc. Economics & Data Science',
         gradYear: '2028',
-        bio: 'Passionate about sustainable campus design and 3D modeling.',
-        interests: ['Architecture', 'Art', 'Travel'],
-        housing: 'Looking for Roommate',
+        bio: 'Passionate about fintech, student investment funds, and collegiate tennis.',
+        interests: ['Economics', 'Data Science', 'Tennis'],
+        housing: 'University Commons',
         avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=300&q=80',
-        instagram: '@dennis_arch'
+        instagram: '@julian_vance'
       }
     ];
   }, []);
@@ -106,6 +111,14 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans pb-16">
       
+      {/* Deactivated Notice Banner */}
+      {!university.communityEnabled && (
+        <div className="bg-amber-500 text-slate-950 px-4 py-3 text-center text-xs font-bold border-b border-amber-600 flex items-center justify-center gap-2 shadow-xs">
+          <AlertCircle className="w-4 h-4 text-slate-950 shrink-0" />
+          <span>Notice: This campus portal is currently deactivated by administration. Student submissions and featured posts are temporarily paused.</span>
+        </div>
+      )}
+
       {/* 1. HERO BANNER */}
       <div className="relative bg-slate-900 text-white overflow-hidden">
         {/* Cover Photo Backdrop */}

@@ -71,18 +71,18 @@ export const LandingPage: React.FC = () => {
             {/* Pill */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200/80 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>For Instagram Business and Creator accounts</span>
+              <span>For Students, Creators & Global Universities</span>
             </div>
 
             {/* Headline */}
             <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-extrabold tracking-tight text-slate-950 leading-[1.12]">
-              Run your Instagram<br />
-              <span className="text-[#1D64EC]">business from one place.</span>
+              Run your campus &<br />
+              <span className="text-[#1D64EC]">Instagram from one place.</span>
             </h1>
 
             {/* Subtitle */}
             <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-xl font-normal">
-              Connect your business accounts and handle posts, comments, direct messages, insights and publishing in a single dashboard.
+              CampusConnect unites student communities at top abroad universities (Harvard, Oxford, Miami, Stanford and more) with unified Instagram management.
             </p>
 
             {/* CTA Buttons */}
@@ -419,13 +419,13 @@ export const LandingPage: React.FC = () => {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-[#1D64EC] text-xs font-bold border border-blue-200">
                 <GraduationCap className="w-3.5 h-3.5" />
-                <span>Campus Connect Student Network</span>
+                <span>Campus Connect Global University Network</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
-                Discover university communities & get featured
+                Top World Universities & Global Campus Hubs
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 max-w-2xl font-normal">
-                Join your university’s dedicated student hub, connect with incoming freshmen and course mates, and submit your profile for consideration on official university Instagram pages.
+                Join your university’s dedicated student hub at premier institutions abroad — Harvard, Oxford, University of Miami, Stanford, Cambridge, MIT, Columbia, and UCLA. Connect with classmates and get featured on official campus channels.
               </p>
             </div>
 
@@ -568,9 +568,9 @@ export const LandingPage: React.FC = () => {
               <Instagram className="w-3 h-3" />
             </div>
             <span className="text-sm font-bold text-slate-900">
-              igpost<span className="text-[#1D64EC]">hub</span>
+              campus<span className="text-[#1D64EC]">connect</span>
             </span>
-            <span className="text-xs text-slate-400 font-medium">for business</span>
+            <span className="text-xs text-slate-400 font-medium">global university & creator network</span>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 font-medium">
@@ -578,11 +578,10 @@ export const LandingPage: React.FC = () => {
             <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-900 cursor-pointer">Privacy</button>
             <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-900 cursor-pointer">Data deletion</button>
             <button onClick={() => navigateTo('/')} className="hover:text-slate-900 cursor-pointer">Campus Network</button>
-            <button onClick={() => navigateTo('/admin')} className="hover:text-slate-900 cursor-pointer">Admin Portal</button>
           </div>
 
           <div className="text-[11px] text-slate-400 max-w-lg leading-relaxed">
-            Not affiliated with or endorsed by Instagram or Meta. © 2026 igposthub. All rights reserved.
+            Not affiliated with or endorsed by Instagram or Meta. © 2026 CampusConnect. All rights reserved.
           </div>
 
         </div>

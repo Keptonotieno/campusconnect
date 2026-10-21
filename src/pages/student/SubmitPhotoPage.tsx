@@ -30,7 +30,7 @@ export const SubmitPhotoPage: React.FC = () => {
     addToast 
   } = useApp();
 
-  // Selected university (default to user's university or JKUAT)
+  // Selected university (default to user's university or target abroad university like Harvard/Miami/Oxford)
   const defaultUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0];
   const [targetUni, setTargetUni] = useState<University>(defaultUni);
 
@@ -42,7 +42,7 @@ export const SubmitPhotoPage: React.FC = () => {
   const [previewTab, setPreviewTab] = useState<'WATERMARKED' | 'ORIGINAL'>('WATERMARKED');
 
   const [caption, setCaption] = useState(
-    `Hey everyone! Enrolled in ${currentUser?.course || 'Engineering'} at ${targetUni.name}. Excited to connect with fellow campus freshmen and explore Juja!`
+    `Hey everyone! Enrolled at ${targetUni.name}. Excited to connect with fellow freshmen, join campus student societies, and make new friends!`
   );
 
   const [publicationConsent, setPublicationConsent] = useState(false);

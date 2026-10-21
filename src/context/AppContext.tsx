@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   User,
   University,
@@ -33,6 +33,7 @@ interface AppContextType {
   setEntryUniversityContext: (uni: University | null) => void;
   getUniversityBySlug: (slug: string) => University | undefined;
   getUniversityById: (id: string) => University | undefined;
+  refreshCampuses: () => Promise<void>;
 
   // Authentication & Profile
   isAuthenticated: boolean;
@@ -43,7 +44,6 @@ interface AppContextType {
   logout: () => void;
   updateUserProfile: (updates: Partial<User>) => void;
   completeOnboarding: (updates: Partial<User>) => void;
-  loginAsAdmin: () => void;
 
   // Featured Submissions
   submissions: FeaturedSubmission[];
@@ -108,89 +108,72 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Initial verified sample submissions
-const INITIAL_SUBMISSIONS: FeaturedSubmission[] = [
-  {
-    id: 'sub_jkuat_01',
-    studentUid: 'usr_sarah',
-    studentDisplayName: 'Sarah Wanjiku',
-    studentEmail: 'sarah.wanjiku@students.jkuat.ac.ke',
-    studentAvatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-    universityId: 'uni_jkuat',
-    universityName: 'Jomo Kenyatta University of Agriculture and Technology',
-    universitySlug: 'jkuat',
-    universityInstagramHandle: '@jkuat_campusconnect',
-    originalImagePath: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
-    watermarkedImagePath: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
-    caption: 'Hey JKUAT! Computer Science Class of 2027 💻✨ Exploring Juja and looking forward to making new friends and tech collaborators!',
-    publicationConsent: true,
-    rightsConfirmed: true,
-    termsAgreed: true,
-    paymentStatus: 'PAYMENT_CONFIRMED',
-    moderationStatus: 'APPROVED',
-    publishingStatus: 'PUBLISHED',
-    instagramPostUrl: 'https://www.instagram.com/p/DB12345JKUAT/',
-    publishedAt: '2026-10-17T14:30:00Z',
-    submittedAt: '2026-10-17T10:15:00Z',
-    updatedAt: '2026-10-17T14:30:00Z'
-  },
-  {
-    id: 'sub_uon_01',
-    studentUid: 'usr_kevin',
-    studentDisplayName: 'Kevin Omondi',
-    studentEmail: 'kevin.omondi@students.uonbi.ac.ke',
-    studentAvatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-    universityId: 'uni_uon',
-    universityName: 'University of Nairobi',
-    universitySlug: 'university-of-nairobi',
-    universityInstagramHandle: '@uon_campusconnect',
-    originalImagePath: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80',
-    watermarkedImagePath: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80',
-    caption: 'UoN School of Law ⚖️ Passionate about moot court, chess, and campus debate. Hit me up if you want to connect!',
-    publicationConsent: true,
-    rightsConfirmed: true,
-    termsAgreed: true,
-    paymentStatus: 'PAYMENT_CONFIRMED',
-    moderationStatus: 'APPROVED',
-    publishingStatus: 'PUBLISHED',
-    instagramPostUrl: 'https://www.instagram.com/p/DB67890UON/',
-    publishedAt: '2026-10-16T18:00:00Z',
-    submittedAt: '2026-10-16T11:00:00Z',
-    updatedAt: '2026-10-16T18:00:00Z'
-  },
-  {
-    id: 'sub_moi_01',
-    studentUid: 'usr_faith',
-    studentDisplayName: 'Faith Chebet',
-    studentEmail: 'faith.chebet@mu.ac.ke',
-    studentAvatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80',
-    universityId: 'uni_moi',
-    universityName: 'Moi University',
-    universitySlug: 'moi-university',
-    universityInstagramHandle: '@moi_campusconnect',
-    originalImagePath: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80',
-    watermarkedImagePath: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80',
-    caption: 'Aerospace Engineering major at Moi University Main Campus 🚀 Passionate about robotics and Eldoret campus runs!',
-    publicationConsent: true,
-    rightsConfirmed: true,
-    termsAgreed: true,
-    paymentStatus: 'PAYMENT_CONFIRMED',
-    moderationStatus: 'UNDER_REVIEW',
-    publishingStatus: 'READY_TO_PUBLISH',
-    submittedAt: '2026-10-18T02:15:00Z',
-    updatedAt: '2026-10-18T03:00:00Z'
-  }
-];
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 1. URL & University Context
   const [currentRoute, setCurrentRoute] = useState<string>(() => {
     return window.location.pathname || '/';
   });
 
-  const [universities] = useState<University[]>(VERIFIED_UNIVERSITIES);
+  const [universities, setUniversities] = useState<University[]>(() => {
+    try {
+      const stored = localStorage.getItem('campusconnect_campuses');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return VERIFIED_UNIVERSITIES;
+  });
+
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [entryUniversityContext, setEntryUniversityContext] = useState<University | null>(null);
+
+  // Synchronize campuses with server database
+  const refreshCampuses = useCallback(async () => {
+    try {
+      const res = await fetch('/api/campuses', { headers: { 'Cache-Control': 'no-cache' } });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.campuses) && data.campuses.length > 0) {
+          setUniversities(data.campuses);
+          try {
+            localStorage.setItem('campusconnect_campuses', JSON.stringify(data.campuses));
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch server campuses, using cache:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCampuses();
+  }, [refreshCampuses]);
+
+  // Dynamic resolver for universities / campuses
+  const getUniversityBySlug = useCallback((slug: string): University | undefined => {
+    if (!slug) return undefined;
+    const normalized = slug.toLowerCase().trim();
+    // 1. Check live state first (includes any newly created campus like Lindsey Wilson College)
+    const found = universities.find(
+      u => u.slug.toLowerCase() === normalized ||
+           u.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
+           u.id.toLowerCase() === normalized ||
+           u.name.toLowerCase() === normalized
+    );
+    if (found) return found;
+
+    // 2. Check alias mappings
+    return findUniversityBySlug(normalized);
+  }, [universities]);
+
+  const getUniversityById = useCallback((id: string): University | undefined => {
+    return universities.find(u => u.id === id) || findUniversityById(id);
+  }, [universities]);
 
   // Detect and preserve university context from Instagram link or URL path
   useEffect(() => {
@@ -201,13 +184,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let resolvedUni: University | undefined;
 
     if (uniParam) {
-      resolvedUni = findUniversityBySlug(uniParam);
+      resolvedUni = getUniversityBySlug(uniParam);
     } else if (currentRoute.startsWith('/university/')) {
       const slug = currentRoute.replace('/university/', '').split('/')[0].split('?')[0];
-      resolvedUni = findUniversityBySlug(slug);
+      resolvedUni = getUniversityBySlug(slug);
     } else if (currentRoute.startsWith('/u/')) {
       const slug = currentRoute.replace('/u/', '').split('/')[0].split('?')[0];
-      resolvedUni = findUniversityBySlug(slug);
+      resolvedUni = getUniversityBySlug(slug);
+    } else if (currentRoute.startsWith('/ig/')) {
+      const slug = currentRoute.replace('/ig/', '').split('/')[0].split('?')[0];
+      resolvedUni = getUniversityBySlug(slug);
     }
 
     if (resolvedUni) {
@@ -224,11 +210,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Check stored entry university
       const storedSlug = localStorage.getItem('campusconnect_entry_uni');
       if (storedSlug) {
-        const found = findUniversityBySlug(storedSlug);
+        const found = getUniversityBySlug(storedSlug);
         if (found) setEntryUniversityContext(found);
       }
     }
-  }, [currentRoute, entryUniversityContext]);
+  }, [currentRoute, entryUniversityContext, getUniversityBySlug]);
 
   // 2. Authentication & Student Profile
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -261,7 +247,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore
     }
-    return INITIAL_SUBMISSIONS;
+    return [];
   });
 
   // Save submissions to local storage whenever updated
@@ -281,26 +267,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore
     }
-    return [
-      {
-        id: 'pay_init_01',
-        submissionId: 'sub_jkuat_01',
-        studentUid: 'usr_sarah',
-        studentName: 'Sarah Wanjiku',
-        universityId: 'uni_jkuat',
-        provider: 'MPESA',
-        providerTransactionReference: 'QAX84920KL',
-        amountUsd: FEATURED_POST_PRICE_USD,
-        amountKes: FEATURED_POST_PRICE_KES,
-        currency: 'KES',
-        phoneNumber: '0712345678',
-        status: 'CONFIRMED',
-        idempotencyKey: 'idem_init_01',
-        verifiedAt: '2026-10-17T10:20:00Z',
-        createdAt: '2026-10-17T10:18:00Z',
-        updatedAt: '2026-10-17T10:20:00Z'
-      }
-    ];
+    return [];
   });
 
   // 5. Audit Logs
@@ -311,19 +278,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore
     }
-    return [
-      {
-        id: 'log_01',
-        actorUid: 'usr_admin',
-        actorEmail: 'admin@campusconnect.app',
-        actorRole: 'Admin',
-        action: 'SUBMISSION_PUBLISHED',
-        targetType: 'SUBMISSION',
-        targetId: 'sub_jkuat_01',
-        details: 'Published to @jkuat_campusconnect. URL: https://www.instagram.com/p/DB12345JKUAT/',
-        timestamp: '2026-10-17T14:30:00Z'
-      }
-    ];
+    return [];
   });
 
   // 6. Notifications
@@ -407,7 +362,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ') || 'Campus Student';
 
-    // University association: use entry university, selected university, or default JKUAT
+    // University association: use entry university, selected university, or default Harvard
     const associatedUni = entryUniversityContext || selectedUniversity || VERIFIED_UNIVERSITIES[0];
 
     const loggedUser: User = {
@@ -499,26 +454,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     addToast('Signed Out', 'You have been safely signed out.', 'info');
     navigateTo('/login');
-  };
-
-  const loginAsAdmin = () => {
-    const adminUser: User = {
-      id: 'usr_admin_01',
-      name: 'Campus Connect Administrator',
-      email: 'admin@campusconnect.app',
-      role: 'Admin',
-      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=200&q=80',
-      universityId: 'all',
-      universityName: 'Campus Connect Central',
-      studentVerificationStatus: 'VERIFIED',
-      onboardingCompleted: true
-    };
-    setIsAuthenticated(true);
-    setCurrentUser(adminUser);
-    localStorage.setItem('campusconnect_auth', 'true');
-    localStorage.setItem('campusconnect_user', JSON.stringify(adminUser));
-    addToast('Admin Mode Active', 'Signed in as Administrator with full review privileges.', 'success');
-    navigateTo('/admin');
   };
 
   const updateUserProfile = (updates: Partial<User>) => {
@@ -623,6 +558,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     try {
+      // 1. Client execution & simulation
       const result = await processSubmissionPayment({
         submissionId,
         studentUid: currentUser.id,
@@ -632,9 +568,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         phoneNumber
       });
 
+      // 2. Server-side authoritative verification & database persistence
+      let verifiedRecord = result.paymentRecord;
+      try {
+        const serverRes = await fetch('/api/payments/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            submissionId,
+            studentUid: currentUser.id,
+            studentName: currentUser.name,
+            universityId: sub.universityId,
+            provider,
+            phoneNumber,
+            idempotencyKey: result.paymentRecord.idempotencyKey
+          })
+        });
+        if (serverRes.ok) {
+          const sData = await serverRes.json();
+          if (sData.payment) {
+            verifiedRecord = sData.payment;
+          }
+        }
+      } catch (sErr) {
+        console.warn('Server payment sync fallback to local record:', sErr);
+      }
+
       if (result.success) {
         // Record payment
-        setPayments((prev) => [result.paymentRecord, ...prev]);
+        setPayments((prev) => [verifiedRecord, ...prev]);
 
         // Advance submission status to confirmed payment and queued for review
         setSubmissions((prev) =>
@@ -837,7 +799,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const business: BusinessAccount = {
     id: 'biz_01',
     name: currentUser?.name || 'Software',
-    email: currentUser?.email || 'admin@igposthub.com',
+    email: currentUser?.email || 'admin@campusconnect.app',
     industry: 'Education & Student Life',
     createdAt: new Date().toISOString(),
     onboardingStep: 3,
@@ -856,8 +818,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedUniversity,
         entryUniversityContext,
         setEntryUniversityContext,
-        getUniversityBySlug: findUniversityBySlug,
-        getUniversityById: findUniversityById,
+        getUniversityBySlug,
+        getUniversityById,
+        refreshCampuses,
 
         isAuthenticated,
         currentUser,
@@ -867,7 +830,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         updateUserProfile,
         completeOnboarding,
-        loginAsAdmin,
 
         submissions,
         mySubmissions,

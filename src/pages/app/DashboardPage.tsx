@@ -55,8 +55,8 @@ export const DashboardPage: React.FC = () => {
           </h2>
           <p className="text-xs sm:text-sm text-blue-100/90 font-normal">
             {isConnected 
-              ? `Your Instagram account @${primaryAccount.username} is linked and synced to igposthub.`
-              : 'Connect your first Instagram account to get started.'}
+              ? `Your Instagram account @${primaryAccount.username} is linked and synced to CampusConnect.`
+              : 'Connect your first Instagram account to get started with CampusConnect.'}
           </p>
         </div>
 
@@ -287,7 +287,7 @@ export const DashboardPage: React.FC = () => {
             <div className="space-y-3 text-xs">
               <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                 <div className="font-semibold text-slate-800">
-                  Welcome to igposthub for business
+                  Welcome to CampusConnect
                 </div>
                 <div className="text-[10px] text-slate-400">
                   Just now

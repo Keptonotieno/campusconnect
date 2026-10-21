@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Grid, MessageSquare, MessageCircle, BarChart3, Info, Lock } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, navigateTo, loginAsAdmin } = useApp();
+  const { login, navigateTo } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [keepLoggedIn, setKeepLoggedIn] = useState(true);
@@ -213,6 +213,19 @@ export const LoginPage: React.FC = () => {
                   >
                     Forgot password?
                   </button>
+
+                  {/* Stealth Admin Portal Link (Positioned directly beneath at the red mark from user image) */}
+                  <div className="pt-1 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => navigateTo('/admin')}
+                      className="text-[11px] text-slate-400/90 hover:text-slate-700 cursor-pointer transition-colors flex items-center gap-1 select-none font-medium hover:underline"
+                      title="Admin Portal Access"
+                    >
+                      <Lock className="w-3 h-3 text-slate-400" />
+                      <span>Admin Portal</span>
+                    </button>
+                  </div>
                 </div>
               </form>
 
@@ -255,7 +268,7 @@ export const LoginPage: React.FC = () => {
           <button onClick={() => navigateTo('/register')} className="hover:text-slate-900">Sign up</button>
         </div>
         <div>
-          © 2026 igposthub. Not affiliated with or endorsed by Instagram or Meta.
+          © 2026 CampusConnect. Not affiliated with or endorsed by Instagram or Meta.
         </div>
       </footer>
 

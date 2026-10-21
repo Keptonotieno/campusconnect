@@ -1,0 +1,20 @@
+[
+  {
+    "id": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "passwordHash": "e3cdb6da637e4a87b3c489ed9305f0320ca80d78d36fba5951ce4bcb5c4f8024fe6b7ed2d78b3b0503399c25676ffd50a0467a06fe87ea1b80d6fdaf3a0efb9a",
+    "salt": "41c57ae4a498b8fe9dc0955a010edb3a",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:14:00.000Z",
+    "lastLoginAt": "2026-10-21T09:09:40.207Z"
+  },
+  {
+    "id": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "passwordHash": "e3cdb6da637e4a87b3c489ed9305f0320ca80d78d36fba5951ce4bcb5c4f8024fe6b7ed2d78b3b0503399c25676ffd50a0467a06fe87ea1b80d6fdaf3a0efb9a",
+    "salt": "41c57ae4a498b8fe9dc0955a010edb3a",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:14:00.000Z",
+    "lastLoginAt": "2026-10-21T08:16:37.503Z"
+  }
+]

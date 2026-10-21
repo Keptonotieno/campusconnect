@@ -1,0 +1,74 @@
+[
+  {
+    "token": "sess_4d43fdc70c8876006e4700ea58566dc89757f72c45062039791aaa07bd0fabdd",
+    "adminId": "admin_82d3fd31fdd3",
+    "email": "admin@campusconnect.app",
+    "role": "Admin",
+    "createdAt": "2026-10-20T16:06:54.347Z",
+    "expiresAt": "2026-10-20T20:06:54.347Z"
+  },
+  {
+    "token": "sess_a77847c3216d783a59f04ec339faeb893046682086835df38482a5276e16d0d5",
+    "adminId": "admin_82d3fd31fdd3",
+    "email": "admin@campusconnect.app",
+    "role": "Admin",
+    "createdAt": "2026-10-20T16:07:15.682Z",
+    "expiresAt": "2026-10-20T20:07:15.682Z"
+  },
+  {
+    "token": "sess_1b03a72f1b4abdad4f3aacb2cb9d81cb8aad84d876bf6308e236884ae1f13b73",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:14:50.327Z",
+    "expiresAt": "2026-10-21T12:14:50.327Z"
+  },
+  {
+    "token": "sess_081f48f35ab19e753ae3169250b99a56c7555b9445bfa42f6a08499e9bd7d266",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:16:33.549Z",
+    "expiresAt": "2026-10-21T12:16:33.549Z"
+  },
+  {
+    "token": "sess_ce9d7e13cfc3076a8cbd251daa2c4934f7d6987eb5b8f25a1526147acdfb877f",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:16:37.503Z",
+    "expiresAt": "2026-10-21T12:16:37.503Z"
+  },
+  {
+    "token": "sess_4db8370d643a6718247df07c0d843d46c6540a3363783d615f9b7ef8b7e06eba",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:26:26.130Z",
+    "expiresAt": "2026-10-21T12:26:26.130Z"
+  },
+  {
+    "token": "sess_adf3cf77419a65513f3283dc07981b96c7ea9cc934326af858b3a6bf9d509e73",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-21T09:03:39.100Z",
+    "expiresAt": "2026-10-21T13:03:39.100Z"
+  },
+  {
+    "token": "sess_a9489fdc0abe2b749dcf52415db13ba6c82433e1adfc8e802a90917e5cd8b9dc",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-21T09:03:54.742Z",
+    "expiresAt": "2026-10-21T13:03:54.742Z"
+  },
+  {
+    "token": "sess_6d3669aaa558ef5209c38d4c813e48bfd7229ecda70fcf6b89cb72d0db26942d",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-21T09:09:40.208Z",
+    "expiresAt": "2026-10-21T13:09:40.208Z"
+  }
+]

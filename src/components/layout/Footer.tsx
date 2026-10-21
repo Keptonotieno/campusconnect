@@ -18,15 +18,15 @@ export const Footer: React.FC = () => {
                 <Instagram className="w-3.5 h-3.5" />
               </div>
               <span className="text-base font-extrabold text-slate-900 tracking-tight">
-                igpost<span className="text-[#1D64EC]">hub</span>
+                campus<span className="text-[#1D64EC]">connect</span>
               </span>
-              <span className="text-xs text-slate-400 font-medium">for business</span>
+              <span className="text-xs text-slate-400 font-medium">global university network</span>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
-              The unified Instagram workspace for business and creators, combined with the CampusConnect university student discovery and social network.
+              The premier university student discovery network and Instagram workspace for top institutions abroad including Harvard, Oxford, Miami, Stanford, and more.
             </p>
             <div className="text-[11px] text-slate-400">
-              Not affiliated with or endorsed by Instagram or Meta Platforms, Inc. © 2026 igposthub.
+              Not affiliated with or endorsed by Instagram or Meta Platforms, Inc. © 2026 CampusConnect.
             </div>
           </div>
 
@@ -65,11 +65,6 @@ export const Footer: React.FC = () => {
                   Privacy Policy & Data Security
                 </button>
               </div>
-              <div>
-                <button onClick={() => navigateTo('/admin')} className="text-slate-400 hover:text-slate-700 cursor-pointer">
-                  Administrator Review Queue
-                </button>
-              </div>
             </div>
           </div>
 
@@ -77,7 +72,7 @@ export const Footer: React.FC = () => {
 
         <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-400">
           <div>
-            igposthub • Run your Instagram from one place
+            CampusConnect • Run your campus & Instagram from one place
           </div>
           <div className="flex items-center gap-4">
             <span>Student Featured Consideration: <strong>$6.00 USD (KES 780)</strong></span>

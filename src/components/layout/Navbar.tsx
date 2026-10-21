@@ -129,19 +129,6 @@ export const Navbar: React.FC = () => {
                   <User className="w-3.5 h-3.5 text-blue-600" />
                   <span>Student Hub & Status</span>
                 </button>
-
-                {isAdmin && (
-                  <button
-                    onClick={() => {
-                      setCampusDropdownOpen(false);
-                      navigateTo('/admin');
-                    }}
-                    className="w-full px-4 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer font-semibold border-t border-slate-100"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Admin Review Queue</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
