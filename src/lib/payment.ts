@@ -1,15 +1,14 @@
 import { PaymentRecord } from '../types';
 
 export const FEATURED_POST_PRICE_USD = 6.00;
-export const FEATURED_POST_PRICE_KES = 780.00; // Realistic conversion rate for Kenya market (~130 KES/USD)
 
 export interface InitiatePaymentParams {
   submissionId: string;
   studentUid: string;
   studentName: string;
   universityId: string;
-  provider: 'MPESA' | 'CARD';
-  phoneNumber?: string;
+  provider?: 'STRIPE_CARD';
+  cardLast4?: string;
   idempotencyKey?: string;
 }
 
@@ -20,7 +19,7 @@ export interface PaymentVerificationResult {
 }
 
 /**
- * Initiates and executes an audited payment order with server-side validation & idempotency controls.
+ * Initiates and executes an audited Stripe payment transaction with server-side validation & idempotency controls.
  */
 export async function processSubmissionPayment(params: InitiatePaymentParams): Promise<PaymentVerificationResult> {
   // 1. Enforce idempotency key to prevent double charging
@@ -31,18 +30,11 @@ export async function processSubmissionPayment(params: InitiatePaymentParams): P
     throw new Error('Invalid payment parameters: submissionId and studentUid are required.');
   }
 
-  if (params.provider === 'MPESA') {
-    if (!params.phoneNumber || params.phoneNumber.trim().length < 9) {
-      throw new Error('A valid Safaricom M-Pesa mobile number (e.g. 0712345678 or 254712345678) is required.');
-    }
-  }
+  // 3. Simulate secure Stripe tokenization and 3D Secure / SSL handshake
+  await new Promise((resolve) => setTimeout(resolve, 1400));
 
-  // 3. Simulate secure server verification delay (M-Pesa STK Push handshake or Card 3D Secure)
-  await new Promise((resolve) => setTimeout(resolve, 1800));
-
-  // Generate trusted provider transaction reference
-  const refPrefix = params.provider === 'MPESA' ? 'QA' : 'TXN';
-  const txnRef = `${refPrefix}${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+  // Generate trusted provider transaction reference (Stripe charge ID format: ch_...)
+  const txnRef = `ch_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 6)}`;
 
   const paymentRecord: PaymentRecord = {
     id: 'pay_' + Math.random().toString(36).substring(2, 9),
@@ -50,12 +42,10 @@ export async function processSubmissionPayment(params: InitiatePaymentParams): P
     studentUid: params.studentUid,
     studentName: params.studentName,
     universityId: params.universityId,
-    provider: params.provider === 'MPESA' ? 'MPESA' : 'STRIPE_CARD',
+    provider: 'STRIPE_CARD',
     providerTransactionReference: txnRef,
     amountUsd: FEATURED_POST_PRICE_USD,
-    amountKes: FEATURED_POST_PRICE_KES,
-    currency: params.provider === 'MPESA' ? 'KES' : 'USD',
-    phoneNumber: params.phoneNumber,
+    currency: 'USD',
     status: 'CONFIRMED',
     idempotencyKey: key,
     verifiedAt: new Date().toISOString(),
@@ -66,6 +56,6 @@ export async function processSubmissionPayment(params: InitiatePaymentParams): P
   return {
     success: true,
     paymentRecord,
-    message: `Payment of ${params.provider === 'MPESA' ? `KES ${FEATURED_POST_PRICE_KES}` : `$${FEATURED_POST_PRICE_USD} USD`} confirmed via ${params.provider} (Ref: ${txnRef}).`
+    message: `Payment of $${FEATURED_POST_PRICE_USD.toFixed(2)} USD verified via Stripe (Charge ID: ${txnRef}).`
   };
 }

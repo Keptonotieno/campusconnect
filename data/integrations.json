@@ -1,0 +1,64 @@
+{
+  "integrations": [
+    {
+      "id": "meta_instagram",
+      "name": "Meta Instagram Graph API",
+      "category": "Social Media & Direct Messaging",
+      "status": "CONNECTED",
+      "configured": true,
+      "lastVerifiedAt": "2026-10-22T08:00:00.000Z",
+      "details": "Official Instagram Graph API active for university profile publishing, media sync, and direct messaging.",
+      "keys": {
+        "appId": "849201948201923",
+        "appSecret": "sec_••••••••••••94f2",
+        "accessToken": "EAAX••••••••••••kM91",
+        "webhookVerifyToken": "tok_campus_verify_2026"
+      }
+    },
+    {
+      "id": "payment_stripe",
+      "name": "Stripe Gateway",
+      "category": "Payment Processing",
+      "status": "CONNECTED",
+      "configured": true,
+      "lastVerifiedAt": "2026-10-22T07:52:38.165Z",
+      "details": "Stripe production gateway active with 256-bit SSL encryption and strict server-side webhook idempotency.",
+      "keys": {
+        "publishableKey": "pk_live_51P••••••••••••92A4",
+        "secretKey": "sk_live_51P••••••••••••7F81",
+        "webhookSecret": "whsec_••••••••••••33D1"
+      }
+    },
+    {
+      "id": "email_transactional",
+      "name": "Transactional Email Service",
+      "category": "Notifications & Verification",
+      "status": "CONNECTED",
+      "configured": true,
+      "lastVerifiedAt": "2026-10-22T08:00:00.000Z",
+      "details": "DKIM and SPF verified; sender notifications@campusconnect.app with TLS SMTP relay.",
+      "keys": {
+        "smtpHost": "smtp.mailgun.org",
+        "smtpPort": "587",
+        "smtpUser": "postmaster@campusconnect.app",
+        "smtpPassword": "••••••••••••88d1",
+        "senderEmail": "notifications@campusconnect.app",
+        "senderName": "CampusConnect Global"
+      }
+    },
+    {
+      "id": "cloud_firestore",
+      "name": "Google Cloud Firestore",
+      "category": "Authoritative Document Database",
+      "status": "CONNECTED",
+      "configured": true,
+      "lastVerifiedAt": "2026-10-22T08:00:00.000Z",
+      "details": "Persistent zero-trust document synchronization and multi-tenant security rules.",
+      "keys": {
+        "projectId": "campus-connect-prod-2026",
+        "clientEmail": "firebase-adminsdk-prod@campus-connect-prod-2026.iam.gserviceaccount.com",
+        "serviceAccountKey": "••••••••••••"
+      }
+    }
+  ]
+}

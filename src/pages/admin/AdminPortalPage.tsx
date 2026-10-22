@@ -32,7 +32,9 @@ import {
   CreditCard,
   Settings,
   Sun,
-  Moon
+  Moon,
+  Key,
+  Sliders
 } from 'lucide-react';
 import { FeaturedSubmission, University, PaymentRecord, InstagramAccount, AuditLogItem } from '../../types';
 import { 
@@ -52,6 +54,11 @@ import {
   fetchAdminEmail,
   sendAdminTestEmail,
   fetchAdminAuditLogs,
+  fetchAdminIntegrations,
+  updateAdminIntegration,
+  testAdminIntegration,
+  publishSubmissionToUniversityInstagram,
+  IntegrationItem,
   AdminOverviewData,
   EmailConfigData,
   getStoredAdminToken
@@ -73,15 +80,27 @@ export const AdminPortalPage: React.FC = () => {
   const [isBootstrapped, setIsBootstrapped] = useState<boolean>(true);
   const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
 
-  // Login / Bootstrap Form States (Requested credentials configured)
-  const [authEmail, setAuthEmail] = useState('compusconnect@gmail.com');
-  const [authPassword, setAuthPassword] = useState('kepton@12Romez');
+  // Login / Bootstrap Form States (Empty initial values; administrator enters credentials manually)
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
   const [authConfirmPassword, setAuthConfirmPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isFormDimmed, setIsFormDimmed] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+
+  // Integrations API Keys Management State
+  const [integrationsList, setIntegrationsList] = useState<IntegrationItem[]>([]);
+  const [editingIntegration, setEditingIntegration] = useState<IntegrationItem | null>(null);
+  const [integrationKeysForm, setIntegrationKeysForm] = useState<Record<string, string>>({});
+  const [savingIntegration, setSavingIntegration] = useState(false);
+  const [testingIntegrationId, setTestingIntegrationId] = useState<string | null>(null);
+
+  // University Instagram Publishing Modal State
+  const [publishModalSub, setPublishModalSub] = useState<FeaturedSubmission | null>(null);
+  const [publishingInstagram, setPublishingInstagram] = useState(false);
+  const [customPublishUrl, setCustomPublishUrl] = useState('');
 
   // Active Dashboard Tab
   const [activeTab, setActiveTab] = useState<
@@ -92,7 +111,7 @@ export const AdminPortalPage: React.FC = () => {
   const [overviewData, setOverviewData] = useState<AdminOverviewData | null>(null);
   const [campuses, setCampuses] = useState<University[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [paymentTotals, setPaymentTotals] = useState<{ usd: number; kes: number }>({ usd: 0, kes: 0 });
+  const [paymentTotals, setPaymentTotals] = useState<{ usd: number }>({ usd: 0 });
   const [instagramAccounts, setInstagramAccounts] = useState<InstagramAccount[]>([]);
   const [emailData, setEmailData] = useState<EmailConfigData | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
@@ -111,6 +130,10 @@ export const AdminPortalPage: React.FC = () => {
   const [newCampusDesc, setNewCampusDesc] = useState('');
   const [newCampusLogo, setNewCampusLogo] = useState('');
   const [newCampusCover, setNewCampusCover] = useState('');
+  const [newCampusPrimaryColor, setNewCampusPrimaryColor] = useState('#004B87');
+  const [newCampusAccentColor, setNewCampusAccentColor] = useState('#0284C7');
+  const [newCampusClassYear, setNewCampusClassYear] = useState('2031');
+  const [newCampusTagline, setNewCampusTagline] = useState('');
   const [newCampusEnabled, setNewCampusEnabled] = useState(true);
   const [campusSaving, setCampusSaving] = useState(false);
   const [campusError, setCampusError] = useState<string | null>(null);
@@ -165,13 +188,14 @@ export const AdminPortalPage: React.FC = () => {
     if (!isAdminAuthenticated) return;
     setLoadingData(true);
     try {
-      const [ov, cp, py, ig, em, al] = await Promise.all([
+      const [ov, cp, py, ig, em, al, itg] = await Promise.all([
         fetchAdminOverview(),
         fetchAdminCampuses(),
         fetchAdminPayments(),
         fetchAdminInstagram(),
         fetchAdminEmail(),
-        fetchAdminAuditLogs()
+        fetchAdminAuditLogs(),
+        fetchAdminIntegrations().catch(() => ({ integrations: [] }))
       ]);
 
       setOverviewData(ov);
@@ -181,6 +205,9 @@ export const AdminPortalPage: React.FC = () => {
       setInstagramAccounts(ig.accounts);
       setEmailData(em);
       setAuditLogs(al.logs);
+      if (itg?.integrations) {
+        setIntegrationsList(itg.integrations);
+      }
       refreshCampuses();
     } catch (err: any) {
       if (err?.status === 401 || err?.status === 403) {
@@ -193,6 +220,72 @@ export const AdminPortalPage: React.FC = () => {
       setLoadingData(false);
     }
   }, [isAdminAuthenticated, refreshCampuses, addToast]);
+
+  const handleOpenConfigureIntegration = (integration: any) => {
+    const existing = integrationsList.find(i => i.id === integration.id);
+    const itemToEdit: IntegrationItem = existing || {
+      id: integration.id,
+      name: integration.name,
+      category: integration.category,
+      status: integration.status,
+      configured: true,
+      lastVerifiedAt: integration.verifiedAt || new Date().toISOString(),
+      details: integration.details,
+      keys: {}
+    };
+    setEditingIntegration(itemToEdit);
+    setIntegrationKeysForm({ ...itemToEdit.keys });
+  };
+
+  const handleSaveIntegrationKeys = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingIntegration) return;
+    setSavingIntegration(true);
+    try {
+      await updateAdminIntegration(editingIntegration.id, integrationKeysForm);
+      addToast('Integration Updated', `API credentials for ${editingIntegration.name} saved successfully.`, 'success');
+      setEditingIntegration(null);
+      loadAllAdminData();
+    } catch (err: any) {
+      addToast('Error Saving Keys', err.message || 'Failed to save integration keys.', 'error');
+    } finally {
+      setSavingIntegration(false);
+    }
+  };
+
+  const handleTestIntegrationHandshake = async (integrationId: string) => {
+    setTestingIntegrationId(integrationId);
+    try {
+      const res = await testAdminIntegration(integrationId);
+      addToast('Handshake Verified', res.message, 'success');
+      loadAllAdminData();
+    } catch (err: any) {
+      addToast('Handshake Failed', err.message || 'Connection test failed.', 'error');
+    } finally {
+      setTestingIntegrationId(null);
+    }
+  };
+
+  const handlePublishToUniversityInstagram = async (sub: FeaturedSubmission) => {
+    setPublishingInstagram(true);
+    try {
+      const res = await publishSubmissionToUniversityInstagram(sub.id, {
+        targetInstagramHandle: sub.universityInstagramHandle,
+        customPostUrl: customPublishUrl.trim() || undefined,
+        studentName: sub.studentDisplayName,
+        universityName: sub.universityName
+      });
+      await publishToInstagram(sub.id, res.instagramPostUrl);
+      addToast('Published to Instagram!', `Featured post published to official account ${res.targetHandle}.`, 'success');
+      setPublishModalSub(null);
+      setCustomPublishUrl('');
+      loadAllAdminData();
+    } catch (err: any) {
+      addToast('Publishing Failed', err.message || 'Could not publish to Instagram.', 'error');
+    } finally {
+      setPublishingInstagram(false);
+    }
+  };
 
   useEffect(() => {
     if (isAdminAuthenticated) {
@@ -288,6 +381,10 @@ export const AdminPortalPage: React.FC = () => {
           description: newCampusDesc.trim(),
           logoUrl: newCampusLogo.trim() || undefined,
           coverUrl: newCampusCover.trim() || undefined,
+          primaryColor: newCampusPrimaryColor.trim() || '#004B87',
+          accentColor: newCampusAccentColor.trim() || '#0284C7',
+          classYear: newCampusClassYear.trim() || '2031',
+          tagline: newCampusTagline.trim() || `${newCampusName.trim()} forever.`,
           communityEnabled: newCampusEnabled
         });
         addToast('Campus Updated', `Saved settings for ${newCampusName}.`, 'success');
@@ -301,6 +398,10 @@ export const AdminPortalPage: React.FC = () => {
           description: newCampusDesc.trim(),
           logoUrl: newCampusLogo.trim() || undefined,
           coverUrl: newCampusCover.trim() || undefined,
+          primaryColor: newCampusPrimaryColor.trim() || '#004B87',
+          accentColor: newCampusAccentColor.trim() || '#0284C7',
+          classYear: newCampusClassYear.trim() || '2031',
+          tagline: newCampusTagline.trim() || `${newCampusName.trim()} forever.`,
           communityEnabled: newCampusEnabled
         });
         addToast('Campus Created', `Created ${res.campus.name}. Canonical route: /ig/${res.campus.slug}`, 'success');
@@ -325,6 +426,10 @@ export const AdminPortalPage: React.FC = () => {
     setNewCampusDesc('');
     setNewCampusLogo('');
     setNewCampusCover('');
+    setNewCampusPrimaryColor('#004B87');
+    setNewCampusAccentColor('#0284C7');
+    setNewCampusClassYear('2031');
+    setNewCampusTagline('');
     setNewCampusEnabled(true);
     setCampusError(null);
   };
@@ -338,6 +443,10 @@ export const AdminPortalPage: React.FC = () => {
     setNewCampusDesc(c.description);
     setNewCampusLogo(c.logoUrl);
     setNewCampusCover(c.coverUrl || '');
+    setNewCampusPrimaryColor(c.primaryColor || '#004B87');
+    setNewCampusAccentColor(c.accentColor || '#0284C7');
+    setNewCampusClassYear(c.classYear || '2031');
+    setNewCampusTagline(c.tagline || '');
     setNewCampusEnabled(c.communityEnabled);
     setShowCreateCampusModal(true);
   };
@@ -590,7 +699,7 @@ export const AdminPortalPage: React.FC = () => {
                   required
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="compusconnect@gmail.com"
+                  placeholder="admin@campusconnect.app"
                   className={`w-full rounded-xl px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                     isDarkMode 
                       ? 'bg-[#070B16] border border-slate-700/80 text-white placeholder-slate-500 focus:border-blue-500'
@@ -620,36 +729,13 @@ export const AdminPortalPage: React.FC = () => {
                   required
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="kepton@12Romez"
+                  placeholder="••••••••••••"
                   className={`w-full rounded-xl px-4 py-3 text-xs font-mono tracking-wide focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                     isDarkMode 
                       ? 'bg-[#070B16] border border-slate-700/80 text-white placeholder-slate-500 focus:border-blue-500'
                       : 'bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500'
                   }`}
                 />
-              </div>
-
-              {/* Quick Preset Credentials Pill */}
-              <div 
-                onClick={() => {
-                  setAuthEmail('compusconnect@gmail.com');
-                  setAuthPassword('kepton@12Romez');
-                  addToast('Credentials Applied', 'Configured email & password loaded.', 'info');
-                }}
-                className={`p-2.5 rounded-xl border text-[11px] flex items-center justify-between cursor-pointer transition-colors ${
-                  isDarkMode 
-                    ? 'bg-slate-900/60 border-slate-800 hover:border-blue-500/40 text-slate-300' 
-                    : 'bg-slate-50 border-slate-200 hover:border-blue-400 text-slate-700'
-                }`}
-                title="Click to apply configured credentials"
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="font-mono">compusconnect@gmail.com</span>
-                </div>
-                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider shrink-0 ml-2">
-                  Apply Preset
-                </span>
               </div>
 
               <div className="pt-1">
@@ -688,7 +774,7 @@ export const AdminPortalPage: React.FC = () => {
                   required
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="compusconnect@gmail.com"
+                  placeholder="admin@campusconnect.app"
                   className={`w-full rounded-xl px-4 py-3 text-xs focus:outline-none ${
                     isDarkMode ? 'bg-[#070B16] border border-slate-700 text-white' : 'bg-slate-50 border border-slate-200 text-slate-900'
                   }`}
@@ -704,7 +790,7 @@ export const AdminPortalPage: React.FC = () => {
                   required
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="kepton@12Romez"
+                  placeholder="••••••••••••"
                   className={`w-full rounded-xl px-4 py-3 text-xs focus:outline-none ${
                     isDarkMode ? 'bg-[#070B16] border border-slate-700 text-white' : 'bg-slate-50 border border-slate-200 text-slate-900'
                   }`}
@@ -910,7 +996,7 @@ export const AdminPortalPage: React.FC = () => {
                   ${paymentTotals.usd.toFixed(2)} USD
                 </div>
                 <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                  {overviewData?.totalAmountPaid?.formattedKes || `KES ${(paymentTotals.usd * 130).toLocaleString()}`} verified
+                  {overviewData?.totalAmountPaid?.formattedUsd || `$${paymentTotals.usd.toFixed(2)} USD`} • Stripe Gateway
                 </div>
               </div>
 
@@ -974,34 +1060,110 @@ export const AdminPortalPage: React.FC = () => {
             <div className={`p-6 rounded-3xl border space-y-4 ${
               isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-xs'
             }`}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className={`text-base font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Production Integrations</h3>
-                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Real-time gateway statuses and external API connection states.</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className={`text-base font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Production Integrations</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                      Admin Configurable
+                    </span>
+                  </div>
+                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Real-time external API keys, OAuth gateways, and automated webhook states configured by the administrator.
+                  </p>
                 </div>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold self-start sm:self-center">
-                  All Systems Operational
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
+                    All Gateways Online
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                {overviewData?.integrations.map((item) => (
-                  <div key={item.id} className={`p-4 rounded-2xl border space-y-2 ${
-                    isDarkMode ? 'bg-[#0F1626] border-slate-800/80' : 'bg-slate-50/80 border-slate-200'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{item.name}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                        {item.status}
-                      </span>
+                {(overviewData?.integrations || []).map((item) => {
+                  const fullItem = integrationsList.find(i => i.id === item.id);
+                  const isConnected = item.status === 'CONNECTED';
+                  const isTesting = testingIntegrationId === item.id;
+
+                  return (
+                    <div key={item.id} className={`p-4 rounded-2xl border space-y-3 flex flex-col justify-between ${
+                      isDarkMode ? 'bg-[#0F1626] border-slate-800/80 hover:border-slate-700' : 'bg-slate-50/80 border-slate-200 hover:border-slate-300'
+                    }`}>
+                      <div className="space-y-1.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className={`text-xs font-bold block ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                              {item.name}
+                            </span>
+                            <span className={`text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                              {item.category}
+                            </span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                            isConnected
+                              ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                          }`}>
+                            {item.status}
+                          </span>
+                        </div>
+                        <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                          {item.details}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                        {/* Masked Active Credentials indicator */}
+                        <div className={`text-[11px] font-mono flex items-center justify-between ${
+                          isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                        }`}>
+                          <span className="flex items-center gap-1.5 truncate">
+                            <Key className="w-3 h-3 text-blue-500 shrink-0" />
+                            <span>
+                              {fullItem?.keys && Object.keys(fullItem.keys).length > 0 
+                                ? `${Object.keys(fullItem.keys)[0]}: ${Object.values(fullItem.keys)[0] || '••••••••'}`
+                                : 'Credentials Configured'}
+                            </span>
+                          </span>
+                          <span className="text-[10px] text-slate-400 shrink-0 ml-2">
+                            {new Date(item.verifiedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Interactive Buttons */}
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenConfigureIntegration(item)}
+                            className={`flex-1 py-1.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                              isDarkMode 
+                                ? 'bg-slate-900 border-slate-700 hover:border-blue-500 text-slate-200' 
+                                : 'bg-white border-slate-200 hover:border-blue-500 text-slate-700 shadow-2xs'
+                            }`}
+                          >
+                            <Sliders className="w-3.5 h-3.5 text-blue-500" />
+                            <span>Configure API Keys</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTestIntegrationHandshake(item.id)}
+                            disabled={isTesting}
+                            title="Test live handshake with external service"
+                            className={`py-1.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors disabled:opacity-50 ${
+                              isDarkMode
+                                ? 'bg-slate-800/70 border-slate-700 hover:bg-slate-800 text-slate-300'
+                                : 'bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 text-emerald-500 ${isTesting ? 'animate-spin' : ''}`} />
+                            <span>{isTesting ? 'Testing...' : 'Test Handshake'}</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{item.details}</p>
-                    <div className={`text-[10px] flex items-center gap-1.5 pt-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                      <Clock className="w-3 h-3" />
-                      <span>Last verified handshake: {new Date(item.verifiedAt).toLocaleTimeString()}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -1140,6 +1302,11 @@ export const AdminPortalPage: React.FC = () => {
                         }`} 
                       />
                       <div className="flex items-center gap-1.5">
+                        <span 
+                          className="w-3.5 h-3.5 rounded-full border border-white/50 shadow-xs" 
+                          style={{ backgroundColor: c.primaryColor || '#004B87' }} 
+                          title={`Brand Color: ${c.primaryColor || '#004B87'}`}
+                        />
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           c.communityEnabled 
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
@@ -1362,7 +1529,7 @@ export const AdminPortalPage: React.FC = () => {
                   ${paymentTotals.usd.toFixed(2)} USD
                 </div>
                 <div className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Equivalent to KES {(paymentTotals.usd * 130).toLocaleString()} across {payments.length} audited transaction(s)
+                  100% Stripe Card Gateway Verified across {payments.length} audited transaction(s)
                 </div>
               </div>
 
@@ -1640,40 +1807,43 @@ export const AdminPortalPage: React.FC = () => {
                     )}
 
                     {sub.moderationStatus === 'APPROVED' && sub.publishingStatus !== 'PUBLISHED' && (
-                      <div className="space-y-1.5 pt-1">
-                        <input
-                          type="url"
-                          placeholder="Paste Instagram post URL..."
-                          value={publishUrls[sub.id] || ''}
-                          onChange={(e) => setPublishUrls({ ...publishUrls, [sub.id]: e.target.value })}
-                          className={`w-full border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500 ${
-                            isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                          }`}
-                        />
+                      <div className="space-y-2 pt-1">
                         <button
+                          type="button"
                           onClick={() => {
-                            const url = publishUrls[sub.id]?.trim();
-                            if (!url) return addToast('URL Required', 'Please enter resulting post URL.', 'error');
-                            publishToInstagram(sub.id, url);
+                            setPublishModalSub(sub);
+                            setCustomPublishUrl(publishUrls[sub.id] || '');
                           }}
-                          className="w-full py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold cursor-pointer text-center"
+                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:from-purple-500 hover:to-rose-400 text-white font-bold text-xs shadow-md shadow-pink-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all"
                         >
-                          Confirm Published
+                          <Instagram className="w-3.5 h-3.5" />
+                          <span>Publish to {sub.universityInstagramHandle}</span>
                         </button>
+                        <div className="text-[10px] text-center text-slate-400">
+                          Authorized admin posting for {sub.universityName}
+                        </div>
                       </div>
                     )}
 
                     {sub.publishingStatus === 'PUBLISHED' && (
-                      <a
-                        href={sub.instagramPostUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`block text-center py-1.5 rounded-lg font-semibold text-blue-500 hover:underline ${
-                          isDarkMode ? 'bg-slate-800' : 'bg-slate-100'
-                        }`}
-                      >
-                        View on Instagram ↗
-                      </a>
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold px-1">
+                          <span className="flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Live on {sub.universityInstagramHandle}</span>
+                          </span>
+                        </div>
+                        <a
+                          href={sub.instagramPostUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`block text-center py-2 rounded-xl text-xs font-bold text-blue-500 hover:underline border transition-colors ${
+                            isDarkMode ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          View Official Instagram Post ↗
+                        </a>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1904,6 +2074,128 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* University Brand Theme & Colors */}
+              <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                isDarkMode ? 'bg-[#0A0E1A] border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className={`font-bold text-xs ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                    University Brand Colors & Class Year
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Distinct collegiate themes
+                  </span>
+                </div>
+
+                {/* Preset Palettes */}
+                <div className="space-y-1.5">
+                  <span className={`text-[11px] block font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                    Quick Palette Presets:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { name: 'Thomas More', p: '#004B87', a: '#0284C7' },
+                      { name: 'Spalding', p: '#00205B', a: '#D97706' },
+                      { name: 'Campbellsville', p: '#7A1C29', a: '#BE123C' },
+                      { name: 'Georgetown', p: '#EA580C', a: '#C2410C' },
+                      { name: 'Centre', p: '#B45309', a: '#D97706' },
+                      { name: 'Bellarmine', p: '#991B1B', a: '#DC2626' },
+                      { name: 'Murray State', p: '#1E3A8A', a: '#EAB308' },
+                      { name: 'Lindsey Wilson', p: '#0284C7', a: '#0369A1' }
+                    ].map(preset => (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => {
+                          setNewCampusPrimaryColor(preset.p);
+                          setNewCampusAccentColor(preset.a);
+                        }}
+                        className="px-2 py-1 rounded-lg border text-[10px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-blue-500"
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: preset.p }} />
+                        <span>{preset.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  <div>
+                    <label className={`block text-[11px] font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Primary Color
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="color"
+                        value={newCampusPrimaryColor}
+                        onChange={(e) => setNewCampusPrimaryColor(e.target.value)}
+                        className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0 shrink-0"
+                      />
+                      <input
+                        type="text"
+                        value={newCampusPrimaryColor}
+                        onChange={(e) => setNewCampusPrimaryColor(e.target.value)}
+                        className={`w-full rounded-lg px-2 py-1 text-xs font-mono border ${
+                          isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[11px] font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Accent Color
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="color"
+                        value={newCampusAccentColor}
+                        onChange={(e) => setNewCampusAccentColor(e.target.value)}
+                        className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0 shrink-0"
+                      />
+                      <input
+                        type="text"
+                        value={newCampusAccentColor}
+                        onChange={(e) => setNewCampusAccentColor(e.target.value)}
+                        className={`w-full rounded-lg px-2 py-1 text-xs font-mono border ${
+                          isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={`block text-[11px] font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Class Year
+                    </label>
+                    <input
+                      type="text"
+                      value={newCampusClassYear}
+                      onChange={(e) => setNewCampusClassYear(e.target.value)}
+                      placeholder="2031"
+                      className={`w-full rounded-lg px-2.5 py-1 text-xs font-mono border ${
+                        isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block text-[11px] font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Tagline (Shown in Hero Subtitle)
+                  </label>
+                  <input
+                    type="text"
+                    value={newCampusTagline}
+                    onChange={(e) => setNewCampusTagline(e.target.value)}
+                    placeholder="e.g. Thomas More University forever."
+                    className={`w-full rounded-lg px-2.5 py-1 text-xs border ${
+                      isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800'
+                    }`}
+                  />
+                </div>
+              </div>
+
               <div className={`pt-2 flex items-center justify-between p-3 rounded-xl border ${
                 isDarkMode ? 'bg-[#0A0E1A] border-slate-800' : 'bg-slate-50 border-slate-200'
               }`}>
@@ -1946,6 +2238,417 @@ export const AdminPortalPage: React.FC = () => {
 
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: CONFIGURE API KEYS & PRODUCTION INTEGRATION CREDENTIALS */}
+      {editingIntegration && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+          <div className={`w-full max-w-xl rounded-3xl border shadow-2xl p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto ${
+            isDarkMode ? 'bg-[#101726] border-slate-700/80 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold tracking-tight">Configure API Credentials</h3>
+                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {editingIntegration.name} ({editingIntegration.category})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingIntegration(null)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveIntegrationKeys} className="space-y-4">
+              <div className={`p-3 rounded-2xl border text-xs ${
+                isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <div className="font-semibold text-blue-500 mb-0.5">Integration Security Note:</div>
+                Credentials entered here are securely stored in the application database and used for production API operations and server-side verification.
+              </div>
+
+              {/* Dynamic Inputs based on Integration ID */}
+              {editingIntegration.id === 'payment_stripe' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Stripe Publishable Key
+                    </label>
+                    <input
+                      type="text"
+                      value={integrationKeysForm['publishableKey'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, publishableKey: e.target.value })}
+                      placeholder="pk_live_51P... or pk_test_51P..."
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Stripe Secret Key
+                    </label>
+                    <input
+                      type="password"
+                      value={integrationKeysForm['secretKey'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, secretKey: e.target.value })}
+                      placeholder="sk_live_51P... or sk_test_51P..."
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Stripe Webhook Signing Secret
+                    </label>
+                    <input
+                      type="password"
+                      value={integrationKeysForm['webhookSecret'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, webhookSecret: e.target.value })}
+                      placeholder="whsec_..."
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {editingIntegration.id === 'meta_instagram' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Meta App ID
+                    </label>
+                    <input
+                      type="text"
+                      value={integrationKeysForm['appId'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, appId: e.target.value })}
+                      placeholder="e.g. 849201948201923"
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Meta App Secret
+                    </label>
+                    <input
+                      type="password"
+                      value={integrationKeysForm['appSecret'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, appSecret: e.target.value })}
+                      placeholder="••••••••••••"
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Meta Graph Long-Lived Access Token
+                    </label>
+                    <input
+                      type="password"
+                      value={integrationKeysForm['accessToken'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, accessToken: e.target.value })}
+                      placeholder="EAAX..."
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Webhook Verify Token
+                    </label>
+                    <input
+                      type="text"
+                      value={integrationKeysForm['webhookVerifyToken'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, webhookVerifyToken: e.target.value })}
+                      placeholder="tok_campus_verify_2026"
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {editingIntegration.id === 'email_transactional' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                        SMTP Host Relay
+                      </label>
+                      <input
+                        type="text"
+                        value={integrationKeysForm['smtpHost'] || ''}
+                        onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpHost: e.target.value })}
+                        placeholder="smtp.mailgun.org"
+                        className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                          isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                        SMTP Port
+                      </label>
+                      <input
+                        type="text"
+                        value={integrationKeysForm['smtpPort'] || ''}
+                        onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpPort: e.target.value })}
+                        placeholder="587"
+                        className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                          isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      SMTP Username / Email
+                    </label>
+                    <input
+                      type="text"
+                      value={integrationKeysForm['smtpUser'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpUser: e.target.value })}
+                      placeholder="postmaster@campusconnect.app"
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      SMTP Password / Secret Key
+                    </label>
+                    <input
+                      type="password"
+                      value={integrationKeysForm['smtpPassword'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpPassword: e.target.value })}
+                      placeholder="••••••••••••"
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Sender Email
+                    </label>
+                    <input
+                      type="email"
+                      value={integrationKeysForm['senderEmail'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, senderEmail: e.target.value })}
+                      placeholder="notifications@campusconnect.app"
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {editingIntegration.id === 'cloud_firestore' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      GCP / Firebase Project ID
+                    </label>
+                    <input
+                      type="text"
+                      value={integrationKeysForm['projectId'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, projectId: e.target.value })}
+                      placeholder="campus-connect-prod"
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Client Email
+                    </label>
+                    <input
+                      type="email"
+                      value={integrationKeysForm['clientEmail'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, clientEmail: e.target.value })}
+                      placeholder="firebase-adminsdk@..."
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className={`pt-3 border-t flex items-center justify-end gap-3 ${
+                isDarkMode ? 'border-slate-800' : 'border-slate-100'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setEditingIntegration(null)}
+                  className={`px-4 py-2.5 rounded-xl cursor-pointer text-xs font-semibold ${
+                    isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingIntegration}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50 flex items-center gap-2 shadow-md shadow-blue-600/20"
+                >
+                  {savingIntegration && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Save API Credentials</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: PUBLISH TO UNIVERSITY INSTAGRAM MODAL */}
+      {publishModalSub && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+          <div className={`w-full max-w-lg rounded-3xl border shadow-2xl p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto ${
+            isDarkMode ? 'bg-[#101726] border-slate-700/80 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 text-white flex items-center justify-center">
+                  <Instagram className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold tracking-tight">Publish to University Instagram</h3>
+                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Post student profile to official campus account
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPublishModalSub(null)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target University Banner */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 space-y-1">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="text-blue-500 dark:text-blue-400">{publishModalSub.universityName}</span>
+                <span className="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-500 border border-pink-500/30 text-[10px] font-mono">
+                  {publishModalSub.universityInstagramHandle}
+                </span>
+              </div>
+              <p className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Only administrators can publish student submissions to this official university account.
+              </p>
+            </div>
+
+            {/* Post Photo & Caption Preview */}
+            <div className="space-y-3">
+              <div className="flex gap-3">
+                <div className="w-24 h-24 rounded-xl overflow-hidden bg-black shrink-0 border border-slate-700 relative">
+                  <img 
+                    src={publishModalSub.watermarkedImagePath} 
+                    alt="Submission Preview" 
+                    className="w-full h-full object-cover" 
+                  />
+                  <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/80 text-[8px] font-bold text-white">
+                    Watermarked
+                  </span>
+                </div>
+                <div className="space-y-1 text-xs">
+                  <div className="font-bold">{publishModalSub.studentDisplayName}</div>
+                  <div className="text-slate-500 text-[11px]">{publishModalSub.studentEmail}</div>
+                  <div className="italic text-slate-400 line-clamp-2 text-[11px] mt-1">"{publishModalSub.caption}"</div>
+                </div>
+              </div>
+
+              {/* Generated Instagram Caption */}
+              <div>
+                <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  Instagram Caption & Tags
+                </label>
+                <div className={`p-3 rounded-xl border text-xs font-mono leading-relaxed select-all ${
+                  isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-800'
+                }`}>
+                  ✨ Meet {publishModalSub.studentDisplayName} joining {publishModalSub.universityName}!
+                  <br /><br />
+                  "{publishModalSub.caption}"
+                  <br /><br />
+                  <span className="text-blue-500">
+                    #{publishModalSub.universityName.replace(/[^a-zA-Z0-9]/g, '')} #Freshers2028 #CampusConnect #ClassOf2028
+                  </span>
+                </div>
+              </div>
+
+              {/* Optional Custom Post URL */}
+              <div>
+                <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  Instagram Post URL (Generated automatically or paste live URL)
+                </label>
+                <input
+                  type="url"
+                  value={customPublishUrl}
+                  onChange={(e) => setCustomPublishUrl(e.target.value)}
+                  placeholder={`https://www.instagram.com/p/... (leave blank for Meta Graph API auto-publish)`}
+                  className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                    isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className={`pt-3 border-t flex items-center justify-end gap-3 ${
+              isDarkMode ? 'border-slate-800' : 'border-slate-100'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setPublishModalSub(null)}
+                className={`px-4 py-2.5 rounded-xl cursor-pointer text-xs font-semibold ${
+                  isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={publishingInstagram}
+                onClick={() => handlePublishToUniversityInstagram(publishModalSub)}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:from-purple-500 hover:to-rose-400 text-white font-bold text-xs cursor-pointer disabled:opacity-50 flex items-center gap-2 shadow-md shadow-pink-600/20"
+              >
+                {publishingInstagram ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Publishing to Meta Graph API...</span>
+                  </>
+                ) : (
+                  <>
+                    <Instagram className="w-3.5 h-3.5" />
+                    <span>Publish to {publishModalSub.universityInstagramHandle}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

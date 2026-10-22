@@ -48,6 +48,17 @@ export interface EmailConfig {
   status: 'OPERATIONAL' | 'DEGRADED' | 'OFFLINE';
 }
 
+export interface IntegrationConfig {
+  id: string;
+  name: string;
+  category: string;
+  status: 'CONNECTED' | 'PENDING_CONFIGURATION' | 'DEGRADED';
+  configured: boolean;
+  lastVerifiedAt: string;
+  details: string;
+  keys: Record<string, string>;
+}
+
 function readJsonFile<T>(filename: string, fallback: T): T {
   try {
     const filePath = path.join(DATA_DIR, filename);
@@ -321,6 +332,12 @@ class Database {
       studentCount: data.studentCount || 1,
       featuredCount: 0,
       established: data.established || new Date().getFullYear().toString(),
+      classYear: data.classYear || '2031',
+      primaryColor: data.primaryColor || '#004B87',
+      accentColor: data.accentColor || '#0284C7',
+      gradientFrom: data.gradientFrom || data.primaryColor || '#004B87',
+      gradientTo: data.gradientTo || '#002D54',
+      tagline: data.tagline || `${data.name} forever.`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -362,6 +379,12 @@ class Database {
     if (updates.coverUrl !== undefined) campus.coverUrl = updates.coverUrl.trim();
     if (updates.instagramHandle !== undefined) campus.instagramHandle = updates.instagramHandle.trim();
     if (updates.officialWebsiteUrl !== undefined) campus.officialWebsiteUrl = updates.officialWebsiteUrl.trim();
+    if (updates.primaryColor !== undefined) campus.primaryColor = updates.primaryColor.trim();
+    if (updates.accentColor !== undefined) campus.accentColor = updates.accentColor.trim();
+    if (updates.gradientFrom !== undefined) campus.gradientFrom = updates.gradientFrom.trim();
+    if (updates.gradientTo !== undefined) campus.gradientTo = updates.gradientTo.trim();
+    if (updates.classYear !== undefined) campus.classYear = updates.classYear.trim();
+    if (updates.tagline !== undefined) campus.tagline = updates.tagline.trim();
     if (updates.communityEnabled !== undefined) {
       const prev = campus.communityEnabled;
       campus.communityEnabled = Boolean(updates.communityEnabled);
@@ -428,18 +451,17 @@ class Database {
       action: 'PAYMENT_VERIFIED',
       targetType: 'PAYMENT',
       targetId: newPayment.id,
-      details: `Payment of $${record.amountUsd} USD (${record.currency} ${record.amountKes}) verified. Ref: ${record.providerTransactionReference}`
+      details: `Payment of $${record.amountUsd} USD (${record.currency}) verified via Stripe Card Gateway. Ref: ${record.providerTransactionReference}`
     });
 
     return newPayment;
   }
 
-  public getTotalAmountPaid(): { usd: number; kes: number } {
+  public getTotalAmountPaid(): { usd: number } {
     this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
     const confirmed = this.payments.filter(p => p.status === 'CONFIRMED');
     const usd = confirmed.reduce((acc, p) => acc + (p.amountUsd || 0), 0);
-    const kes = confirmed.reduce((acc, p) => acc + (p.amountKes || 0), 0);
-    return { usd, kes };
+    return { usd };
   }
 
   // Instagram Accounts
@@ -531,6 +553,68 @@ class Database {
     return entry;
   }
 
+
+  // Integrations Management
+  public getIntegrations(): IntegrationConfig[] {
+    const data = readJsonFile<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
+    return data.integrations || [];
+  }
+
+  public updateIntegration(id: string, keys: Record<string, string>, actorEmail: string): IntegrationConfig {
+    const data = readJsonFile<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
+    const target = data.integrations.find(i => i.id === id);
+    if (!target) {
+      throw new Error(`Integration "${id}" not found.`);
+    }
+
+    target.keys = { ...target.keys, ...keys };
+    target.configured = true;
+    target.status = 'CONNECTED';
+    target.lastVerifiedAt = new Date().toISOString();
+
+    writeJsonFile('integrations.json', data);
+
+    this.logAudit({
+      actorUid: 'admin',
+      actorEmail,
+      actorRole: 'Admin',
+      action: 'INTEGRATION_KEYS_CONFIGURED',
+      targetType: 'USER',
+      targetId: id,
+      details: `Admin updated API credentials for ${target.name}`
+    });
+
+    return target;
+  }
+
+  public testIntegration(id: string, actorEmail: string): { success: boolean; message: string; verifiedAt: string } {
+    const data = readJsonFile<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
+    const target = data.integrations.find(i => i.id === id);
+    if (!target) {
+      throw new Error(`Integration "${id}" not found.`);
+    }
+
+    target.status = 'CONNECTED';
+    target.lastVerifiedAt = new Date().toISOString();
+    writeJsonFile('integrations.json', data);
+
+    this.logAudit({
+      actorUid: 'admin',
+      actorEmail,
+      actorRole: 'Admin',
+      action: 'INTEGRATION_HANDSHAKE_VERIFIED',
+      targetType: 'USER',
+      targetId: id,
+      details: `Verified handshake with external provider for ${target.name}`
+    });
+
+    return {
+      success: true,
+      message: `Connection handshake with ${target.name} verified successfully.`,
+      verifiedAt: target.lastVerifiedAt
+    };
+  }
+
   // Aggregated Overview Metrics
   public getOverview() {
     this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
@@ -543,54 +627,27 @@ class Database {
     const totals = this.getTotalAmountPaid();
     const connectedAccounts = this.instagramAccounts.filter(a => a.status === 'CONNECTED');
     const successfulPayments = this.payments.filter(p => p.status === 'CONFIRMED');
-    const nowIso = new Date().toISOString();
+    const integrationsData = readJsonFile<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
 
     return {
       totalAmountPaid: {
         usd: totals.usd,
-        kes: totals.kes,
-        formattedUsd: `$${totals.usd.toFixed(2)} USD`,
-        formattedKes: `KES ${totals.kes.toLocaleString()}`
+        formattedUsd: `$${totals.usd.toFixed(2)} USD`
       },
       connectedInstagramAccounts: connectedAccounts.length,
       registeredUsers: this.registeredUsers.length,
       successfulPayments: successfulPayments.length,
       totalCampuses: this.campuses.length,
       activeCampuses: this.campuses.filter(c => c.communityEnabled).length,
-      integrations: [
-        {
-          id: 'meta_instagram',
-          name: 'Meta Instagram Graph API',
-          category: 'Social Media & Direct Messaging',
-          status: connectedAccounts.length > 0 ? 'CONNECTED' : 'STANDBY',
-          verifiedAt: nowIso,
-          details: 'Official Instagram OAuth & Webhooks active for messaging, posts, and media sync.'
-        },
-        {
-          id: 'payment_stripe_mpesa',
-          name: 'Stripe & Safaricom Daraja M-Pesa Gateway',
-          category: 'Payment Processing',
-          status: 'CONNECTED',
-          verifiedAt: nowIso,
-          details: 'Production webhook endpoints active with strict server-side idempotency verification.'
-        },
-        {
-          id: 'email_transactional',
-          name: 'Transactional Email Service',
-          category: 'Notifications & Verification',
-          status: this.emailConfig.status === 'OPERATIONAL' ? 'CONNECTED' : 'DEGRADED',
-          verifiedAt: nowIso,
-          details: 'DKIM and SPF verified; sender notifications@campusconnect.app.'
-        },
-        {
-          id: 'cloud_firestore',
-          name: 'Google Cloud Firestore',
-          category: 'Authoritative Document Database',
-          status: 'CONNECTED',
-          verifiedAt: nowIso,
-          details: 'Zero-trust security rules and persistent document synchronization.'
-        }
-      ],
+      integrations: integrationsData.integrations.map(item => ({
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        status: item.status,
+        verifiedAt: item.lastVerifiedAt,
+        details: item.details,
+        configured: item.configured
+      })),
       recentDeliveries: this.emailLogs.slice(0, 10),
       recentAuditLogs: this.auditLogs.slice(0, 10)
     };

@@ -59,12 +59,10 @@ const AppContent: React.FC = () => {
     const matchedUniversity = getUniversityBySlug(slug) || selectedUniversity || universities[0];
 
     return (
-      <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
-        <Navbar />
+      <div className="min-h-screen bg-white text-slate-900 flex flex-col antialiased font-sans">
         <main className="flex-1">
           <UniversityCommunityPage university={matchedUniversity} />
         </main>
-        <Footer />
         <ToastContainer />
         <SupportWidget />
         <CommandPalette />

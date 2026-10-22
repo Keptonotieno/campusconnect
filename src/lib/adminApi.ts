@@ -16,9 +16,7 @@ export interface AdminAuthResponse {
 export interface AdminOverviewData {
   totalAmountPaid: {
     usd: number;
-    kes: number;
     formattedUsd: string;
-    formattedKes: string;
   };
   connectedInstagramAccounts: number;
   registeredUsers: number;
@@ -200,8 +198,8 @@ export async function updateAdminCampus(id: string, updates: Partial<University>
 }
 
 // 4. Payments
-export async function fetchAdminPayments(): Promise<{ payments: PaymentRecord[]; totals: { usd: number; kes: number }; count: number }> {
-  return adminFetch<{ payments: PaymentRecord[]; totals: { usd: number; kes: number }; count: number }>('/api/admin/payments');
+export async function fetchAdminPayments(): Promise<{ payments: PaymentRecord[]; totals: { usd: number }; count: number }> {
+  return adminFetch<{ payments: PaymentRecord[]; totals: { usd: number }; count: number }>('/api/admin/payments');
 }
 
 export async function simulateWebhookTest(payload: any): Promise<any> {
@@ -245,4 +243,47 @@ export async function fetchPublicCampuses(): Promise<{ campuses: University[] }>
     headers: { 'Cache-Control': 'no-cache' }
   });
   return res.json();
+}
+
+// 9. Production Integrations & API Keys
+export interface IntegrationItem {
+  id: string;
+  name: string;
+  category: string;
+  status: 'CONNECTED' | 'PENDING_CONFIGURATION' | 'DEGRADED';
+  configured: boolean;
+  lastVerifiedAt: string;
+  details: string;
+  keys: Record<string, string>;
+}
+
+export async function fetchAdminIntegrations(): Promise<{ integrations: IntegrationItem[] }> {
+  return adminFetch<{ integrations: IntegrationItem[] }>('/api/admin/integrations');
+}
+
+export async function updateAdminIntegration(id: string, keys: Record<string, string>): Promise<{ success: boolean; message: string; integration: IntegrationItem }> {
+  return adminFetch<{ success: boolean; message: string; integration: IntegrationItem }>(`/api/admin/integrations/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    body: JSON.stringify({ keys })
+  });
+}
+
+export async function testAdminIntegration(id: string): Promise<{ success: boolean; message: string; verifiedAt: string }> {
+  return adminFetch<{ success: boolean; message: string; verifiedAt: string }>(`/api/admin/integrations/${encodeURIComponent(id)}/test`, {
+    method: 'POST'
+  });
+}
+
+// 10. Admin-Only University Instagram Publishing
+export async function publishSubmissionToUniversityInstagram(
+  submissionId: string, 
+  data: { targetInstagramHandle: string; customPostUrl?: string; studentName?: string; universityName?: string }
+): Promise<{ success: boolean; message: string; publishedAt: string; instagramPostUrl: string; targetHandle: string }> {
+  return adminFetch<{ success: boolean; message: string; publishedAt: string; instagramPostUrl: string; targetHandle: string }>(
+    `/api/admin/submissions/${encodeURIComponent(submissionId)}/publish-instagram`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }
+  );
 }

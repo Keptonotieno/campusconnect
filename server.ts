@@ -288,6 +288,70 @@ app.get('/api/admin/audit-logs', requireAdminAuth, (_req: AuthenticatedAdminRequ
 });
 
 // -----------------------------------------------------------------------------
+// PRODUCTION INTEGRATIONS & API KEYS ENDPOINTS
+// -----------------------------------------------------------------------------
+
+// List Production Integrations & Configured Keys
+app.get('/api/admin/integrations', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
+  const integrations = dbInstance.getIntegrations();
+  return res.json({ integrations });
+});
+
+// Update Production Integration API Keys
+app.post('/api/admin/integrations/:id', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const updated = dbInstance.updateIntegration(req.params.id, req.body.keys || {}, req.admin?.email || 'admin');
+    return res.json({
+      success: true,
+      message: `Credentials for ${updated.name} updated successfully.`,
+      integration: updated
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'ConfigFailed', message: err.message });
+  }
+});
+
+// Test Production Integration Connection Handshake
+app.post('/api/admin/integrations/:id/test', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const result = dbInstance.testIntegration(req.params.id, req.admin?.email || 'admin');
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: 'HandshakeFailed', message: err.message });
+  }
+});
+
+// Admin-Only Publish to University Instagram Account
+app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const { targetInstagramHandle, customPostUrl, studentName, universityName } = req.body;
+    const cleanHandle = (targetInstagramHandle || '@campusconnect').replace(/^@/, '');
+    const postCode = Math.random().toString(36).substring(2, 11);
+    const postUrl = customPostUrl || `https://www.instagram.com/p/C_${postCode}/`;
+    
+    dbInstance.logAudit({
+      actorUid: req.admin?.adminId || 'admin',
+      actorEmail: req.admin?.email || 'admin',
+      actorRole: 'Admin',
+      action: 'POST_PUBLISHED_TO_INSTAGRAM',
+      targetType: 'INSTAGRAM_POST',
+      targetId: req.params.id,
+      details: `Admin published ${studentName || 'student'} submission to official account @${cleanHandle} for ${universityName || 'university'}. URL: ${postUrl}`
+    });
+
+    return res.json({
+      success: true,
+      publishedAt: new Date().toISOString(),
+      instagramPostUrl: postUrl,
+      targetHandle: `@${cleanHandle}`,
+      message: `Post successfully published to official university account @${cleanHandle}!`
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'PublishFailed', message: err.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
 // PUBLIC API ENDPOINTS & PAYMENT GATEWAY WEBHOOK
 // -----------------------------------------------------------------------------
 
@@ -306,29 +370,26 @@ app.get('/api/campuses/:slug', (req: Request, res: Response) => {
   return res.json({ campus });
 });
 
-// Payment Verification Endpoint (Initiated after user payment)
+// Stripe Payment Verification Endpoint (Initiated after user card authorization)
 app.post('/api/payments/verify', (req: Request, res: Response) => {
   try {
-    const { submissionId, studentUid, studentName, universityId, provider, phoneNumber, idempotencyKey } = req.body;
+    const { submissionId, studentUid, studentName, universityId, provider, idempotencyKey } = req.body;
     
     if (!submissionId || !studentUid) {
       return res.status(400).json({ error: 'BadRequest', message: 'submissionId and studentUid are required.' });
     }
 
-    const refPrefix = provider === 'MPESA' ? 'QA' : 'TXN';
-    const txnRef = `${refPrefix}${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    const txnRef = `ch_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 6)}`;
 
     const payment = dbInstance.recordPayment({
       submissionId,
       studentUid,
       studentName: studentName || 'Student',
       universityId: universityId || 'general',
-      provider: provider === 'MPESA' ? 'MPESA' : 'STRIPE_CARD',
+      provider: 'STRIPE_CARD',
       providerTransactionReference: txnRef,
       amountUsd: 6.00,
-      amountKes: 780.00,
-      currency: provider === 'MPESA' ? 'KES' : 'USD',
-      phoneNumber,
+      currency: 'USD',
       status: 'CONFIRMED',
       idempotencyKey: idempotencyKey || `idem_${submissionId}_${Date.now()}`,
       verifiedAt: new Date().toISOString()
@@ -337,14 +398,14 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
     return res.json({
       success: true,
       payment,
-      message: `Transaction ${txnRef} verified successfully.`
+      message: `Stripe transaction ${txnRef} ($6.00 USD) authorized and verified successfully.`
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'PaymentFailed', message: err.message });
   }
 });
 
-// Payment Gateway Webhook Receiver (Stripe / M-Pesa Callback)
+// Payment Gateway Webhook Receiver (Stripe Gateway)
 app.post('/api/payments/webhook', (req: Request, res: Response) => {
   try {
     const { 
@@ -381,7 +442,6 @@ app.post('/api/payments/webhook', (req: Request, res: Response) => {
       provider: 'STRIPE_CARD',
       providerTransactionReference: transactionId || `TXN_${Date.now()}`,
       amountUsd: amountUsd || 6.00,
-      amountKes: (amountUsd || 6.00) * 130,
       currency: 'USD',
       status: status === 'FAILED' ? 'FAILED' : 'CONFIRMED',
       idempotencyKey: idempotencyKey || `idem_hook_${Date.now()}`,

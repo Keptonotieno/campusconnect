@@ -13,7 +13,7 @@ import {
   Conversation
 } from '../types';
 import { VERIFIED_UNIVERSITIES, findUniversityBySlug, findUniversityById } from '../data/universities';
-import { processSubmissionPayment, FEATURED_POST_PRICE_USD, FEATURED_POST_PRICE_KES } from '../lib/payment';
+import { processSubmissionPayment, FEATURED_POST_PRICE_USD } from '../lib/payment';
 
 export interface ToastMessage {
   id: string;
@@ -58,7 +58,7 @@ interface AppContextType {
     rightsConfirmed: boolean;
     termsAgreed: boolean;
   }) => Promise<FeaturedSubmission>;
-  payForSubmission: (submissionId: string, provider: 'MPESA' | 'CARD', phoneNumber?: string) => Promise<boolean>;
+  payForSubmission: (submissionId: string, provider?: 'STRIPE_CARD' | 'CARD', cardLast4?: string) => Promise<boolean>;
   reviewSubmission: (submissionId: string, decision: 'APPROVE' | 'REJECT', reason?: string) => Promise<void>;
   publishToInstagram: (submissionId: string, instagramPostUrl: string) => Promise<void>;
 
@@ -544,8 +544,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const payForSubmission = async (
     submissionId: string,
-    provider: 'MPESA' | 'CARD',
-    phoneNumber?: string
+    provider: 'STRIPE_CARD' | 'CARD' = 'STRIPE_CARD',
+    cardLast4?: string
   ): Promise<boolean> => {
     const sub = submissions.find((s) => s.id === submissionId);
     if (!sub || !currentUser) {
@@ -564,8 +564,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         studentUid: currentUser.id,
         studentName: currentUser.name,
         universityId: sub.universityId,
-        provider,
-        phoneNumber
+        provider: 'STRIPE_CARD',
+        cardLast4
       });
 
       // 2. Server-side authoritative verification & database persistence
@@ -579,8 +579,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             studentUid: currentUser.id,
             studentName: currentUser.name,
             universityId: sub.universityId,
-            provider,
-            phoneNumber,
+            provider: 'STRIPE_CARD',
             idempotencyKey: result.paymentRecord.idempotencyKey
           })
         });
@@ -618,8 +617,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: 'notif_' + Date.now(),
           recipientUid: currentUser.id,
           type: 'PAYMENT_CONFIRMED',
-          title: 'Payment Confirmed ($6.00 USD)',
-          message: `Your one-time fee has been verified via ${provider}. Your submission is now queued for administrator review.`,
+          title: 'Stripe Payment Confirmed ($6.00 USD)',
+          message: 'Your payment of $6.00 USD has been verified via Stripe. Your submission is now queued for administrator review.',
           relatedSubmissionId: submissionId,
           read: false,
           createdAt: 'Just now'
@@ -627,7 +626,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setNotifications((prev) => [newNotif, ...prev]);
 
         logAudit('PAYMENT_CONFIRMED', 'PAYMENT', result.paymentRecord.id, result.message);
-        addToast('Payment Confirmed', result.message, 'success');
+        addToast('Stripe Payment Confirmed', result.message, 'success');
         return true;
       }
       return false;

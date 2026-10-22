@@ -15,6 +15,12 @@ export interface University {
   studentCount?: number;
   featuredCount?: number;
   established?: string;
+  classYear?: string;
+  primaryColor?: string;
+  accentColor?: string;
+  gradientFrom?: string;
+  gradientTo?: string;
+  tagline?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -110,7 +116,7 @@ export interface FeaturedSubmission {
   updatedAt: string;
 }
 
-export type PaymentMethod = 'MPESA' | 'CARD';
+export type PaymentMethod = 'STRIPE_CARD' | 'STRIPE';
 
 export interface PaymentRecord {
   id: string;
@@ -118,12 +124,11 @@ export interface PaymentRecord {
   studentUid: string;
   studentName: string;
   universityId: string;
-  provider: 'MPESA' | 'STRIPE_CARD' | 'DARAJA';
+  provider: 'STRIPE_CARD' | 'STRIPE';
   providerTransactionReference: string;
   amountUsd: number; // 6.00
-  amountKes: number; // 780.00
-  currency: 'USD' | 'KES';
-  phoneNumber?: string;
+  currency: 'USD';
+  cardLast4?: string;
   status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REFUNDED';
   idempotencyKey: string;
   verifiedAt?: string;

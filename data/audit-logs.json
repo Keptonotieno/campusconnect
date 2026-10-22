@@ -7,6 +7,93 @@
     "targetType": "USER",
     "targetId": "admin_primary_compusconnect",
     "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_acfa157e29df",
+    "timestamp": "2026-10-22T10:38:37.863Z"
+  },
+  {
+    "actorUid": "usr_test_123",
+    "actorRole": "System",
+    "action": "PAYMENT_VERIFIED",
+    "targetType": "PAYMENT",
+    "targetId": "pay_0589034319b0",
+    "details": "Payment of $6 USD (USD) verified via Stripe Card Gateway. Ref: ch_ld6unos6bdf3",
+    "id": "log_e5a2c8dde7f7",
+    "timestamp": "2026-10-22T10:38:33.663Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "POST_PUBLISHED_TO_INSTAGRAM",
+    "targetType": "INSTAGRAM_POST",
+    "targetId": "sub_sample_test",
+    "details": "Admin published Sarah Jenkins submission to official account @harvard_alumni for Harvard University. URL: https://www.instagram.com/p/C_x3hgo4oe2/",
+    "id": "log_0664f75bedfe",
+    "timestamp": "2026-10-22T10:38:28.314Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_417511368345",
+    "timestamp": "2026-10-22T10:38:28.297Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_ab347b996752",
+    "timestamp": "2026-10-22T10:38:21.239Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_b1ac1b0b65cd",
+    "timestamp": "2026-10-22T10:38:14.258Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "INTEGRATION_HANDSHAKE_VERIFIED",
+    "targetType": "USER",
+    "targetId": "payment_stripe",
+    "details": "Verified handshake with external provider for Stripe Gateway",
+    "id": "log_3a348e0b7358",
+    "timestamp": "2026-10-22T07:52:38.166Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_b7f75babbda1",
+    "timestamp": "2026-10-22T07:52:29.855Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
     "id": "log_0b53538911c1",
     "timestamp": "2026-10-21T09:09:40.208Z"
   },

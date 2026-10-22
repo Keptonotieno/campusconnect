@@ -1,1 +1,18 @@
-[]
+[
+  {
+    "submissionId": "sub_test_stripe",
+    "studentUid": "usr_test_123",
+    "studentName": "Elena Rostova",
+    "universityId": "uni_oxford",
+    "provider": "STRIPE_CARD",
+    "providerTransactionReference": "ch_ld6unos6bdf3",
+    "amountUsd": 6,
+    "currency": "USD",
+    "status": "CONFIRMED",
+    "idempotencyKey": "idem_sub_test_stripe_1792665513663",
+    "verifiedAt": "2026-10-22T10:38:33.663Z",
+    "id": "pay_0589034319b0",
+    "createdAt": "2026-10-22T10:38:33.663Z",
+    "updatedAt": "2026-10-22T10:38:33.663Z"
+  }
+]

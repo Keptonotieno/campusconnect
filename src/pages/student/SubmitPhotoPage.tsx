@@ -10,13 +10,12 @@ import {
   Instagram, 
   Lock, 
   CreditCard, 
-  Smartphone,
   Eye,
   CheckCircle2,
   HelpCircle
 } from 'lucide-react';
 import { generateWatermarkedDerivative } from '../../lib/watermark';
-import { FEATURED_POST_PRICE_USD, FEATURED_POST_PRICE_KES } from '../../lib/payment';
+import { FEATURED_POST_PRICE_USD } from '../../lib/payment';
 import { University } from '../../types';
 
 export const SubmitPhotoPage: React.FC = () => {
@@ -49,10 +48,12 @@ export const SubmitPhotoPage: React.FC = () => {
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [termsAgreed, setTermsAgreed] = useState(false);
 
-  // Payment states
-  const [paymentProvider, setPaymentProvider] = useState<'MPESA' | 'CARD'>('MPESA');
-  const [mpesaPhone, setMpesaPhone] = useState('0712345678');
-  const [cardNumber, setCardNumber] = useState('•••• •••• •••• 4242');
+  // Stripe Payment states
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardZip, setCardZip] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completedSubmissionId, setCompletedSubmissionId] = useState<string | null>(null);
 
@@ -113,11 +114,6 @@ export const SubmitPhotoPage: React.FC = () => {
       return;
     }
 
-    if (paymentProvider === 'MPESA' && !mpesaPhone.trim()) {
-      addToast('M-Pesa Phone Required', 'Please provide a valid Safaricom phone number for STK Push.', 'error');
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -132,15 +128,16 @@ export const SubmitPhotoPage: React.FC = () => {
         termsAgreed
       });
 
-      // 2. Initiate and verify payment
+      // 2. Initiate and verify Stripe payment
+      const last4 = cardNumber.replace(/\D/g, '').slice(-4) || '4242';
       await payForSubmission(
         submission.id,
-        paymentProvider,
-        paymentProvider === 'MPESA' ? mpesaPhone.trim() : undefined
+        'STRIPE_CARD',
+        last4
       );
 
       setCompletedSubmissionId(submission.id);
-      addToast('Submission Complete!', 'Your photo is paid and now in the administrator review queue.', 'success');
+      addToast('Submission Complete!', 'Your photo is paid ($6.00 USD) and now in the administrator review queue.', 'success');
     } catch (err: any) {
       addToast('Submission Error', err.message || 'Payment or submission failed.', 'error');
     } finally {
@@ -178,7 +175,7 @@ export const SubmitPhotoPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 text-emerald-600 font-bold">
               <CheckCircle2 className="w-4 h-4" />
-              <span>2. Payment Confirmed ($6 USD / KES 780 via {paymentProvider})</span>
+              <span>2. Stripe Payment Confirmed ($6.00 USD)</span>
             </div>
             <div className="flex items-center gap-2 text-blue-600 font-bold">
               <div className="w-4 h-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin shrink-0" />
@@ -439,102 +436,142 @@ export const SubmitPhotoPage: React.FC = () => {
           </div>
         </div>
 
-        {/* SECTION 5: ONE-TIME $6 PAYMENT CHECKOUT */}
+        {/* SECTION 5: ONE-TIME $6 STRIPE CHECKOUT */}
         <div className="p-6 sm:p-8 bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-3xl shadow-xl space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
             <div>
-              <div className="text-xs font-bold text-blue-400 uppercase tracking-wider">
-                Step 5: One-Time Featured Post Fee
+              <div className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" />
+                <span>Step 5: Stripe Secure Checkout</span>
               </div>
               <h3 className="text-xl font-extrabold text-white">
-                Complete Single Submission Payment
+                One-Time Featured Post Fee
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                One-time charge of USD $6.00 (or KES 780 for Kenya via M-Pesa). No recurring subscription.
+                One-time charge of USD $6.00 via Stripe. No subscriptions, recurring charges, or hidden fees.
               </p>
             </div>
 
             <div className="text-right">
               <div className="text-2xl sm:text-3xl font-extrabold text-white">
-                $6.00 <span className="text-sm font-normal text-slate-400">USD</span>
+                ${FEATURED_POST_PRICE_USD.toFixed(2)} <span className="text-sm font-normal text-slate-400">USD</span>
               </div>
-              <div className="text-xs text-blue-400 font-mono">
-                or KES {FEATURED_POST_PRICE_KES} (M-Pesa)
+              <div className="text-[11px] text-emerald-400 font-semibold flex items-center justify-end gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Stripe Verified</span>
               </div>
             </div>
           </div>
 
-          {/* Payment Method Selector */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setPaymentProvider('MPESA')}
-                className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
-                  paymentProvider === 'MPESA'
-                    ? 'border-emerald-500 bg-emerald-950/40 text-white ring-1 ring-emerald-500'
-                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0">
-                  <Smartphone className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-white">M-Pesa (Kenya)</div>
-                  <div className="text-[10px] text-emerald-400 font-mono">KES {FEATURED_POST_PRICE_KES}</div>
-                </div>
-              </button>
+          {/* Supported Methods Pill */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-800/60 rounded-2xl border border-slate-700/60 text-xs">
+            <div className="flex items-center gap-2 text-slate-300 font-medium">
+              <CreditCard className="w-4 h-4 text-blue-400" />
+              <span>Credit or Debit Card</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">VISA</span>
+              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">Mastercard</span>
+              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">Amex</span>
+              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">Apple Pay</span>
+              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">Google Pay</span>
+            </div>
+          </div>
 
-              <button
-                type="button"
-                onClick={() => setPaymentProvider('CARD')}
-                className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
-                  paymentProvider === 'CARD'
-                    ? 'border-blue-500 bg-blue-950/40 text-white ring-1 ring-blue-500'
-                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0">
-                  <CreditCard className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-white">Credit / Debit Card</div>
-                  <div className="text-[10px] text-blue-400 font-mono">$6.00 USD</div>
-                </div>
-              </button>
+          {/* Stripe Card Input Fields */}
+          <div className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Cardholder Full Name
+              </label>
+              <input 
+                type="text"
+                value={cardName}
+                onChange={(e) => setCardName(e.target.value)}
+                placeholder={currentUser?.name || "Student Name"}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              />
             </div>
 
-            {/* Provider Input Fields */}
-            {paymentProvider === 'MPESA' ? (
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  Safaricom M-Pesa Mobile Number for STK Push Prompt:
-                </label>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Card Number
+              </label>
+              <div className="relative">
                 <input 
                   type="text"
-                  value={mpesaPhone}
-                  onChange={(e) => setMpesaPhone(e.target.value)}
-                  placeholder="e.g. 0712345678 or 254712345678"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
-                />
-                <p className="text-[11px] text-slate-400">
-                  An automated M-Pesa prompt will be sent to your phone to authorize KES {FEATURED_POST_PRICE_KES}.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  Card Number (Visa / Mastercard):
-                </label>
-                <input 
-                  type="text"
+                  maxLength={19}
                   value={cardNumber}
-                  onChange={(e) => setCardNumber(e.target.value)}
-                  placeholder="Card Number"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim();
+                    setCardNumber(v);
+                  }}
+                  placeholder="4242 •••• •••• 4242"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono tracking-wider"
+                />
+                <CreditCard className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Expires
+                </label>
+                <input 
+                  type="text"
+                  maxLength={5}
+                  value={cardExpiry}
+                  onChange={(e) => {
+                    let v = e.target.value.replace(/\D/g, '');
+                    if (v.length > 2) v = v.substring(0, 2) + '/' + v.substring(2, 4);
+                    setCardExpiry(v);
+                  }}
+                  placeholder="MM/YY"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-center"
                 />
               </div>
-            )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  CVC / CVV
+                </label>
+                <input 
+                  type="password"
+                  maxLength={4}
+                  value={cardCvc}
+                  onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, ''))}
+                  placeholder="•••"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-center tracking-widest"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  ZIP / Postal
+                </label>
+                <input 
+                  type="text"
+                  maxLength={10}
+                  value={cardZip}
+                  onChange={(e) => setCardZip(e.target.value)}
+                  placeholder="10001"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-center"
+                />
+              </div>
+            </div>
+
+            {/* 256-bit SSL Badge */}
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+              <div className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                <span>256-Bit SSL Encrypted Checkout</span>
+              </div>
+              <div className="flex items-center gap-1 text-slate-400">
+                <span>Powered by</span>
+                <span className="font-bold text-white tracking-wide">stripe</span>
+              </div>
+            </div>
           </div>
 
           {/* Submit & Pay Button */}
@@ -546,14 +583,12 @@ export const SubmitPhotoPage: React.FC = () => {
             {isSubmitting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent animate-spin rounded-full" />
-                <span>Processing & Verifying Transaction...</span>
+                <span>Authorizing Stripe Transaction ($6.00 USD)...</span>
               </>
             ) : (
               <>
                 <Lock className="w-4 h-4" />
-                <span>
-                  Confirm & Pay {paymentProvider === 'MPESA' ? `KES ${FEATURED_POST_PRICE_KES}` : '$6.00 USD'}
-                </span>
+                <span>Pay $6.00 USD via Stripe & Submit Photo</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
