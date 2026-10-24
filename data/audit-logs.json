@@ -1,5 +1,71 @@
 [
   {
+    "actorUid": "admin",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "INTEGRATION_KEYS_CLEARED",
+    "targetType": "USER",
+    "targetId": "payment_stripe",
+    "details": "Admin cleared credentials for Stripe Gateway. Status: NOT_CONFIGURED",
+    "id": "log_5d5dd6f75553",
+    "timestamp": "2026-10-24T08:45:47.308Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "INTEGRATION_HANDSHAKE_VERIFIED",
+    "targetType": "USER",
+    "targetId": "payment_stripe",
+    "details": "Verified handshake with external provider for Stripe Gateway: Stripe Gateway API connection verified. Validated key prefix (pk_test_sa...) operating in Test Sandbox mode.",
+    "id": "log_3e595ce8b6ce",
+    "timestamp": "2026-10-24T08:45:47.292Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "INTEGRATION_KEYS_CONFIGURED",
+    "targetType": "USER",
+    "targetId": "payment_stripe",
+    "details": "Admin entered active API credentials for Stripe Gateway. Status: CONNECTED",
+    "id": "log_aeb2b901d05b",
+    "timestamp": "2026-10-24T08:45:47.276Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_987886f9c77c",
+    "timestamp": "2026-10-24T08:45:47.248Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_79cc9c16fee2",
+    "timestamp": "2026-10-24T08:45:35.135Z"
+  },
+  {
+    "actorUid": "admin_primary_compusconnect",
+    "actorEmail": "compusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_primary_compusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_7f9bfb33be46",
+    "timestamp": "2026-10-24T08:45:27.909Z"
+  },
+  {
     "actorUid": "admin_primary_compusconnect",
     "actorEmail": "compusconnect@gmail.com",
     "actorRole": "Admin",

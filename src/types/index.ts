@@ -100,6 +100,8 @@ export interface FeaturedSubmission {
   
   // States
   paymentStatus: SubmissionPaymentStatus;
+  paymentReference?: string;
+  paymentAmount?: number;
   moderationStatus: SubmissionModerationStatus;
   publishingStatus: SubmissionPublishingStatus;
   

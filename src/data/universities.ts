@@ -194,6 +194,30 @@ export const VERIFIED_UNIVERSITIES: University[] = [
     updatedAt: '2026-10-20T16:07:54.814Z'
   },
   {
+    id: 'uni_moreheadstate2031class',
+    name: 'Morehead State University',
+    slug: 'moreheadstate2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'Official student community and Instagram spotlight network for Morehead State University Eagles.',
+    location: 'Morehead, Kentucky, USA',
+    officialWebsiteUrl: 'https://www.moreheadstate.edu',
+    instagramProfileUrl: 'https://instagram.com/moreheadstate2031class',
+    instagramHandle: '@moreheadstate2031class',
+    communityEnabled: true,
+    studentCount: 8900,
+    featuredCount: 45,
+    established: '1887',
+    classYear: '2031',
+    primaryColor: '#003882', // Morehead State Blue
+    accentColor: '#FDB913', // Morehead State Gold
+    gradientFrom: '#003882',
+    gradientTo: '#FDB913',
+    tagline: 'Go Eagles! 🦅 Morehead State forever.',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-22T00:00:00Z'
+  },
+  {
     id: 'uni_harvard',
     name: 'Harvard University',
     slug: 'harvard',

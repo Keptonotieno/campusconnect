@@ -259,6 +259,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [submissions]);
 
+  // Sync submissions from server on mount
+  useEffect(() => {
+    fetch('/api/submissions')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.submissions && Array.isArray(d.submissions) && d.submissions.length > 0) {
+          setSubmissions(prev => {
+            const map = new Map<string, FeaturedSubmission>();
+            prev.forEach(s => map.set(s.id, s));
+            d.submissions.forEach((s: FeaturedSubmission) => map.set(s.id, s));
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // 4. Payments State
   const [payments, setPayments] = useState<PaymentRecord[]>(() => {
     try {
@@ -538,6 +555,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setSubmissions((prev) => [newSubmission, ...prev]);
+    try {
+      fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSubmission)
+      }).catch(() => {});
+    } catch {}
     addToast('Submission Created', 'Now complete the one-time $6 payment to submit for review.', 'info');
     return newSubmission;
   };

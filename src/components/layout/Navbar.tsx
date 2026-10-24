@@ -100,12 +100,12 @@ export const Navbar: React.FC = () => {
                 <button
                   onClick={() => {
                     setCampusDropdownOpen(false);
-                    handleNavScroll('campus-network');
+                    navigateTo('/app/submit');
                   }}
                   className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
                 >
-                  <Building2 className="w-3.5 h-3.5 text-[#1D64EC]" />
-                  <span>Explore Universities</span>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Get Featured on Campus ($6)</span>
                 </button>
 
                 <button

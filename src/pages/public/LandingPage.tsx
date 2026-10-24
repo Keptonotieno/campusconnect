@@ -21,9 +21,8 @@ import {
 } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
-  const { universities, navigateTo, isAuthenticated } = useApp();
+  const { navigateTo, isAuthenticated } = useApp();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [uniSearch, setUniSearch] = useState('');
 
   const faqs = [
     {
@@ -51,12 +50,6 @@ export const LandingPage: React.FC = () => {
       a: 'CampusConnect allows university students to join their campus network and submit introduction photos for consideration on official university Instagram pages with automated watermark review and approval tracking.'
     }
   ];
-
-  const filteredUnis = universities.filter(u => 
-    !uniSearch.trim() || 
-    u.name.toLowerCase().includes(uniSearch.toLowerCase()) || 
-    u.location.toLowerCase().includes(uniSearch.toLowerCase())
-  );
 
   return (
     <div className="min-h-screen bg-white text-slate-900 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
@@ -409,81 +402,6 @@ export const LandingPage: React.FC = () => {
 
         </div>
 
-      </section>
-
-      {/* 4. SECTION: CAMPUS CONNECT STUDENT NETWORK (Retains all features seamlessly) */}
-      <section id="campus-network" className="py-20 px-4 sm:px-6 max-w-7xl mx-auto w-full border-t border-slate-100 bg-[#FAFBFD] rounded-3xl my-6">
-        <div className="space-y-8">
-          
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-[#1D64EC] text-xs font-bold border border-blue-200">
-                <GraduationCap className="w-3.5 h-3.5" />
-                <span>Campus Connect Global University Network</span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
-                Top World Universities & Global Campus Hubs
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-600 max-w-2xl font-normal">
-                Join your university’s dedicated student hub at premier institutions abroad — Harvard, Oxford, University of Miami, Stanford, Cambridge, MIT, Columbia, and UCLA. Connect with classmates and get featured on official campus channels.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => navigateTo('/app/submit')}
-                className="px-4 py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-600 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>Submit Featured Photo ($6)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Universities Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredUnis.map((uni) => (
-              <div
-                key={uni.id}
-                onClick={() => navigateTo(`/u/${uni.slug}`)}
-                className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <img
-                      src={uni.logoUrl}
-                      alt={uni.name}
-                      className="w-10 h-10 rounded-xl object-cover border border-slate-100 group-hover:scale-105 transition-transform"
-                    />
-                    <span className="text-[11px] font-bold text-[#1D64EC] bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                      @{uni.instagramHandle}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-950 group-hover:text-[#1D64EC] transition-colors">
-                      {uni.name}
-                    </h3>
-                    <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
-                      <MapPin className="w-3 h-3 text-slate-400" />
-                      <span>{uni.location}</span>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-500 line-clamp-2">
-                    {uni.description}
-                  </p>
-                </div>
-
-                <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs font-semibold text-[#1D64EC]">
-                  <span>Visit Campus Hub</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-            ))}
-          </div>
-
-        </div>
       </section>
 
       {/* 5. SECTION: FAQ ("Good questions, straight answers." - matching Screenshot 00:01 / 11:34) */}

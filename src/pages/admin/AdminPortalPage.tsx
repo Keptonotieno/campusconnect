@@ -57,6 +57,8 @@ import {
   fetchAdminIntegrations,
   updateAdminIntegration,
   testAdminIntegration,
+  fetchAdminSubmissions,
+  reviewAdminSubmission,
   publishSubmissionToUniversityInstagram,
   IntegrationItem,
   AdminOverviewData,
@@ -104,7 +106,7 @@ export const AdminPortalPage: React.FC = () => {
 
   // Active Dashboard Tab
   const [activeTab, setActiveTab] = useState<
-    'OVERVIEW' | 'CAMPUSES' | 'INSTAGRAM' | 'PAYMENTS' | 'EMAIL' | 'SUBMISSIONS' | 'AUDIT_LOGS'
+    'OVERVIEW' | 'CAMPUSES' | 'INTEGRATIONS' | 'INSTAGRAM' | 'PAYMENTS' | 'EMAIL' | 'SUBMISSIONS' | 'AUDIT_LOGS'
   >('OVERVIEW');
 
   // Backend Live Data
@@ -148,6 +150,7 @@ export const AdminPortalPage: React.FC = () => {
 
   // Submissions State
   const [submissionFilter, setSubmissionFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'PUBLISHED'>('ALL');
+  const [backendSubmissions, setBackendSubmissions] = useState<FeaturedSubmission[]>([]);
   const [selectedSubForReview, setSelectedSubForReview] = useState<FeaturedSubmission | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [publishUrls, setPublishUrls] = useState<Record<string, string>>({});
@@ -188,14 +191,15 @@ export const AdminPortalPage: React.FC = () => {
     if (!isAdminAuthenticated) return;
     setLoadingData(true);
     try {
-      const [ov, cp, py, ig, em, al, itg] = await Promise.all([
+      const [ov, cp, py, ig, em, al, itg, subsData] = await Promise.all([
         fetchAdminOverview(),
         fetchAdminCampuses(),
         fetchAdminPayments(),
         fetchAdminInstagram(),
         fetchAdminEmail(),
         fetchAdminAuditLogs(),
-        fetchAdminIntegrations().catch(() => ({ integrations: [] }))
+        fetchAdminIntegrations().catch(() => ({ integrations: [] })),
+        fetchAdminSubmissions().catch(() => ({ submissions: [] }))
       ]);
 
       setOverviewData(ov);
@@ -207,6 +211,9 @@ export const AdminPortalPage: React.FC = () => {
       setAuditLogs(al.logs);
       if (itg?.integrations) {
         setIntegrationsList(itg.integrations);
+      }
+      if (subsData?.submissions && Array.isArray(subsData.submissions)) {
+        setBackendSubmissions(subsData.submissions);
       }
       refreshCampuses();
     } catch (err: any) {
@@ -263,6 +270,27 @@ export const AdminPortalPage: React.FC = () => {
       addToast('Handshake Failed', err.message || 'Connection test failed.', 'error');
     } finally {
       setTestingIntegrationId(null);
+    }
+  };
+
+  const handleClearIntegrationKeys = async (id: string) => {
+    if (!window.confirm('Clear all API credentials for this integration? Its status will return to NOT CONFIGURED.')) return;
+    setSavingIntegration(true);
+    try {
+      const emptyKeys: Record<string, string> = {};
+      if (editingIntegration?.keys) {
+        for (const k of Object.keys(editingIntegration.keys)) {
+          emptyKeys[k] = '';
+        }
+      }
+      await updateAdminIntegration(id, emptyKeys);
+      addToast('Credentials Cleared', 'Integration reset to unconfigured.', 'info');
+      setEditingIntegration(null);
+      loadAllAdminData();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Could not clear keys.', 'error');
+    } finally {
+      setSavingIntegration(false);
     }
   };
 
@@ -537,14 +565,29 @@ export const AdminPortalPage: React.FC = () => {
   };
 
   // Submissions filter
+  const activeSubmissionsList = useMemo(() => {
+    return backendSubmissions.length > 0 ? backendSubmissions : submissions;
+  }, [backendSubmissions, submissions]);
+
   const filteredSubmissions = useMemo(() => {
-    return submissions.filter(sub => {
+    return activeSubmissionsList.filter(sub => {
       if (submissionFilter === 'PENDING') return sub.moderationStatus === 'PENDING' || sub.moderationStatus === 'UNDER_REVIEW';
       if (submissionFilter === 'APPROVED') return sub.moderationStatus === 'APPROVED' && sub.publishingStatus !== 'PUBLISHED';
       if (submissionFilter === 'PUBLISHED') return sub.publishingStatus === 'PUBLISHED';
       return true;
     });
-  }, [submissions, submissionFilter]);
+  }, [activeSubmissionsList, submissionFilter]);
+
+  const handleAdminReview = async (id: string, decision: 'APPROVE' | 'REJECT', reason?: string) => {
+    try {
+      await reviewAdminSubmission(id, decision, reason);
+      reviewSubmission(id, decision, reason);
+      addToast(decision === 'APPROVE' ? 'Submission Approved' : 'Submission Rejected', 'Student submission status updated.', 'success');
+      loadAllAdminData();
+    } catch (err: any) {
+      addToast('Review Failed', err.message || 'Could not update submission', 'error');
+    }
+  };
 
   // Filtered campuses
   const filteredCampuses = useMemo(() => {
@@ -925,6 +968,7 @@ export const AdminPortalPage: React.FC = () => {
           {[
             { id: 'OVERVIEW', label: 'Admin Overview', icon: Layers },
             { id: 'CAMPUSES', label: 'Campus Management', icon: Building2, count: campuses.length },
+            { id: 'INTEGRATIONS', label: 'Integrations & API Keys', icon: Key, count: `${integrationsList.filter(i => i.configured).length}/${integrationsList.length || 3}` },
             { id: 'INSTAGRAM', label: 'Instagram Accounts', icon: Instagram, count: instagramAccounts.length },
             { id: 'PAYMENTS', label: 'Payment Transactions', icon: CreditCard, count: payments.length },
             { id: 'EMAIL', label: 'Email & Delivery Logs', icon: Mail },
@@ -1073,9 +1117,22 @@ export const AdminPortalPage: React.FC = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
-                    All Gateways Online
-                  </span>
+                  {integrationsList.every(i => i.configured) ? (
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
+                      All Gateways Online
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20 text-xs font-semibold">
+                      {integrationsList.filter(i => !i.configured).length} Awaiting Credentials
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('INTEGRATIONS')}
+                    className="px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                  >
+                    Manage Environments →
+                  </button>
                 </div>
               </div>
 
@@ -1119,14 +1176,16 @@ export const AdminPortalPage: React.FC = () => {
                         }`}>
                           <span className="flex items-center gap-1.5 truncate">
                             <Key className="w-3 h-3 text-blue-500 shrink-0" />
-                            <span>
-                              {fullItem?.keys && Object.keys(fullItem.keys).length > 0 
-                                ? `${Object.keys(fullItem.keys)[0]}: ${Object.values(fullItem.keys)[0] || '••••••••'}`
-                                : 'Credentials Configured'}
+                            <span className={item.configured ? (isDarkMode ? 'text-slate-300' : 'text-slate-700') : 'text-amber-500 font-semibold'}>
+                              {item.configured
+                                ? (fullItem?.keys && Object.keys(fullItem.keys).length > 0 
+                                    ? `${Object.keys(fullItem.keys)[0]}: ${Object.values(fullItem.keys)[0] || '••••••••'}`
+                                    : 'Credentials Active')
+                                : 'Awaiting API Keys (Setup Required)'}
                             </span>
                           </span>
                           <span className="text-[10px] text-slate-400 shrink-0 ml-2">
-                            {new Date(item.verifiedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {item.verifiedAt ? new Date(item.verifiedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unverified'}
                           </span>
                         </div>
 
@@ -1648,6 +1707,23 @@ export const AdminPortalPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Warning banner if email is unconfigured */}
+            {!integrationsList.find(i => i.id === 'email_transactional')?.configured && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>Transactional Email Service is not configured. Outbound emails are paused until SMTP credentials are provided.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('INTEGRATIONS')}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shrink-0 cursor-pointer shadow-2xs"
+                >
+                  Configure SMTP Keys →
+                </button>
+              </div>
+            )}
+
             {/* SMTP Status Card */}
             {emailData?.config && (
               <div className={`p-6 rounded-2xl border grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs ${
@@ -1729,6 +1805,467 @@ export const AdminPortalPage: React.FC = () => {
         )}
 
         {/* ------------------------------------------------------------------- */}
+        {/* TAB 5B: PRODUCTION INTEGRATIONS & API CREDENTIALS                   */}
+        {/* ------------------------------------------------------------------- */}
+        {activeTab === 'INTEGRATIONS' && (
+          <div className="space-y-6 animate-in fade-in">
+            
+            {/* Header */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h2 className={`text-2xl font-black tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                  Integration Environments & API Keys
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  Zero Hardcoded Keys
+                </span>
+              </div>
+              <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Third-party production gateways for Stripe payments, transactional email, and Meta Instagram publishing. Integrations can only operate when the administrator supplies valid credentials.
+              </p>
+            </div>
+
+            {/* Environment Health Summary Banner */}
+            {(() => {
+              const configuredCount = integrationsList.filter(i => i.configured).length;
+              const totalCount = integrationsList.length || 3;
+              const allConfigured = configuredCount >= totalCount && totalCount > 0;
+
+              return (
+                <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                  allConfigured
+                    ? isDarkMode ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'
+                    : isDarkMode ? 'bg-amber-500/10 border-amber-500/30' : 'bg-amber-50/90 border-amber-200'
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      allConfigured 
+                        ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' 
+                        : 'bg-amber-500/20 text-amber-600 dark:text-amber-500'
+                    }`}>
+                      {allConfigured ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className={`text-sm font-bold ${
+                        allConfigured 
+                          ? isDarkMode ? 'text-emerald-300' : 'text-emerald-900'
+                          : isDarkMode ? 'text-amber-300' : 'text-amber-900'
+                      }`}>
+                        {allConfigured 
+                          ? 'All Integration Environments Active' 
+                          : `${totalCount - configuredCount} Integration(s) Awaiting API Credentials`}
+                      </div>
+                      <div className={`text-xs mt-0.5 ${
+                        allConfigured
+                          ? isDarkMode ? 'text-emerald-400/80' : 'text-emerald-700'
+                          : isDarkMode ? 'text-amber-400/80' : 'text-amber-700'
+                      }`}>
+                        {allConfigured
+                          ? 'Stripe checkouts, transactional emails, and Meta Instagram publishing are fully authorized.'
+                          : 'Features requiring unconfigured integrations are strictly locked until credentials are entered below.'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className={`px-3 py-1.5 rounded-xl border text-center text-xs font-mono font-bold ${
+                      allConfigured
+                        ? isDarkMode ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300' : 'bg-white border-emerald-200 text-emerald-800'
+                        : isDarkMode ? 'bg-amber-950/40 border-amber-800 text-amber-300' : 'bg-white border-amber-200 text-amber-800'
+                    }`}>
+                      {configuredCount} of {totalCount} Active
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Integration Cards Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* CARD 1: STRIPE GATEWAY */}
+              {(() => {
+                const stripe = integrationsList.find(i => i.id === 'payment_stripe') || {
+                  id: 'payment_stripe',
+                  name: 'Stripe Gateway',
+                  category: 'Payment Processing',
+                  status: 'NOT_CONFIGURED',
+                  configured: false,
+                  lastVerifiedAt: null,
+                  details: 'Processes student $6.00 feature fees with 256-bit SSL encryption. Requires Stripe publishable and secret keys to activate live checkouts.',
+                  keys: {}
+                };
+                const isTesting = testingIntegrationId === 'payment_stripe';
+
+                return (
+                  <div className={`p-6 rounded-3xl border flex flex-col justify-between space-y-5 transition-all ${
+                    isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
+                  }`}>
+                    <div className="space-y-4">
+                      
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                            <CreditCard className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className={`text-base font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                              Stripe Gateway
+                            </h3>
+                            <div className="text-[11px] text-blue-500 font-semibold">
+                              Payment Processing
+                            </div>
+                          </div>
+                        </div>
+
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          stripe.configured
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20'
+                        }`}>
+                          {stripe.configured ? 'CONFIGURED' : 'NOT CONFIGURED'}
+                        </span>
+                      </div>
+
+                      <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                        Powers student payment checkouts for the <strong>$6.00 USD</strong> feature fee across all campus portals. Without your Stripe keys, card transactions cannot process.
+                      </p>
+
+                      {/* Credentials Summary Box */}
+                      <div className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-800/90' : 'bg-slate-50 border-slate-200/80'
+                      }`}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Configured Credentials
+                        </div>
+                        
+                        <div className="space-y-1.5 font-mono text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Publishable:</span>
+                            <span className={stripe.keys?.publishableKey ? 'text-blue-500 font-semibold truncate max-w-[180px]' : 'text-amber-500 font-medium'}>
+                              {stripe.keys?.publishableKey 
+                                ? `${stripe.keys.publishableKey.substring(0, 8)}••••••••` 
+                                : 'Not Configured (Required)'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Secret Key:</span>
+                            <span className={stripe.keys?.secretKey ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
+                              {stripe.keys?.secretKey ? 'sk_••••••••••••' : 'Not Configured (Required)'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Webhook:</span>
+                            <span className={stripe.keys?.webhookSecret ? 'text-slate-300 font-semibold' : 'text-slate-400'}>
+                              {stripe.keys?.webhookSecret ? 'whsec_••••••••' : 'Optional'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Last Handshake Verified */}
+                      <div className={`text-[11px] flex items-center justify-between ${
+                        isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
+                        <span>Last Verified:</span>
+                        <span className="font-mono text-[10px]">
+                          {stripe.lastVerifiedAt ? new Date(stripe.lastVerifiedAt).toLocaleString() : 'Never tested'}
+                        </span>
+                      </div>
+
+                    </div>
+
+                    {/* Actions */}
+                    <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenConfigureIntegration(stripe)}
+                        className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-600/20 transition-all"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        <span>{stripe.configured ? 'Edit Stripe Credentials' : 'Add Stripe API Keys'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleTestIntegrationHandshake('payment_stripe')}
+                        disabled={isTesting || !stripe.configured}
+                        className={`w-full py-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {isTesting && <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500" />}
+                        <span>{stripe.configured ? 'Test Connection Handshake' : 'Requires Keys to Test'}</span>
+                      </button>
+
+                      <div className="text-[10px] text-center text-slate-400">
+                        Get keys at dashboard.stripe.com/apikeys
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })()}
+
+              {/* CARD 2: TRANSACTIONAL EMAIL SERVICE */}
+              {(() => {
+                const email = integrationsList.find(i => i.id === 'email_transactional') || {
+                  id: 'email_transactional',
+                  name: 'Transactional Email Service',
+                  category: 'Notifications & Verification',
+                  status: 'NOT_CONFIGURED',
+                  configured: false,
+                  lastVerifiedAt: null,
+                  details: 'Outbound SMTP / Email service for sending submission receipts, status updates, and verification codes to students.',
+                  keys: {}
+                };
+                const isTesting = testingIntegrationId === 'email_transactional';
+
+                return (
+                  <div className={`p-6 rounded-3xl border flex flex-col justify-between space-y-5 transition-all ${
+                    isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
+                  }`}>
+                    <div className="space-y-4">
+                      
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                            <Mail className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className={`text-base font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                              Transactional Email
+                            </h3>
+                            <div className="text-[11px] text-emerald-500 font-semibold">
+                              Notifications & Verification
+                            </div>
+                          </div>
+                        </div>
+
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          email.configured
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20'
+                        }`}>
+                          {email.configured ? 'CONFIGURED' : 'NOT CONFIGURED'}
+                        </span>
+                      </div>
+
+                      <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                        Delivers student submission confirmation receipts, review outcome notifications, and administrative alerts. Without credentials, outbound emails remain paused.
+                      </p>
+
+                      {/* Credentials Summary Box */}
+                      <div className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-800/90' : 'bg-slate-50 border-slate-200/80'
+                      }`}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Configured Credentials
+                        </div>
+                        
+                        <div className="space-y-1.5 font-mono text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Sender Address:</span>
+                            <span className={email.keys?.senderEmail ? 'text-emerald-500 font-semibold truncate max-w-[180px]' : 'text-amber-500 font-medium'}>
+                              {email.keys?.senderEmail || 'Not Configured (Required)'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>SMTP Relay:</span>
+                            <span className={email.keys?.smtpHost ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
+                              {email.keys?.smtpHost ? `${email.keys.smtpHost}:${email.keys.smtpPort || 587}` : 'Not Configured (Required)'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Password / Key:</span>
+                            <span className={email.keys?.smtpPassword ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
+                              {email.keys?.smtpPassword ? '••••••••••••' : 'Not Configured'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Last Handshake Verified */}
+                      <div className={`text-[11px] flex items-center justify-between ${
+                        isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
+                        <span>Last Verified:</span>
+                        <span className="font-mono text-[10px]">
+                          {email.lastVerifiedAt ? new Date(email.lastVerifiedAt).toLocaleString() : 'Never tested'}
+                        </span>
+                      </div>
+
+                    </div>
+
+                    {/* Actions */}
+                    <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenConfigureIntegration(email)}
+                        className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-600/20 transition-all"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        <span>{email.configured ? 'Edit Email Credentials' : 'Add Email Credentials'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleTestIntegrationHandshake('email_transactional')}
+                        disabled={isTesting || !email.configured}
+                        className={`w-full py-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {isTesting && <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-500" />}
+                        <span>{email.configured ? 'Test SMTP Handshake' : 'Requires Keys to Test'}</span>
+                      </button>
+
+                      <div className="text-[10px] text-center text-slate-400">
+                        Supports SendGrid, Mailgun, AWS SES, or custom SMTP
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })()}
+
+              {/* CARD 3: META INSTAGRAM GRAPH API */}
+              {(() => {
+                const instagram = integrationsList.find(i => i.id === 'meta_instagram') || {
+                  id: 'meta_instagram',
+                  name: 'Meta Instagram Graph API',
+                  category: 'Social Media & Direct Publishing',
+                  status: 'NOT_CONFIGURED',
+                  configured: false,
+                  lastVerifiedAt: null,
+                  details: 'Official Meta Graph API connection for university profile publishing, media sync, and direct student spotlights.',
+                  keys: {}
+                };
+                const isTesting = testingIntegrationId === 'meta_instagram';
+
+                return (
+                  <div className={`p-6 rounded-3xl border flex flex-col justify-between space-y-5 transition-all ${
+                    isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
+                  }`}>
+                    <div className="space-y-4">
+                      
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-2xl bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 flex items-center justify-center">
+                            <Instagram className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className={`text-base font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                              Meta Instagram API
+                            </h3>
+                            <div className="text-[11px] text-fuchsia-500 font-semibold">
+                              Social Media Publishing
+                            </div>
+                          </div>
+                        </div>
+
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          instagram.configured
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20'
+                        }`}>
+                          {instagram.configured ? 'CONFIGURED' : 'NOT CONFIGURED'}
+                        </span>
+                      </div>
+
+                      <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                        Empowers administrators to publish approved student features directly to university Instagram accounts. Without credentials, Instagram publishing is locked.
+                      </p>
+
+                      {/* Credentials Summary Box */}
+                      <div className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-800/90' : 'bg-slate-50 border-slate-200/80'
+                      }`}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Configured Credentials
+                        </div>
+                        
+                        <div className="space-y-1.5 font-mono text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Meta App ID:</span>
+                            <span className={instagram.keys?.appId ? 'text-fuchsia-500 font-semibold truncate max-w-[180px]' : 'text-amber-500 font-medium'}>
+                              {instagram.keys?.appId || 'Not Configured (Required)'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Access Token:</span>
+                            <span className={instagram.keys?.accessToken ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
+                              {instagram.keys?.accessToken ? `${instagram.keys.accessToken.substring(0, 8)}••••••••` : 'Not Configured (Required)'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Business ID:</span>
+                            <span className={instagram.keys?.instagramBusinessAccountId ? 'text-slate-300 font-semibold' : 'text-slate-400'}>
+                              {instagram.keys?.instagramBusinessAccountId || 'Optional'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Last Handshake Verified */}
+                      <div className={`text-[11px] flex items-center justify-between ${
+                        isDarkMode ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
+                        <span>Last Verified:</span>
+                        <span className="font-mono text-[10px]">
+                          {instagram.lastVerifiedAt ? new Date(instagram.lastVerifiedAt).toLocaleString() : 'Never tested'}
+                        </span>
+                      </div>
+
+                    </div>
+
+                    {/* Actions */}
+                    <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenConfigureIntegration(instagram)}
+                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:from-purple-500 hover:to-rose-400 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-pink-600/20 transition-all"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        <span>{instagram.configured ? 'Edit Meta Credentials' : 'Add Meta API Keys'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleTestIntegrationHandshake('meta_instagram')}
+                        disabled={isTesting || !instagram.configured}
+                        className={`w-full py-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {isTesting && <RefreshCw className="w-3.5 h-3.5 animate-spin text-fuchsia-500" />}
+                        <span>{instagram.configured ? 'Test Graph API Handshake' : 'Requires Keys to Test'}</span>
+                      </button>
+
+                      <div className="text-[10px] text-center text-slate-400">
+                        developers.facebook.com &gt; My Apps &gt; Graph API
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })()}
+
+            </div>
+
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------------- */}
         {/* TAB 6: SUBMISSION PHOTO REVIEW & PUBLISHING                         */}
         {/* ------------------------------------------------------------------- */}
         {activeTab === 'SUBMISSIONS' && (
@@ -1762,6 +2299,23 @@ export const AdminPortalPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Warning banner if Meta Instagram is unconfigured */}
+            {!integrationsList.find(i => i.id === 'meta_instagram')?.configured && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>Meta Instagram Graph API is not configured. Direct publishing of approved profiles is locked until you enter your Meta API keys.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('INTEGRATIONS')}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs shrink-0 cursor-pointer shadow-2xs"
+                >
+                  Configure Meta Keys →
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredSubmissions.map(sub => (
                 <div key={sub.id} className={`p-5 rounded-2xl border space-y-4 flex flex-col justify-between ${
@@ -1783,27 +2337,47 @@ export const AdminPortalPage: React.FC = () => {
                   </div>
 
                   {/* Review Actions */}
-                  <div className={`pt-3 border-t space-y-2 text-xs ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                  <div className={`pt-3 border-t space-y-2.5 text-xs ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Payment ($6.00 Stripe)</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        sub.paymentStatus === 'PAYMENT_CONFIRMED'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                      }`}>
+                        {sub.paymentStatus === 'PAYMENT_CONFIRMED' ? '✓ Paid ($6.00 Stripe)' : '⚠ Payment Required'}
+                      </span>
+                    </div>
+
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-slate-400 uppercase">Moderation</span>
                       <span className="font-bold text-emerald-600 dark:text-emerald-400">{sub.moderationStatus}</span>
                     </div>
 
-                    {sub.moderationStatus === 'PENDING' && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          onClick={() => reviewSubmission(sub.id, 'APPROVE')}
-                          className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer transition-colors text-center"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => reviewSubmission(sub.id, 'REJECT', 'Image quality does not meet resolution standards.')}
-                          className="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-500 dark:text-rose-400 font-bold border border-rose-600/30 cursor-pointer transition-colors text-center"
-                        >
-                          Reject
-                        </button>
+                    {/* Require payment before admin approval */}
+                    {sub.paymentStatus !== 'PAYMENT_CONFIRMED' ? (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs text-center font-medium">
+                        Student must complete $6.00 Stripe payment before submission can be approved or published to Instagram.
                       </div>
+                    ) : (
+                      <>
+                        {sub.moderationStatus === 'PENDING' && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              onClick={() => handleAdminReview(sub.id, 'APPROVE')}
+                              className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer transition-colors text-center"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleAdminReview(sub.id, 'REJECT', 'Image quality does not meet resolution standards.')}
+                              className="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-500 dark:text-rose-400 font-bold border border-rose-600/30 cursor-pointer transition-colors text-center"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {sub.moderationStatus === 'APPROVED' && sub.publishingStatus !== 'PUBLISHED' && (
@@ -2371,6 +2945,20 @@ export const AdminPortalPage: React.FC = () => {
                   </div>
                   <div>
                     <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Instagram Business Account ID
+                    </label>
+                    <input
+                      type="text"
+                      value={integrationKeysForm['instagramBusinessAccountId'] || ''}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, instagramBusinessAccountId: e.target.value })}
+                      placeholder="e.g. 1784140530921102"
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                       Webhook Verify Token
                     </label>
                     <input
@@ -2496,26 +3084,39 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               )}
 
-              <div className={`pt-3 border-t flex items-center justify-end gap-3 ${
+              <div className={`pt-3 border-t flex items-center justify-between gap-3 ${
                 isDarkMode ? 'border-slate-800' : 'border-slate-100'
               }`}>
-                <button
-                  type="button"
-                  onClick={() => setEditingIntegration(null)}
-                  className={`px-4 py-2.5 rounded-xl cursor-pointer text-xs font-semibold ${
-                    isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingIntegration}
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50 flex items-center gap-2 shadow-md shadow-blue-600/20"
-                >
-                  {savingIntegration && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Save API Credentials</span>
-                </button>
+                {editingIntegration.configured && (
+                  <button
+                    type="button"
+                    onClick={() => handleClearIntegrationKeys(editingIntegration.id)}
+                    disabled={savingIntegration}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 border border-rose-500/20 cursor-pointer disabled:opacity-50 transition-colors"
+                  >
+                    Clear Credentials
+                  </button>
+                )}
+                
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setEditingIntegration(null)}
+                    className={`px-4 py-2.5 rounded-xl cursor-pointer text-xs font-semibold ${
+                      isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingIntegration}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50 flex items-center gap-2 shadow-md shadow-blue-600/20"
+                  >
+                    {savingIntegration && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Save API Credentials</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -2549,18 +3150,47 @@ export const AdminPortalPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Target University Banner */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 space-y-1">
-              <div className="flex items-center justify-between text-xs font-bold">
-                <span className="text-blue-500 dark:text-blue-400">{publishModalSub.universityName}</span>
-                <span className="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-500 border border-pink-500/30 text-[10px] font-mono">
-                  {publishModalSub.universityInstagramHandle}
-                </span>
-              </div>
-              <p className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                Only administrators can publish student submissions to this official university account.
-              </p>
-            </div>
+            {/* Target University Banner & Configuration Check */}
+            {(() => {
+              const isMetaConfigured = integrationsList.find(i => i.id === 'meta_instagram')?.configured;
+              return (
+                <>
+                  {!isMetaConfigured && (
+                    <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span>Meta Instagram API is Not Configured</span>
+                      </div>
+                      <p>
+                        To post to official university accounts, configure your Meta App ID & Access Token in the Integrations tab.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPublishModalSub(null);
+                          setActiveTab('INTEGRATIONS');
+                        }}
+                        className="text-blue-600 dark:text-blue-400 font-bold underline cursor-pointer inline-block mt-1"
+                      >
+                        Go to Integrations & API Keys →
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-blue-500 dark:text-blue-400">{publishModalSub.universityName}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-500 border border-pink-500/30 text-[10px] font-mono">
+                        {publishModalSub.universityInstagramHandle}
+                      </span>
+                    </div>
+                    <p className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                      Only administrators can publish student submissions to this official university account.
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
 
             {/* Post Photo & Caption Preview */}
             <div className="space-y-3">

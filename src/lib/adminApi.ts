@@ -27,9 +27,10 @@ export interface AdminOverviewData {
     id: string;
     name: string;
     category: string;
-    status: 'CONNECTED' | 'STANDBY' | 'DEGRADED';
-    verifiedAt: string;
+    status: 'CONNECTED' | 'STANDBY' | 'DEGRADED' | 'NOT_CONFIGURED';
+    verifiedAt: string | null;
     details: string;
+    configured?: boolean;
   }>;
   recentDeliveries: Array<{
     id: string;
@@ -250,9 +251,9 @@ export interface IntegrationItem {
   id: string;
   name: string;
   category: string;
-  status: 'CONNECTED' | 'PENDING_CONFIGURATION' | 'DEGRADED';
+  status: 'CONNECTED' | 'PENDING_CONFIGURATION' | 'DEGRADED' | 'NOT_CONFIGURED';
   configured: boolean;
-  lastVerifiedAt: string;
+  lastVerifiedAt: string | null;
   details: string;
   keys: Record<string, string>;
 }
@@ -274,7 +275,25 @@ export async function testAdminIntegration(id: string): Promise<{ success: boole
   });
 }
 
-// 10. Admin-Only University Instagram Publishing
+// 10. Submissions Management & Admin-Only University Instagram Publishing
+export async function fetchAdminSubmissions(): Promise<{ submissions: any[] }> {
+  return adminFetch<{ submissions: any[] }>('/api/admin/submissions');
+}
+
+export async function reviewAdminSubmission(
+  submissionId: string, 
+  decision: 'APPROVE' | 'REJECT', 
+  reason?: string
+): Promise<{ success: boolean; submission: any }> {
+  return adminFetch<{ success: boolean; submission: any }>(
+    `/api/admin/submissions/${encodeURIComponent(submissionId)}/review`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ decision, reason })
+    }
+  );
+}
+
 export async function publishSubmissionToUniversityInstagram(
   submissionId: string, 
   data: { targetInstagramHandle: string; customPostUrl?: string; studentName?: string; universityName?: string }
@@ -287,3 +306,4 @@ export async function publishSubmissionToUniversityInstagram(
     }
   );
 }
+

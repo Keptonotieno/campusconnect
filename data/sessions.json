@@ -110,5 +110,29 @@
     "role": "Admin",
     "createdAt": "2026-10-22T10:38:37.863Z",
     "expiresAt": "2026-10-22T14:38:37.863Z"
+  },
+  {
+    "token": "sess_0a85e7db51751d41e6401b7f8b586f91866e7fd6ae1ac3ed597340c1ba456baa",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-24T08:45:27.908Z",
+    "expiresAt": "2026-10-24T12:45:27.908Z"
+  },
+  {
+    "token": "sess_13423d3d4f9134ecc92fb1cf347419c120ed379367dc8fa29ea715588c94639c",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-24T08:45:35.135Z",
+    "expiresAt": "2026-10-24T12:45:35.135Z"
+  },
+  {
+    "token": "sess_11eaf80e61312c584bf2ec4880a205c8a04e8c50c90b6bb31269e6531d3546f4",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-24T08:45:47.248Z",
+    "expiresAt": "2026-10-24T12:45:47.247Z"
   }
 ]

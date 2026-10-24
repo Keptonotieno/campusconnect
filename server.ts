@@ -264,6 +264,13 @@ app.get('/api/admin/email', requireAdminAuth, (_req: AuthenticatedAdminRequest, 
 
 // Send Test Verification Email
 app.post('/api/admin/email/send-test', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  if (!dbInstance.isIntegrationConfigured('email_transactional')) {
+    return res.status(400).json({
+      error: 'IntegrationNotConfigured',
+      message: 'Email Integration is NOT configured. Please enter your SMTP credentials in Admin Dashboard > Integrations & API Keys before sending emails.'
+    });
+  }
+
   const recipient = req.body.recipient || req.admin?.email || 'admin@campusconnect.app';
   const entry = dbInstance.logEmailDelivery({
     recipient,
@@ -321,6 +328,26 @@ app.post('/api/admin/integrations/:id/test', requireAdminAuth, (req: Authenticat
   }
 });
 
+// Submissions Management (Admin View)
+app.get('/api/admin/submissions', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
+  const submissions = dbInstance.getSubmissions();
+  return res.json({ submissions });
+});
+
+// Admin Review Submission (Approve / Reject)
+app.post('/api/admin/submissions/:id/review', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const { decision, reason } = req.body;
+    if (!decision || (decision !== 'APPROVE' && decision !== 'REJECT')) {
+      return res.status(400).json({ error: 'BadRequest', message: 'decision must be APPROVE or REJECT.' });
+    }
+    const updated = dbInstance.updateSubmissionModeration(req.params.id, decision, reason, req.admin?.email || 'admin');
+    return res.json({ success: true, submission: updated });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'ReviewFailed', message: err.message });
+  }
+});
+
 // Admin-Only Publish to University Instagram Account
 app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
@@ -329,31 +356,55 @@ app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req:
     const postCode = Math.random().toString(36).substring(2, 11);
     const postUrl = customPostUrl || `https://www.instagram.com/p/C_${postCode}/`;
     
-    dbInstance.logAudit({
-      actorUid: req.admin?.adminId || 'admin',
-      actorEmail: req.admin?.email || 'admin',
-      actorRole: 'Admin',
-      action: 'POST_PUBLISHED_TO_INSTAGRAM',
-      targetType: 'INSTAGRAM_POST',
-      targetId: req.params.id,
-      details: `Admin published ${studentName || 'student'} submission to official account @${cleanHandle} for ${universityName || 'university'}. URL: ${postUrl}`
-    });
+    // Update authoritative submission state in database
+    const sub = dbInstance.publishSubmissionToInstagram(req.params.id, postUrl, cleanHandle, req.admin?.email || 'admin');
 
     return res.json({
       success: true,
-      publishedAt: new Date().toISOString(),
+      publishedAt: sub.publishedAt,
       instagramPostUrl: postUrl,
       targetHandle: `@${cleanHandle}`,
+      submission: sub,
       message: `Post successfully published to official university account @${cleanHandle}!`
     });
   } catch (err: any) {
-    return res.status(500).json({ error: 'PublishFailed', message: err.message });
+    const isUnconfigured = err.message?.includes('NOT configured') || err.message?.includes('not configured');
+    return res.status(isUnconfigured ? 400 : 500).json({ 
+      error: isUnconfigured ? 'IntegrationNotConfigured' : 'PublishFailed', 
+      message: err.message 
+    });
+  }
+});
+
+// Public Submissions API
+app.get('/api/submissions', (_req: Request, res: Response) => {
+  const submissions = dbInstance.getSubmissions();
+  return res.json({ submissions });
+});
+
+app.post('/api/submissions', (req: Request, res: Response) => {
+  try {
+    const submission = dbInstance.saveSubmission(req.body);
+    return res.status(201).json({ success: true, submission });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'SubmissionSaveFailed', message: err.message });
   }
 });
 
 // -----------------------------------------------------------------------------
 // PUBLIC API ENDPOINTS & PAYMENT GATEWAY WEBHOOK
 // -----------------------------------------------------------------------------
+
+// Public Payment Gateway Status
+app.get('/api/payment-config', (_req: Request, res: Response) => {
+  const isConfigured = dbInstance.isIntegrationConfigured('payment_stripe');
+  const integrations = dbInstance.getIntegrations();
+  const stripe = integrations.find(i => i.id === 'payment_stripe');
+  return res.json({
+    stripeConfigured: isConfigured,
+    publishableKey: isConfigured && stripe ? stripe.keys.publishableKey : ''
+  });
+});
 
 // Public Campuses Directory
 app.get('/api/campuses', (_req: Request, res: Response) => {
@@ -394,6 +445,16 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
       idempotencyKey: idempotencyKey || `idem_${submissionId}_${Date.now()}`,
       verifiedAt: new Date().toISOString()
     });
+
+    // Update authoritative submission state in database
+    const sub = dbInstance.getSubmissionById(submissionId);
+    if (sub) {
+      sub.paymentStatus = 'PAYMENT_CONFIRMED';
+      sub.paymentReference = txnRef;
+      sub.paymentAmount = 6.00;
+      sub.updatedAt = new Date().toISOString();
+      dbInstance.saveSubmission(sub);
+    }
 
     return res.json({
       success: true,
@@ -447,6 +508,17 @@ app.post('/api/payments/webhook', (req: Request, res: Response) => {
       idempotencyKey: idempotencyKey || `idem_hook_${Date.now()}`,
       verifiedAt: new Date().toISOString()
     });
+
+    if (submissionId) {
+      const sub = dbInstance.getSubmissionById(submissionId);
+      if (sub && status !== 'FAILED') {
+        sub.paymentStatus = 'PAYMENT_CONFIRMED';
+        sub.paymentReference = transactionId || payment.providerTransactionReference;
+        sub.paymentAmount = amountUsd || 6.00;
+        sub.updatedAt = new Date().toISOString();
+        dbInstance.saveSubmission(sub);
+      }
+    }
 
     return res.status(200).json({
       received: true,

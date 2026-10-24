@@ -29,8 +29,11 @@ export const SubmitPhotoPage: React.FC = () => {
     addToast 
   } = useApp();
 
-  // Selected university (default to user's university or target abroad university like Harvard/Miami/Oxford)
-  const defaultUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0];
+  // Selected university (default to URL ?uni= param, user's university, or first campus)
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const uniParam = searchParams?.get('uni');
+  const paramUni = uniParam ? universities.find(u => u.slug.toLowerCase() === uniParam.toLowerCase() || u.id === uniParam) : null;
+  const defaultUni = paramUni || universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0];
   const [targetUni, setTargetUni] = useState<University>(defaultUni);
 
   // Form states
@@ -114,6 +117,25 @@ export const SubmitPhotoPage: React.FC = () => {
       return;
     }
 
+    // Strict Stripe Card Details Validation
+    const cleanCard = cardNumber.replace(/\D/g, '');
+    if (cleanCard.length < 15 || cleanCard.length > 16) {
+      addToast('Invalid Card Number', 'Please enter a valid 15 or 16-digit credit/debit card number.', 'error');
+      return;
+    }
+
+    const expiryMatch = cardExpiry.trim().match(/^(0[1-9]|1[0-2])\/([0-9]{2})$/);
+    if (!expiryMatch) {
+      addToast('Invalid Expiration Date', 'Please enter card expiration in MM/YY format.', 'error');
+      return;
+    }
+
+    const cleanCvc = cardCvc.replace(/\D/g, '');
+    if (cleanCvc.length < 3 || cleanCvc.length > 4) {
+      addToast('Invalid CVC', 'Please enter a 3 or 4-digit security code (CVC/CVV).', 'error');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -128,8 +150,8 @@ export const SubmitPhotoPage: React.FC = () => {
         termsAgreed
       });
 
-      // 2. Initiate and verify Stripe payment
-      const last4 = cardNumber.replace(/\D/g, '').slice(-4) || '4242';
+      // 2. Initiate and verify Stripe payment ($6.00 USD)
+      const last4 = cleanCard.slice(-4);
       await payForSubmission(
         submission.id,
         'STRIPE_CARD',
@@ -430,58 +452,60 @@ export const SubmitPhotoPage: React.FC = () => {
                 className="mt-0.5 rounded border-slate-300 text-[#1D64EC] focus:ring-0 cursor-pointer"
               />
               <span className="text-slate-700 leading-relaxed">
-                I understand that the <strong>$6 USD (KES 780)</strong> fee is a one-time processing and consideration fee. Publishing is subject to review and moderation; content violating safety or university policies will be handled according to the disclosed resubmission/refund policy.
+                I understand that the <strong>$6.00 USD</strong> fee is a one-time processing and consideration fee. Publishing is subject to review and moderation; content violating safety or university policies will be handled according to the disclosed resubmission/refund policy.
               </span>
             </label>
           </div>
         </div>
 
-        {/* SECTION 5: ONE-TIME $6 STRIPE CHECKOUT */}
-        <div className="p-6 sm:p-8 bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-3xl shadow-xl space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+        {/* SECTION 5: ONE-TIME $6 STRIPE CHECKOUT (LIGHT MODE PROFESSIONAL) */}
+        <div className="p-6 sm:p-8 bg-white border border-slate-200/90 text-slate-900 rounded-3xl shadow-xl space-y-6 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500" />
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
-              <div className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5" />
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200/70 text-blue-700 text-[11px] font-bold">
+                <Lock className="w-3.5 h-3.5 text-blue-600" />
                 <span>Step 5: Stripe Secure Checkout</span>
               </div>
-              <h3 className="text-xl font-extrabold text-white">
+              <h3 className="text-xl font-black text-slate-950 mt-1">
                 One-Time Featured Post Fee
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5">
                 One-time charge of USD $6.00 via Stripe. No subscriptions, recurring charges, or hidden fees.
               </p>
             </div>
 
             <div className="text-right">
-              <div className="text-2xl sm:text-3xl font-extrabold text-white">
-                ${FEATURED_POST_PRICE_USD.toFixed(2)} <span className="text-sm font-normal text-slate-400">USD</span>
+              <div className="text-3xl font-black text-slate-950 font-mono">
+                ${FEATURED_POST_PRICE_USD.toFixed(2)} <span className="text-xs font-semibold text-slate-400">USD</span>
               </div>
-              <div className="text-[11px] text-emerald-400 font-semibold flex items-center justify-end gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" />
+              <div className="inline-flex items-center justify-end gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold mt-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Stripe Verified</span>
               </div>
             </div>
           </div>
 
           {/* Supported Methods Pill */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-800/60 rounded-2xl border border-slate-700/60 text-xs">
-            <div className="flex items-center gap-2 text-slate-300 font-medium">
-              <CreditCard className="w-4 h-4 text-blue-400" />
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-semibold">
+              <CreditCard className="w-4 h-4 text-blue-600" />
               <span>Credit or Debit Card</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">VISA</span>
-              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">Mastercard</span>
-              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">Amex</span>
-              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">Apple Pay</span>
-              <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-bold text-slate-300">Google Pay</span>
+            <div className="flex items-center gap-1.5">
+              <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono font-bold text-slate-700 shadow-2xs">VISA</span>
+              <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono font-bold text-slate-700 shadow-2xs">Mastercard</span>
+              <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono font-bold text-slate-700 shadow-2xs">Amex</span>
+              <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono font-bold text-slate-700 shadow-2xs">Apple Pay</span>
+              <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-mono font-bold text-slate-700 shadow-2xs">Google Pay</span>
             </div>
           </div>
 
           {/* Stripe Card Input Fields */}
-          <div className="space-y-3.5">
+          <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Cardholder Full Name
               </label>
               <input 
@@ -489,12 +513,12 @@ export const SubmitPhotoPage: React.FC = () => {
                 value={cardName}
                 onChange={(e) => setCardName(e.target.value)}
                 placeholder={currentUser?.name || "Student Name"}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-50 hover:bg-slate-50/80 focus:bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/15 transition-all font-medium"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Card Number
               </label>
               <div className="relative">
@@ -507,15 +531,15 @@ export const SubmitPhotoPage: React.FC = () => {
                     setCardNumber(v);
                   }}
                   placeholder="4242 •••• •••• 4242"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-4 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono tracking-wider"
+                  className="w-full bg-slate-50 hover:bg-slate-50/80 focus:bg-white border border-slate-200 rounded-xl pl-4 pr-11 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/15 transition-all font-mono tracking-wider font-medium"
                 />
-                <CreditCard className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+                <CreditCard className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Expires
                 </label>
                 <input 
@@ -528,12 +552,12 @@ export const SubmitPhotoPage: React.FC = () => {
                     setCardExpiry(v);
                   }}
                   placeholder="MM/YY"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-center"
+                  className="w-full bg-slate-50 hover:bg-slate-50/80 focus:bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/15 transition-all font-mono text-center font-medium"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   CVC / CVV
                 </label>
                 <input 
@@ -542,12 +566,12 @@ export const SubmitPhotoPage: React.FC = () => {
                   value={cardCvc}
                   onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, ''))}
                   placeholder="•••"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-center tracking-widest"
+                  className="w-full bg-slate-50 hover:bg-slate-50/80 focus:bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/15 transition-all font-mono text-center tracking-widest font-medium"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   ZIP / Postal
                 </label>
                 <input 
@@ -556,20 +580,20 @@ export const SubmitPhotoPage: React.FC = () => {
                   value={cardZip}
                   onChange={(e) => setCardZip(e.target.value)}
                   placeholder="10001"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-center"
+                  className="w-full bg-slate-50 hover:bg-slate-50/80 focus:bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/15 transition-all font-mono text-center font-medium"
                 />
               </div>
             </div>
 
             {/* 256-bit SSL Badge */}
-            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
               <div className="flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                <Lock className="w-3.5 h-3.5 text-emerald-600" />
                 <span>256-Bit SSL Encrypted Checkout</span>
               </div>
-              <div className="flex items-center gap-1 text-slate-400">
+              <div className="flex items-center gap-1 text-slate-600 font-semibold">
                 <span>Powered by</span>
-                <span className="font-bold text-white tracking-wide">stripe</span>
+                <span className="font-bold text-slate-900 tracking-wide">stripe</span>
               </div>
             </div>
           </div>
