@@ -47,16 +47,37 @@ const AppContent: React.FC = () => {
     universities 
   } = useApp();
 
-  // 1. Resolve University Community route (/university/:slug, /u/:slug, or /ig/:slug)
-  if (currentRoute.startsWith('/university/') || currentRoute.startsWith('/u/') || currentRoute.startsWith('/ig/')) {
+  // 1. Resolve University Community route (/university/:slug, /u/:slug, /ig/:slug, /:slug, or ?uni= query)
+  const isDirectCampusSlug = (() => {
+    if (currentRoute === '/' || currentRoute === '') {
+      const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const uniParam = sp?.get('uni') || sp?.get('university');
+      if (uniParam) {
+        return getUniversityBySlug(uniParam);
+      }
+      return undefined;
+    }
+    const cleanPath = currentRoute.replace(/^\//, '').split('/')[0].split('?')[0];
+    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'forgot-password', 'app'];
+    if (reservedRoutes.includes(cleanPath)) return undefined;
+    return getUniversityBySlug(cleanPath);
+  })();
+
+  const isCampusRoute = currentRoute.startsWith('/university/') || 
+                       currentRoute.startsWith('/u/') || 
+                       currentRoute.startsWith('/ig/') ||
+                       isDirectCampusSlug !== undefined;
+
+  if (isCampusRoute) {
     const slug = currentRoute
       .replace('/university/', '')
       .replace('/u/', '')
       .replace('/ig/', '')
+      .replace(/^\//, '')
       .split('/')[0]
       .split('?')[0];
 
-    const matchedUniversity = getUniversityBySlug(slug) || selectedUniversity || universities[0];
+    const matchedUniversity = isDirectCampusSlug || getUniversityBySlug(slug) || selectedUniversity || universities[0];
 
     return (
       <div className="min-h-screen bg-white text-slate-900 flex flex-col antialiased font-sans">

@@ -49,6 +49,7 @@ interface AppContextType {
   submissions: FeaturedSubmission[];
   mySubmissions: FeaturedSubmission[];
   getSubmissionById: (id: string) => FeaturedSubmission | undefined;
+  addSubmission: (submission: FeaturedSubmission) => void;
   createSubmission: (params: {
     universityId: string;
     originalImagePath: string;
@@ -157,17 +158,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Dynamic resolver for universities / campuses
   const getUniversityBySlug = useCallback((slug: string): University | undefined => {
     if (!slug) return undefined;
-    const normalized = slug.toLowerCase().trim();
+    const normalized = slug
+      .toLowerCase()
+      .trim()
+      .replace(/^@/, '')
+      .replace(/^\/ig\//, '')
+      .replace(/^\/u\//, '')
+      .replace(/^\/university\//, '');
+    
     // 1. Check live state first (includes any newly created campus like Lindsey Wilson College)
     const found = universities.find(
       u => u.slug.toLowerCase() === normalized ||
            u.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
            u.id.toLowerCase() === normalized ||
-           u.name.toLowerCase() === normalized
+           u.id.replace('uni_', '').toLowerCase() === normalized ||
+           u.name.toLowerCase() === normalized ||
+           u.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized.replace(/[^a-z0-9]/g, '') ||
+           u.instagramHandle.toLowerCase().replace('@', '') === normalized
     );
     if (found) return found;
 
-    // 2. Check alias mappings
+    // 2. Check alias mappings & verified universities
     return findUniversityBySlug(normalized);
   }, [universities]);
 
@@ -236,7 +247,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const isAdmin = useMemo(() => {
-    return currentUser?.role === 'Admin' || (currentUser?.email ? currentUser.email.startsWith('admin@') : false);
+    const hasAdminToken = typeof window !== 'undefined' && !!localStorage.getItem('campusconnect_admin_token');
+    return hasAdminToken || currentUser?.role === 'Admin' || (currentUser?.email ? currentUser.email.startsWith('admin@') : false);
   }, [currentUser]);
 
   // 3. Submissions State
@@ -566,6 +578,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newSubmission;
   };
 
+  const addSubmission = useCallback((newSub: FeaturedSubmission) => {
+    setSubmissions((prev) => {
+      const filtered = prev.filter((s) => s.id !== newSub.id);
+      const updated = [newSub, ...filtered];
+      try {
+        localStorage.setItem('campusconnect_submissions', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+  }, []);
+
   const payForSubmission = async (
     submissionId: string,
     provider: 'STRIPE_CARD' | 'CARD' = 'STRIPE_CARD',
@@ -857,6 +882,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submissions,
         mySubmissions,
         getSubmissionById,
+        addSubmission,
         createSubmission,
         payForSubmission,
         reviewSubmission,

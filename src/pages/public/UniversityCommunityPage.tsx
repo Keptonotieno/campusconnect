@@ -56,13 +56,17 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     navigateTo, 
     isAuthenticated, 
     setEntryUniversityContext,
+    addSubmission,
     createSubmission,
     payForSubmission,
+    universities,
     addToast 
   } = useApp();
 
   // Page View Mode: 'LANDING' or 'BUILDER'
   const [pageView, setPageView] = useState<'LANDING' | 'BUILDER'>('LANDING');
+  const [showCampusSwitcher, setShowCampusSwitcher] = useState(false);
+  const [campusSearchQuery, setCampusSearchQuery] = useState('');
 
   // Builder multi-step state: 1 (Upload/Profile) -> 2 (Details) -> 3 (Preview & Pay) -> 'SUCCESS'
   const [builderStep, setBuilderStep] = useState<1 | 2 | 3 | 'SUCCESS'>(1);
@@ -358,6 +362,9 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
         console.warn('Server sync fallback:', sErr);
       }
 
+      // Add to local client state immediately
+      addSubmission(newSubmission);
+
       // 4. Verify & audit Stripe payment with backend
       const last4 = cleanCard.slice(-4);
       const verifyRes = await fetch('/api/payments/verify', {
@@ -425,6 +432,27 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     return (
       <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-600 selection:text-white antialiased flex flex-col">
         
+        {/* Verified Instagram Bio Link Banner */}
+        <div className="bg-slate-950 text-white text-[11px] px-4 py-2 border-b border-slate-800">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-slate-300">
+                Official Instagram Bio Link: <strong className="text-white font-mono">{university.instagramHandle}</strong>
+              </span>
+              <span className="hidden sm:inline text-slate-500">• {university.name} Class of {university.classYear || '2031'}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCampusSwitcher(true)}
+              className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold underline flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <span>Switch university</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+
         {/* ----------------------------------------------------------------- */}
         {/* TOP STEPPER HEADER (MATCHING VIDEO EXACTLY)                        */}
         {/* ----------------------------------------------------------------- */}
@@ -1617,6 +1645,27 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900 selection:bg-blue-600 selection:text-white antialiased">
       
+      {/* Verified Instagram Bio Link Banner */}
+      <div className="bg-slate-950 text-white text-[11px] px-4 py-2 border-b border-slate-800">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="text-slate-300">
+              Official Instagram Bio Link: <strong className="text-white font-mono">{university.instagramHandle}</strong>
+            </span>
+            <span className="hidden sm:inline text-slate-500">• {university.name} Class of {university.classYear || '2031'}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCampusSwitcher(true)}
+            className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold underline flex items-center gap-1 cursor-pointer shrink-0"
+          >
+            <span>Switch university</span>
+            <ChevronDown className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
       {/* Deactivated Notice Banner if campus is disabled */}
       {!university.communityEnabled && (
         <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-center text-xs font-bold border-b border-amber-600 flex items-center justify-center gap-2">

@@ -243,24 +243,80 @@ export const VERIFIED_UNIVERSITIES: University[] = [
   }
 ];
 
+const SLUG_ALIASES: Record<string, string> = {
+  'morehead': 'moreheadstate2031class',
+  'moreheadstate': 'moreheadstate2031class',
+  'moreheadstate2031': 'moreheadstate2031class',
+  'moreheadstate2031class': 'moreheadstate2031class',
+  'thomasmore': 'thomasmoreuniversity2031class',
+  'thomasmore2031': 'thomasmoreuniversity2031class',
+  'thomasmoreuniversity': 'thomasmoreuniversity2031class',
+  'thomasmoreuniversity2031class': 'thomasmoreuniversity2031class',
+  'spalding': 'spaldinguniversity2031class',
+  'spalding2031': 'spaldinguniversity2031class',
+  'spaldinguniversity': 'spaldinguniversity2031class',
+  'spaldinguniversity2031class': 'spaldinguniversity2031class',
+  'campbellsville': 'campbellsvilleuniversity2031class',
+  'campbellsville2031': 'campbellsvilleuniversity2031class',
+  'campbellsvilleuniversity': 'campbellsvilleuniversity2031class',
+  'campbellsvilleuniversity2031class': 'campbellsvilleuniversity2031class',
+  'georgetown': 'georgetowncollege2031class',
+  'georgetown2031': 'georgetowncollege2031class',
+  'georgetowncollege': 'georgetowncollege2031class',
+  'georgetowncollege2031class': 'georgetowncollege2031class',
+  'centre': 'centrecollege2031class',
+  'centre2031': 'centrecollege2031class',
+  'centrecollege': 'centrecollege2031class',
+  'centrecollege2031class': 'centrecollege2031class',
+  'bellarmine': 'bellarmineu2031class',
+  'bellarmine2031': 'bellarmineu2031class',
+  'bellarmineu': 'bellarmineu2031class',
+  'bellarmineu2031class': 'bellarmineu2031class',
+  'murray': 'murraystate2031class',
+  'murraystate': 'murraystate2031class',
+  'murraystate2031': 'murraystate2031class',
+  'murraystate2031class': 'murraystate2031class',
+  'lindseywilson': 'lindseywilsoncollege2031class',
+  'lindseywilson2031': 'lindseywilsoncollege2031class',
+  'lwc': 'lindseywilsoncollege2031class',
+  'lwc_classof2031': 'lindseywilsoncollege2031class',
+  'lindseywilsoncollege2031class': 'lindseywilsoncollege2031class',
+  'harvard': 'harvard',
+  'harvard2028': 'harvard'
+};
+
 export const findUniversityBySlug = (slug: string): University | undefined => {
   if (!slug) return VERIFIED_UNIVERSITIES[0];
-  const normalized = slug.toLowerCase().trim().replace(/^\/ig\//, '').replace(/^\/u\//, '').replace(/^\/university\//, '');
+  const normalized = slug
+    .toLowerCase()
+    .trim()
+    .replace(/^@/, '')
+    .replace(/^\/ig\//, '')
+    .replace(/^\/u\//, '')
+    .replace(/^\/university\//, '');
   
-  // Exact match
+  // 1. Alias lookup
+  if (SLUG_ALIASES[normalized]) {
+    const aliasMatch = VERIFIED_UNIVERSITIES.find(u => u.slug.toLowerCase() === SLUG_ALIASES[normalized]);
+    if (aliasMatch) return aliasMatch;
+  }
+
+  // 2. Exact match on slug, id, or instagramHandle
   const found = VERIFIED_UNIVERSITIES.find(
     u => u.slug.toLowerCase() === normalized || 
          u.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') || 
          u.id.toLowerCase() === normalized ||
+         u.id.replace('uni_', '').toLowerCase() === normalized ||
          u.instagramHandle.toLowerCase().replace('@', '') === normalized.replace('@', '')
   );
   if (found) return found;
 
-  // Partial match
+  // 3. Partial match on name or slug
   const partial = VERIFIED_UNIVERSITIES.find(u => 
     normalized.includes(u.slug.toLowerCase()) || 
     u.slug.toLowerCase().includes(normalized) ||
-    u.name.toLowerCase().includes(normalized)
+    u.name.toLowerCase().includes(normalized) ||
+    u.instagramHandle.toLowerCase().replace('@', '').includes(normalized)
   );
   if (partial) return partial;
 
