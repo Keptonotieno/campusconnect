@@ -144,12 +144,21 @@ export async function bootstrapAdmin(email: string, pass: string): Promise<Admin
 }
 
 export async function loginAdmin(email: string, pass: string): Promise<AdminAuthResponse> {
+  const cleanEmail = (email || '').trim();
+  const cleanPass = (pass || '').trim();
   const data = await adminFetch<AdminAuthResponse>('/api/auth/admin-login', {
     method: 'POST',
-    body: JSON.stringify({ email, password: pass })
+    body: JSON.stringify({ email: cleanEmail, password: cleanPass })
   });
   if (data.token) {
     setStoredAdminToken(data.token);
+    try {
+      localStorage.setItem('campusconnect_admin_token', data.token);
+      localStorage.setItem('campusconnect_admin_user', JSON.stringify(data.admin));
+      localStorage.setItem('campusconnect_auth', 'true');
+    } catch {
+      // ignore
+    }
   }
   return data;
 }

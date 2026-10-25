@@ -150,5 +150,101 @@
     "role": "Admin",
     "createdAt": "2026-10-25T11:28:39.861Z",
     "expiresAt": "2026-10-25T15:28:39.860Z"
+  },
+  {
+    "token": "sess_8b494b86b08cfdfaf9b11ff950d6cd5be84434af35c0a259cc25ee2e7eaa9367",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:33.880Z",
+    "expiresAt": "2026-10-25T15:39:33.880Z"
+  },
+  {
+    "token": "sess_a3ebd6933b2c1cb0b03dd4a37ec74845aa24589bcfa8afbe0b5200e8b6499a79",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:33.944Z",
+    "expiresAt": "2026-10-25T15:39:33.944Z"
+  },
+  {
+    "token": "sess_4f687a6ead2dcb0494e9abdc1dc3338d91ba9befd6ede15eb411ab372cccb8d5",
+    "adminId": "admin_user_keptonotieno",
+    "email": "keptonotieno@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:33.955Z",
+    "expiresAt": "2026-10-25T15:39:33.955Z"
+  },
+  {
+    "token": "sess_50d7a0a3a126baf070885e7ff493e8ef9b0e73dc7b9f8505d896885eb142f900",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:33.967Z",
+    "expiresAt": "2026-10-25T15:39:33.967Z"
+  },
+  {
+    "token": "sess_35c459eec0391d91f9c325080a3a6e540c0ff3d68ea2d2766804928f80716b7f",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:45.118Z",
+    "expiresAt": "2026-10-25T15:39:45.118Z"
+  },
+  {
+    "token": "sess_8ca69eea46673a11fbc634dd32dc488d1f1fc63311e921837807917d44205679",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:45.150Z",
+    "expiresAt": "2026-10-25T15:39:45.150Z"
+  },
+  {
+    "token": "sess_bfc91b1d9abc33bde7e0ea1bf82d85e487c270f3ad16bb270940c92cbdcafb21",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:45.172Z",
+    "expiresAt": "2026-10-25T15:39:45.172Z"
+  },
+  {
+    "token": "sess_93ae8bd32130a51009df52abecd8787ccebe8ef11e43084841b2a4eaf23617e7",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:45.184Z",
+    "expiresAt": "2026-10-25T15:39:45.184Z"
+  },
+  {
+    "token": "sess_db41ffc2fb8ce99d589c57d1f5e165a05e625fc10997c4e2b7e6004c43ef71c0",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:45.196Z",
+    "expiresAt": "2026-10-25T15:39:45.196Z"
+  },
+  {
+    "token": "sess_2bfc038d05ef0e8e40d11793d02be0351956029448be65995f6d9148babcdba7",
+    "adminId": "admin_user_keptonotieno",
+    "email": "keptonotieno@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:45.207Z",
+    "expiresAt": "2026-10-25T15:39:45.207Z"
+  },
+  {
+    "token": "sess_1276a401f7aa1a2c0681bfe01a8072eb759627c6f3199d3d64ef88f04e8d6a87",
+    "adminId": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:45.220Z",
+    "expiresAt": "2026-10-25T15:39:45.220Z"
+  },
+  {
+    "token": "sess_bebc14b6bb70700df29c6cfd392b195624552b43134e36e463470b1829fed523",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:39:50.801Z",
+    "expiresAt": "2026-10-25T15:39:50.801Z"
   }
 ]

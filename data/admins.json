@@ -1,20 +1,38 @@
 [
   {
-    "id": "admin_primary_compusconnect",
-    "email": "compusconnect@gmail.com",
-    "passwordHash": "35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e",
-    "salt": "b06b24e9b11bcd5c027c9cfa44e65a0f",
-    "role": "Admin",
-    "createdAt": "2026-10-21T08:14:00.000Z",
-    "lastLoginAt": "2026-10-24T08:45:47.247Z"
-  },
-  {
     "id": "admin_secondary_campusconnect",
     "email": "campusconnect@gmail.com",
     "passwordHash": "35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e",
     "salt": "b06b24e9b11bcd5c027c9cfa44e65a0f",
     "role": "Admin",
     "createdAt": "2026-10-21T08:14:00.000Z",
-    "lastLoginAt": "2026-10-25T11:28:39.860Z"
+    "lastLoginAt": "2026-10-25T11:39:33.944Z"
+  },
+  {
+    "id": "admin_primary_compusconnect",
+    "email": "compusconnect@gmail.com",
+    "passwordHash": "35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e",
+    "salt": "b06b24e9b11bcd5c027c9cfa44e65a0f",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:14:00.000Z",
+    "lastLoginAt": "2026-10-25T11:39:33.967Z"
+  },
+  {
+    "id": "admin_user_keptonotieno",
+    "email": "keptonotieno@gmail.com",
+    "passwordHash": "35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e",
+    "salt": "b06b24e9b11bcd5c027c9cfa44e65a0f",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:14:00.000Z",
+    "lastLoginAt": "2026-10-25T11:39:33.955Z"
+  },
+  {
+    "id": "admin_default_portal",
+    "email": "admin@campusconnect.app",
+    "passwordHash": "35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e",
+    "salt": "b06b24e9b11bcd5c027c9cfa44e65a0f",
+    "role": "Admin",
+    "createdAt": "2026-10-21T08:14:00.000Z",
+    "lastLoginAt": "2026-10-25T11:30:00.000Z"
   }
 ]

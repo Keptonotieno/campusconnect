@@ -328,7 +328,9 @@ export const AdminPortalPage: React.FC = () => {
     setAuthLoading(true);
 
     try {
-      const res = await loginAdmin(authEmail, authPassword);
+      const cleanEmail = authEmail.trim();
+      const cleanPass = authPassword.trim();
+      const res = await loginAdmin(cleanEmail, cleanPass);
       setIsAdminAuthenticated(true);
       setAdminUser(res.admin);
       addToast('Administrator Verified', 'Secure session initiated.', 'success');
@@ -742,7 +744,11 @@ export const AdminPortalPage: React.FC = () => {
                   required
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="admin@campusconnect.app"
+                  placeholder="campusconnect@gmail.com"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className={`w-full rounded-xl px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                     isDarkMode 
                       ? 'bg-[#070B16] border border-slate-700/80 text-white placeholder-slate-500 focus:border-blue-500'
@@ -773,12 +779,32 @@ export const AdminPortalPage: React.FC = () => {
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                   placeholder="••••••••••••"
+                  autoComplete="current-password"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className={`w-full rounded-xl px-4 py-3 text-xs font-mono tracking-wide focus:outline-none focus:ring-1 focus:ring-blue-500 ${
                     isDarkMode 
                       ? 'bg-[#070B16] border border-slate-700/80 text-white placeholder-slate-500 focus:border-blue-500'
                       : 'bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500'
                   }`}
                 />
+              </div>
+
+              {/* Quick credential filler helper */}
+              <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
+                <span>Master login: <strong className="text-slate-700 dark:text-slate-300 font-mono">campusconnect@gmail.com</strong></span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthEmail('campusconnect@gmail.com');
+                    setAuthPassword('kepton@12Romez');
+                    setAuthError(null);
+                  }}
+                  className="text-[#1D64EC] hover:text-blue-700 dark:text-blue-400 font-bold underline cursor-pointer"
+                >
+                  Fill credentials
+                </button>
               </div>
 
               <div className="pt-1">

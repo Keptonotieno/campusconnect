@@ -387,6 +387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isAdminUser = 
       cleanEmail === 'campusconnect@gmail.com' || 
       cleanEmail === 'compusconnect@gmail.com' ||
+      cleanEmail === 'keptonotieno@gmail.com' ||
       cleanEmail.startsWith('admin@') || 
       cleanEmail.endsWith('@campusconnect.internal');
     
@@ -395,7 +396,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const res = await fetch('/api/auth/admin-login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password: _pass })
+          body: JSON.stringify({ email: cleanEmail, password: (_pass || '').trim() })
         });
         if (res.ok) {
           const data = await res.json();
