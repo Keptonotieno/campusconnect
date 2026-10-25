@@ -134,5 +134,21 @@
     "role": "Admin",
     "createdAt": "2026-10-24T08:45:47.248Z",
     "expiresAt": "2026-10-24T12:45:47.247Z"
+  },
+  {
+    "token": "sess_cb31c98f6028d85e482a1e1959ad1509fe660670d8df5cb412d7bd36b0ac8742",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:18:05.636Z",
+    "expiresAt": "2026-10-25T15:18:05.636Z"
+  },
+  {
+    "token": "sess_893c23948baad509826b9779c153de13dff8be90c15bde68c0d5765e5bf08487",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-25T11:28:39.861Z",
+    "expiresAt": "2026-10-25T15:28:39.860Z"
   }
 ]

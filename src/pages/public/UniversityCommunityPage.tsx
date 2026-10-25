@@ -65,8 +65,6 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
 
   // Page View Mode: 'LANDING' or 'BUILDER'
   const [pageView, setPageView] = useState<'LANDING' | 'BUILDER'>('LANDING');
-  const [showCampusSwitcher, setShowCampusSwitcher] = useState(false);
-  const [campusSearchQuery, setCampusSearchQuery] = useState('');
 
   // Builder multi-step state: 1 (Upload/Profile) -> 2 (Details) -> 3 (Preview & Pay) -> 'SUCCESS'
   const [builderStep, setBuilderStep] = useState<1 | 2 | 3 | 'SUCCESS'>(1);
@@ -442,14 +440,9 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
               </span>
               <span className="hidden sm:inline text-slate-500">• {university.name} Class of {university.classYear || '2031'}</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowCampusSwitcher(true)}
-              className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold underline flex items-center gap-1 cursor-pointer shrink-0"
-            >
-              <span>Switch university</span>
-              <ChevronDown className="w-3 h-3" />
-            </button>
+            <div className="text-[11px] text-slate-400 font-mono">
+              {university.slug}
+            </div>
           </div>
         </div>
 
@@ -1655,14 +1648,9 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
             </span>
             <span className="hidden sm:inline text-slate-500">• {university.name} Class of {university.classYear || '2031'}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowCampusSwitcher(true)}
-            className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold underline flex items-center gap-1 cursor-pointer shrink-0"
-          >
-            <span>Switch university</span>
-            <ChevronDown className="w-3 h-3" />
-          </button>
+          <div className="text-[11px] text-slate-400 font-mono">
+            {university.slug}
+          </div>
         </div>
       </div>
 

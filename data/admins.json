@@ -2,8 +2,8 @@
   {
     "id": "admin_primary_compusconnect",
     "email": "compusconnect@gmail.com",
-    "passwordHash": "fc610a1bab3dc39073567090e2a9d690126232f163982e211e56c6bdfb75d682e75e80fb6790f50e664b85318e9e6eef545873e0e4819ccfa514d291e56124f3",
-    "salt": "4a2bebfe87a05bff37ed18d9a2c2e4ea",
+    "passwordHash": "35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e",
+    "salt": "b06b24e9b11bcd5c027c9cfa44e65a0f",
     "role": "Admin",
     "createdAt": "2026-10-21T08:14:00.000Z",
     "lastLoginAt": "2026-10-24T08:45:47.247Z"
@@ -11,10 +11,10 @@
   {
     "id": "admin_secondary_campusconnect",
     "email": "campusconnect@gmail.com",
-    "passwordHash": "fc610a1bab3dc39073567090e2a9d690126232f163982e211e56c6bdfb75d682e75e80fb6790f50e664b85318e9e6eef545873e0e4819ccfa514d291e56124f3",
-    "salt": "4a2bebfe87a05bff37ed18d9a2c2e4ea",
+    "passwordHash": "35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e",
+    "salt": "b06b24e9b11bcd5c027c9cfa44e65a0f",
     "role": "Admin",
     "createdAt": "2026-10-21T08:14:00.000Z",
-    "lastLoginAt": "2026-10-24T08:00:00.000Z"
+    "lastLoginAt": "2026-10-25T11:28:39.860Z"
   }
 ]

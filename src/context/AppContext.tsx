@@ -384,7 +384,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanEmail = email.trim().toLowerCase();
     
     // Check if logging in as admin
-    const isAdminUser = cleanEmail.startsWith('admin@') || cleanEmail.endsWith('@campusconnect.internal');
+    const isAdminUser = 
+      cleanEmail === 'campusconnect@gmail.com' || 
+      cleanEmail === 'compusconnect@gmail.com' ||
+      cleanEmail.startsWith('admin@') || 
+      cleanEmail.endsWith('@campusconnect.internal');
+    
+    if (isAdminUser) {
+      try {
+        const res = await fetch('/api/auth/admin-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail, password: _pass })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            localStorage.setItem('campusconnect_admin_token', data.token);
+            localStorage.setItem('campusconnect_admin_user', JSON.stringify(data.admin));
+          }
+        }
+      } catch (err) {
+        console.warn('Admin backend login attempt:', err);
+      }
+    }
     
     const displayName = cleanEmail.split('@')[0]
       .split(/[._-]/)
@@ -427,7 +450,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isAdminUser) {
       navigateTo('/admin');
     } else {
-      navigateTo(`/university/${associatedUni.slug}`);
+      navigateTo('/app/dashboard');
     }
     return true;
   };
@@ -435,6 +458,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const register = async (name: string, email: string, _pass: string, universitySlug?: string): Promise<boolean> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
+    const isAdminUser = 
+      cleanEmail === 'campusconnect@gmail.com' || 
+      cleanEmail === 'compusconnect@gmail.com' ||
+      cleanEmail.startsWith('admin@');
 
     // Resolve target university
     const targetUni = (universitySlug ? findUniversityBySlug(universitySlug) : null) || 
@@ -446,14 +473,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: 'usr_' + Date.now(),
       name: cleanName,
       email: cleanEmail,
-      role: cleanEmail.startsWith('admin@') ? 'Admin' : 'Student',
+      role: isAdminUser ? 'Admin' : 'Student',
       avatarUrl: '',
       universityId: targetUni.id,
       universityName: targetUni.name,
       universitySlug: targetUni.slug,
       studentVerificationStatus: 'UNVERIFIED',
-      onboardingStep: 2, // Step 1 completed (account created)
-      onboardingCompleted: false,
+      onboardingStep: 2,
+      onboardingCompleted: true,
       createdAt: new Date().toISOString()
     };
 
@@ -467,8 +494,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // ignore
     }
 
-    addToast('Account Created', `Welcome to Campus Connect! Complete your ${targetUni.name} profile.`, 'success');
-    navigateTo('/app/onboarding');
+    addToast('Account Created', `Welcome to CampusConnect, ${cleanName}!`, 'success');
+    if (isAdminUser) {
+      navigateTo('/admin');
+    } else {
+      navigateTo('/app/dashboard');
+    }
     return true;
   };
 

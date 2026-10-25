@@ -13,10 +13,6 @@ import {
   ChevronDown, 
   ChevronUp, 
   Sparkles, 
-  GraduationCap, 
-  Building2, 
-  MapPin, 
-  ExternalLink,
   Instagram 
 } from 'lucide-react';
 
@@ -212,6 +208,7 @@ export const LandingPage: React.FC = () => {
 
         </div>
       </section>
+
 
       {/* 2. SECTION: EVERYTHING IN ONE DASHBOARD (Matching Screenshot 00:04 / 11:34) */}
       <section id="features" className="py-20 px-4 sm:px-6 max-w-7xl mx-auto w-full border-t border-slate-100">

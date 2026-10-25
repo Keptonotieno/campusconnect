@@ -1,5 +1,27 @@
 [
   {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_8f2353512a30",
+    "timestamp": "2026-10-25T11:28:39.861Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_5f4cb1703988",
+    "timestamp": "2026-10-25T11:18:05.637Z"
+  },
+  {
     "actorUid": "admin",
     "actorEmail": "compusconnect@gmail.com",
     "actorRole": "Admin",

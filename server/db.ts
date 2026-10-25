@@ -571,8 +571,10 @@ class Database {
   }
 
   public publishSubmissionToInstagram(id: string, postUrl: string, cleanHandle: string, actorEmail: string): FeaturedSubmission {
-    if (!this.isIntegrationConfigured('meta_instagram')) {
-      throw new Error('Meta Instagram Integration is NOT configured. Please configure your Meta App ID and Access Token in Admin Dashboard > Integrations & API Keys before publishing.');
+    const isConfigured = this.isIntegrationConfigured('meta_instagram');
+    const isDirectUrl = postUrl && postUrl.includes('instagram.com/p/');
+    if (!isConfigured && !isDirectUrl) {
+      throw new Error('Meta Instagram Integration is NOT configured. Please configure your Meta App ID and Access Token in Admin Dashboard > Integrations & API Keys, or provide an official post URL.');
     }
 
     this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);

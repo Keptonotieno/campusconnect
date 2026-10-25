@@ -39,7 +39,8 @@ export const DashboardPage: React.FC = () => {
     month: 'long'
   });
 
-  const businessName = currentUser?.name || 'Software';
+  const rawName = currentUser?.name || 'hospitality';
+  const businessName = rawName.includes(' ') ? rawName.split(' ')[0] : rawName;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6 max-w-7xl mx-auto font-sans selection:bg-blue-600 selection:text-white">
