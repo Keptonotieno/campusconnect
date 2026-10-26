@@ -255,7 +255,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [submissions, setSubmissions] = useState<FeaturedSubmission[]>(() => {
     try {
       const stored = localStorage.getItem('campusconnect_submissions');
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed: FeaturedSubmission[] = JSON.parse(stored);
+        const cleaned = parsed.filter(s => !['sub_tm_001', 'sub_sp_002', 'sub_cb_003', 'sub_test_stripe'].includes(s.id));
+        return cleaned;
+      }
     } catch {
       // ignore
     }
@@ -276,13 +280,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetch('/api/submissions')
       .then(r => r.ok ? r.json() : null)
       .then(d => {
-        if (d?.submissions && Array.isArray(d.submissions) && d.submissions.length > 0) {
-          setSubmissions(prev => {
-            const map = new Map<string, FeaturedSubmission>();
-            prev.forEach(s => map.set(s.id, s));
-            d.submissions.forEach((s: FeaturedSubmission) => map.set(s.id, s));
-            return Array.from(map.values());
-          });
+        if (d && Array.isArray(d.submissions)) {
+          setSubmissions(d.submissions);
         }
       })
       .catch(() => {});
@@ -292,7 +291,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [payments, setPayments] = useState<PaymentRecord[]>(() => {
     try {
       const stored = localStorage.getItem('campusconnect_payments');
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed: PaymentRecord[] = JSON.parse(stored);
+        const cleaned = parsed.filter(p => !['pay_tm_001', 'pay_sp_002', 'pay_cb_003', 'pay_0589034319b0'].includes(p.id));
+        return cleaned;
+      }
     } catch {
       // ignore
     }

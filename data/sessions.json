@@ -246,5 +246,13 @@
     "role": "Admin",
     "createdAt": "2026-10-25T11:39:50.801Z",
     "expiresAt": "2026-10-25T15:39:50.801Z"
+  },
+  {
+    "token": "sess_2639e6af406152ca6c2b6266524fe0f73deff890ef9758c9c8001bca3fd7ef82",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-10-26T08:17:40.465Z",
+    "expiresAt": "2026-10-26T12:17:40.465Z"
   }
 ]

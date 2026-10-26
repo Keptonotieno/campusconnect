@@ -567,9 +567,7 @@ export const AdminPortalPage: React.FC = () => {
   };
 
   // Submissions filter
-  const activeSubmissionsList = useMemo(() => {
-    return backendSubmissions.length > 0 ? backendSubmissions : submissions;
-  }, [backendSubmissions, submissions]);
+  const activeSubmissionsList = backendSubmissions;
 
   const filteredSubmissions = useMemo(() => {
     return activeSubmissionsList.filter(sub => {
@@ -791,21 +789,6 @@ export const AdminPortalPage: React.FC = () => {
                 />
               </div>
 
-              {/* Quick credential filler helper */}
-              <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
-                <span>Master login: <strong className="text-slate-700 dark:text-slate-300 font-mono">campusconnect@gmail.com</strong></span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthEmail('campusconnect@gmail.com');
-                    setAuthPassword('kepton@12Romez');
-                    setAuthError(null);
-                  }}
-                  className="text-[#1D64EC] hover:text-blue-700 dark:text-blue-400 font-bold underline cursor-pointer"
-                >
-                  Fill credentials
-                </button>
-              </div>
 
               <div className="pt-1">
                 <button
@@ -2453,7 +2436,17 @@ export const AdminPortalPage: React.FC = () => {
                 <div className={`col-span-full p-12 text-center rounded-2xl border ${
                   isDarkMode ? 'bg-[#131B2E] border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
                 }`}>
-                  No student submissions match this filter.
+                  <div className="max-w-md mx-auto space-y-2">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center mx-auto mb-3">
+                      <Instagram className="w-6 h-6" />
+                    </div>
+                    <div className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                      No student submissions received yet
+                    </div>
+                    <p className="text-xs leading-relaxed">
+                      Submissions from students via your university Instagram bio links (/ig/:slug) will appear here in real time for review and direct publishing.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
