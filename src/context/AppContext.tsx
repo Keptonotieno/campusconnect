@@ -14,6 +14,7 @@ import {
 } from '../types';
 import { VERIFIED_UNIVERSITIES, findUniversityBySlug, findUniversityById } from '../data/universities';
 import { processSubmissionPayment, FEATURED_POST_PRICE_USD } from '../lib/payment';
+import { loginAdmin, isMasterAdminEmail } from '../lib/adminApi';
 
 export interface ToastMessage {
   id: string;
@@ -385,31 +386,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Auth methods
   const login = async (email: string, _pass: string): Promise<boolean> => {
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = (_pass || '').trim();
     
     // Check if logging in as admin
-    const isAdminUser = 
-      cleanEmail === 'campusconnect@gmail.com' || 
-      cleanEmail === 'compusconnect@gmail.com' ||
-      cleanEmail === 'keptonotieno@gmail.com' ||
-      cleanEmail.startsWith('admin@') || 
-      cleanEmail.endsWith('@campusconnect.internal');
+    const isAdminUser = isMasterAdminEmail(cleanEmail);
     
     if (isAdminUser) {
       try {
-        const res = await fetch('/api/auth/admin-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password: (_pass || '').trim() })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.token) {
-            localStorage.setItem('campusconnect_admin_token', data.token);
-            localStorage.setItem('campusconnect_admin_user', JSON.stringify(data.admin));
+        const adminRes = await loginAdmin(cleanEmail, cleanPass);
+        if (adminRes.token) {
+          localStorage.setItem('campusconnect_admin_token', adminRes.token);
+          if (adminRes.admin) {
+            localStorage.setItem('campusconnect_admin_user', JSON.stringify(adminRes.admin));
           }
         }
-      } catch (err) {
-        console.warn('Admin backend login attempt:', err);
+      } catch (err: any) {
+        console.warn('Admin authentication notice:', err);
+        addToast('Admin Authentication Failed', err.message || 'Invalid administrator credentials.', 'error');
+        throw err;
       }
     }
     

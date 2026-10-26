@@ -722,9 +722,18 @@ export const AdminPortalPage: React.FC = () => {
 
           {/* Error Banner */}
           {authError && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-medium flex items-start gap-2 animate-in fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{authError}</span>
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs font-medium flex flex-col gap-2 animate-in fade-in">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="flex-1">{authError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleLoginSubmit}
+                className="self-end text-[11px] underline font-semibold hover:text-rose-600 cursor-pointer"
+              >
+                Retry Authentication
+              </button>
             </div>
           )}
 
