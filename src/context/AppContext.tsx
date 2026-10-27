@@ -132,14 +132,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [entryUniversityContext, setEntryUniversityContext] = useState<University | null>(null);
 
-  // Synchronize campuses with server database
+  // Synchronize campuses with server database safely
   const refreshCampuses = useCallback(async () => {
     try {
       const res = await fetch('/api/campuses', { headers: { 'Cache-Control': 'no-cache' } });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.campuses) && data.campuses.length > 0) {
-          setUniversities(data.campuses);
+          setUniversities(prev => {
+            if (
+              prev.length === data.campuses.length &&
+              prev.every((u, idx) => u.id === data.campuses[idx]?.id && u.updatedAt === data.campuses[idx]?.updatedAt)
+            ) {
+              return prev;
+            }
+            return data.campuses;
+          });
           try {
             localStorage.setItem('campusconnect_campuses', JSON.stringify(data.campuses));
           } catch {
@@ -209,9 +217,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (resolvedUni) {
-      setSelectedUniversity(resolvedUni);
+      const uniToSet = resolvedUni;
+      setSelectedUniversity(prev => (prev?.id === uniToSet.id ? prev : uniToSet));
       if (isInstagramEntry || !entryUniversityContext) {
-        setEntryUniversityContext(resolvedUni);
+        setEntryUniversityContext(prev => (prev?.id === uniToSet.id ? prev : uniToSet));
         try {
           localStorage.setItem('campusconnect_entry_uni', resolvedUni.slug);
         } catch {
@@ -223,7 +232,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const storedSlug = localStorage.getItem('campusconnect_entry_uni');
       if (storedSlug) {
         const found = getUniversityBySlug(storedSlug);
-        if (found) setEntryUniversityContext(found);
+        if (found) {
+          setEntryUniversityContext(prev => (prev?.id === found.id ? prev : found));
+        }
       }
     }
   }, [currentRoute, entryUniversityContext, getUniversityBySlug]);
@@ -342,11 +353,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isOAuthModalOpen, setOAuthModalOpen] = useState(false);
 
   // Navigation handlers
-  const navigateTo = (route: string) => {
+  const navigateTo = useCallback((route: string) => {
     setCurrentRoute(route);
-    window.history.pushState({}, '', route);
+    if (typeof window !== 'undefined' && window.location.pathname !== route) {
+      window.history.pushState({}, '', route);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  }, []);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -356,17 +369,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const addToast = (title: string, description?: string, type: ToastMessage['type'] = 'info') => {
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const addToast = useCallback((title: string, description?: string, type: ToastMessage['type'] = 'info') => {
     const id = 'toast_' + Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, title, description, type }]);
     setTimeout(() => {
       removeToast(id);
     }, 4500);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  }, [removeToast]);
 
   const logAudit = (action: string, targetType: AuditLogItem['targetType'], targetId: string, details?: string) => {
     const newLog: AuditLogItem = {

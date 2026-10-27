@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   ShieldCheck, 
@@ -157,8 +157,36 @@ export const AdminPortalPage: React.FC = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [publishUrls, setPublishUrls] = useState<Record<string, string>>({});
 
+  // Safe Date Formatters to prevent RangeError: Invalid time value on mobile/tablet WebKit/V8
+  const safeFormatDateTime = (val: any, fallback = '—'): string => {
+    if (!val) return fallback;
+    try {
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return fallback;
+      return d.toLocaleString();
+    } catch {
+      return fallback;
+    }
+  };
+
+  const safeFormatTime = (val: any, fallback = 'Unverified'): string => {
+    if (!val) return fallback;
+    try {
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return fallback;
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return fallback;
+    }
+  };
+
+  // Loading & Initialization Guards (Prevents duplicate fetches and runaway re-render loops)
+  const isLoadingDataRef = useRef(false);
+  const initialDataLoadedRef = useRef(false);
+
   // 1. Check Auth Status on Mount
   const verifyAuth = useCallback(async () => {
+    if (isAdminAuthenticated) return;
     setCheckingAuth(true);
     try {
       const status = await getAdminStatus();
@@ -182,7 +210,7 @@ export const AdminPortalPage: React.FC = () => {
     } finally {
       setCheckingAuth(false);
     }
-  }, []);
+  }, [isAdminAuthenticated]);
 
   useEffect(() => {
     verifyAuth();
@@ -190,7 +218,8 @@ export const AdminPortalPage: React.FC = () => {
 
   // 2. Fetch Live Admin Data when authenticated
   const loadAllAdminData = useCallback(async () => {
-    if (!isAdminAuthenticated) return;
+    if (isLoadingDataRef.current) return;
+    isLoadingDataRef.current = true;
     setLoadingData(true);
     try {
       const [ov, cp, py, ig, em, al, itg, subsData] = await Promise.all([
@@ -241,18 +270,13 @@ export const AdminPortalPage: React.FC = () => {
       if (subsData?.submissions && Array.isArray(subsData.submissions)) {
         setBackendSubmissions(subsData.submissions);
       }
-      refreshCampuses();
     } catch (err: any) {
-      if (err?.status === 401 || err?.status === 403) {
-        setIsAdminAuthenticated(false);
-        addToast('Session Expired', 'Please log in again as an administrator.', 'error');
-      } else {
-        console.error('Error fetching admin data:', err);
-      }
+      console.error('Notice fetching admin data:', err);
     } finally {
+      isLoadingDataRef.current = false;
       setLoadingData(false);
     }
-  }, [isAdminAuthenticated, refreshCampuses, addToast]);
+  }, []);
 
   const handleOpenConfigureIntegration = (integration: any) => {
     const existing = integrationsList.find(i => i.id === integration.id);
@@ -342,7 +366,8 @@ export const AdminPortalPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isAdminAuthenticated) {
+    if (isAdminAuthenticated && !initialDataLoadedRef.current) {
+      initialDataLoadedRef.current = true;
       loadAllAdminData();
     }
   }, [isAdminAuthenticated, loadAllAdminData]);
@@ -1275,7 +1300,7 @@ export const AdminPortalPage: React.FC = () => {
                             </span>
                           </span>
                           <span className="text-[10px] text-slate-400 shrink-0 ml-2">
-                            {item.verifiedAt ? new Date(item.verifiedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unverified'}
+                            {safeFormatTime(item.verifiedAt)}
                           </span>
                         </div>
 
