@@ -9,6 +9,7 @@ import { ToastContainer } from './components/common/ToastContainer';
 import { CommandPalette } from './components/common/CommandPalette';
 import { InstagramOAuthModal } from './components/common/InstagramOAuthModal';
 import { SupportWidget } from './components/common/SupportWidget';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // Public & Community Pages
 import { LandingPage } from './pages/public/LandingPage';
@@ -96,7 +97,9 @@ const AppContent: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
         <main className="flex-1">
-          <AdminPortalPage />
+          <ErrorBoundary fallbackTitle="Admin Portal Recovery">
+            <AdminPortalPage />
+          </ErrorBoundary>
         </main>
         <ToastContainer />
       </div>
