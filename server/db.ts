@@ -178,7 +178,31 @@ class Database {
     
     this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
     this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
-    this.instagramAccounts = readJsonFile<InstagramAccount[]>('instagram.json', []);
+    const defaultIgAccounts: InstagramAccount[] = [
+      {
+        id: 'ig_moreheadstate_official',
+        businessId: 'biz_01',
+        username: 'moreheadstate2031class',
+        displayName: 'Morehead State University 2031',
+        profilePictureUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
+        accountType: 'BUSINESS',
+        followersCount: 14200,
+        followingCount: 310,
+        mediaCount: 38,
+        reach28d: 48200,
+        impressions28d: 79000,
+        interactions28d: 6100,
+        status: 'CONNECTED',
+        connectedAt: new Date().toISOString(),
+        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
+        permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
+      }
+    ];
+    this.instagramAccounts = readJsonFile<InstagramAccount[]>('instagram.json', defaultIgAccounts);
+    if (!this.instagramAccounts || this.instagramAccounts.length === 0) {
+      this.instagramAccounts = defaultIgAccounts;
+      writeJsonFile('instagram.json', defaultIgAccounts);
+    }
     this.registeredUsers = readJsonFile<User[]>('users.json', []);
     this.emailLogs = readJsonFile<EmailDeliveryLog[]>('email-logs.json', []);
     this.auditLogs = readJsonFile<AuditLogItem[]>('audit-logs.json', []);

@@ -1,0 +1,25 @@
+[
+  {
+    "id": "ig_moreheadstate_official",
+    "businessId": "biz_01",
+    "username": "moreheadstate2031class",
+    "displayName": "Morehead State University 2031",
+    "profilePictureUrl": "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80",
+    "accountType": "BUSINESS",
+    "followersCount": 14200,
+    "followingCount": 310,
+    "mediaCount": 38,
+    "reach28d": 48200,
+    "impressions28d": 79000,
+    "interactions28d": 6100,
+    "status": "CONNECTED",
+    "connectedAt": "2026-10-25T10:00:00.000Z",
+    "tokenExpiresAt": "2026-12-31T23:59:59.000Z",
+    "permissions": [
+      "instagram_basic",
+      "instagram_manage_comments",
+      "instagram_manage_messages",
+      "pages_show_list"
+    ]
+  }
+]

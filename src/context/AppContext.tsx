@@ -832,38 +832,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Compatibility state & handlers for Instagram workspace
   const [isMobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
+  const [accounts, setAccounts] = useState<InstagramAccount[]>(() => {
+    try {
+      const stored = localStorage.getItem('campusconnect_instagram_accounts');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+    // Default active connected official account matching verified campus
+    return [
+      {
+        id: 'ig_moreheadstate_official',
+        businessId: 'biz_01',
+        username: 'moreheadstate2031class',
+        displayName: 'Morehead State University 2031',
+        profilePictureUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
+        accountType: 'BUSINESS',
+        followersCount: 14200,
+        followingCount: 310,
+        mediaCount: 38,
+        reach28d: 48200,
+        impressions28d: 79000,
+        interactions28d: 6100,
+        status: 'CONNECTED',
+        connectedAt: new Date().toISOString(),
+        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
+        permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
+      }
+    ];
+  });
+
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
 
+  // Synchronize accounts to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('campusconnect_instagram_accounts', JSON.stringify(accounts));
+    } catch {}
+  }, [accounts]);
+
   const connectAccount = (data: Partial<InstagramAccount>) => {
-    const handle = (data.username || 'brand').replace(/^@/, '');
+    const handle = (data.username || 'moreheadstate2031class').replace(/^@/, '');
     const title = data.displayName || handle.charAt(0).toUpperCase() + handle.slice(1);
     const newAccount: InstagramAccount = {
       id: 'ig_' + Date.now(),
       businessId: 'biz_01',
       username: handle,
       displayName: title,
-      profilePictureUrl: data.profilePictureUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+      profilePictureUrl: data.profilePictureUrl || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
       accountType: data.accountType || 'BUSINESS',
-      followersCount: data.followersCount || 12400,
+      followersCount: data.followersCount || 14200,
       followingCount: 310,
-      mediaCount: data.mediaCount || 248,
+      mediaCount: data.mediaCount || 38,
       reach28d: data.reach28d || 48200,
       impressions28d: data.impressions28d || 79000,
-      interactions28d: data.interactions28d || 9800,
+      interactions28d: data.interactions28d || 6100,
       status: 'CONNECTED',
       connectedAt: new Date().toISOString(),
       tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
       permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
     };
-    setAccounts(prev => [newAccount, ...prev.filter(a => a.username !== handle)]);
+    setAccounts(prev => {
+      const updated = [newAccount, ...prev.filter(a => a.username !== handle)];
+      try {
+        localStorage.setItem('campusconnect_instagram_accounts', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     setSelectedAccountId(newAccount.id);
-    addToast('Instagram Connected', `@${handle} connected to dashboard.`, 'success');
+    addToast('Instagram Connected', `@${handle} connected successfully!`, 'success');
   };
 
   const disconnectAccount = (id: string) => {
-    setAccounts(prev => prev.filter(a => a.id !== id));
+    setAccounts(prev => {
+      const updated = prev.filter(a => a.id !== id);
+      try {
+        localStorage.setItem('campusconnect_instagram_accounts', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     addToast('Account Disconnected', 'Instagram account has been disconnected.', 'info');
   };
 

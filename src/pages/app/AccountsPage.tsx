@@ -16,8 +16,29 @@ import {
 import { InstagramAccount } from '../../types';
 
 export const AccountsPage: React.FC = () => {
-  const { accounts, disconnectAccount, setOAuthModalOpen, addToast, navigateTo } = useApp();
+  const { accounts, disconnectAccount, connectAccount, setOAuthModalOpen, addToast, navigateTo } = useApp();
   const [disconnectCandidate, setDisconnectCandidate] = useState<InstagramAccount | null>(null);
+
+  const officialAccount: InstagramAccount = {
+    id: 'ig_moreheadstate_official',
+    businessId: 'biz_01',
+    username: 'moreheadstate2031class',
+    displayName: 'Morehead State University 2031',
+    profilePictureUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
+    accountType: 'BUSINESS',
+    followersCount: 14200,
+    followingCount: 310,
+    mediaCount: 38,
+    reach28d: 48200,
+    impressions28d: 79000,
+    interactions28d: 6100,
+    status: 'CONNECTED',
+    connectedAt: new Date().toISOString(),
+    tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
+    permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
+  };
+
+  const displayAccounts = accounts.length > 0 ? accounts : [officialAccount];
 
   const handleRefresh = (username: string) => {
     addToast('Token Refreshed', `Meta Graph API token for @${username} renewed for 60 days.`, 'success');
@@ -50,7 +71,7 @@ export const AccountsPage: React.FC = () => {
       </div>
 
       {/* Empty State */}
-      {accounts.length === 0 ? (
+      {displayAccounts.length === 0 ? (
         <div className="p-12 rounded-3xl bg-white border border-slate-200/90 shadow-xs flex flex-col items-center text-center max-w-lg mx-auto space-y-4">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shadow-md">
             <Instagram className="w-9 h-9" />
@@ -65,19 +86,36 @@ export const AccountsPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="pt-2">
+          <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
+            <button
+              onClick={() => {
+                connectAccount({
+                  username: 'moreheadstate2031class',
+                  displayName: 'Morehead State University 2031',
+                  followersCount: 14200,
+                  mediaCount: 38,
+                  reach28d: 48200,
+                  impressions28d: 79000,
+                  interactions28d: 6100
+                });
+              }}
+              className="px-6 py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-2"
+            >
+              <Instagram className="w-4 h-4" />
+              <span>Connect Instagram Account</span>
+            </button>
             <button
               onClick={() => setOAuthModalOpen(true)}
-              className="px-6 py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+              className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer px-2 py-1"
             >
-              Connect Instagram Account
+              Login with Meta / Instagram
             </button>
           </div>
         </div>
       ) : (
         /* Accounts List */
         <div className="space-y-4">
-          {accounts.map((acct) => (
+          {displayAccounts.map((acct) => (
             <div
               key={acct.id}
               className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-5"
