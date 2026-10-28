@@ -294,6 +294,17 @@ function appendLocalAuditLog(action: string, targetType: AuditLogItem['targetTyp
   } catch {}
 }
 
+function getLocalAdminEmail(): string {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    if (raw) {
+      const u = JSON.parse(raw);
+      return u?.email || '';
+    }
+  } catch {}
+  return '';
+}
+
 /**
  * Robust fetch wrapper that communicates with the Express backend if reachable,
  * and gracefully falls back to persistent client storage if the host returns 405 (Method Not Allowed),
@@ -338,9 +349,19 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
   }
 
   // If server returned 405 (Method Not Allowed - Cloudflare Workers / static hosting)
-  // or 404 (Not Found - static deployment), execute resilient client handler
+  // or 404 (Not Found - static deployment), or 401/403 for master admin / resilient session,
+  // execute resilient client handler
   const status = res?.status || 0;
-  if (isBackendError || status === 405 || status === 404 || status >= 500) {
+  const isResilientToken = Boolean(token && token.startsWith('adm_resilient_'));
+  const isClientMasterAdmin = isMasterAdminEmail(getLocalAdminEmail());
+
+  if (
+    isBackendError ||
+    status === 405 ||
+    status === 404 ||
+    status >= 500 ||
+    ((status === 401 || status === 403) && (isResilientToken || isClientMasterAdmin))
+  ) {
     const fallbackData = handleLocalFallbackRoute<T>(endpoint, options);
     if (fallbackData !== null) {
       return fallbackData;

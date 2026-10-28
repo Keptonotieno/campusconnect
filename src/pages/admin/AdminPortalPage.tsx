@@ -271,7 +271,12 @@ export const AdminPortalPage: React.FC = () => {
         setBackendSubmissions(subsData.submissions);
       }
     } catch (err: any) {
-      console.error('Notice fetching admin data:', err);
+      if (err?.status === 401 || err?.status === 403) {
+        setIsAdminAuthenticated(false);
+        setAdminUser(null);
+      } else {
+        console.warn('Notice fetching admin data:', err?.message || err);
+      }
     } finally {
       isLoadingDataRef.current = false;
       setLoadingData(false);
@@ -1765,7 +1770,7 @@ export const AdminPortalPage: React.FC = () => {
                             {p.status || 'CONFIRMED'}
                           </span>
                         </td>
-                        <td className={`px-4 py-3 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(p.verifiedAt || p.createdAt || Date.now()).toLocaleString()}</td>
+                        <td className={`px-4 py-3 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{safeFormatDateTime(p.verifiedAt || p.createdAt)}</td>
                       </tr>
                     ))}
                     {(payments || []).length === 0 && (
@@ -2087,7 +2092,7 @@ export const AdminPortalPage: React.FC = () => {
                       }`}>
                         <span>Last Verified:</span>
                         <span className="font-mono text-[10px]">
-                          {stripe.lastVerifiedAt ? new Date(stripe.lastVerifiedAt).toLocaleString() : 'Never tested'}
+                          {safeFormatDateTime(stripe.lastVerifiedAt, 'Never tested')}
                         </span>
                       </div>
 
@@ -2212,7 +2217,7 @@ export const AdminPortalPage: React.FC = () => {
                       }`}>
                         <span>Last Verified:</span>
                         <span className="font-mono text-[10px]">
-                          {email.lastVerifiedAt ? new Date(email.lastVerifiedAt).toLocaleString() : 'Never tested'}
+                          {safeFormatDateTime(email.lastVerifiedAt, 'Never tested')}
                         </span>
                       </div>
 
@@ -2337,7 +2342,7 @@ export const AdminPortalPage: React.FC = () => {
                       }`}>
                         <span>Last Verified:</span>
                         <span className="font-mono text-[10px]">
-                          {instagram.lastVerifiedAt ? new Date(instagram.lastVerifiedAt).toLocaleString() : 'Never tested'}
+                          {safeFormatDateTime(instagram.lastVerifiedAt, 'Never tested')}
                         </span>
                       </div>
 
@@ -2595,7 +2600,7 @@ export const AdminPortalPage: React.FC = () => {
                   }`}>
                     {(auditLogs || []).map(log => (
                       <tr key={log.id} className={`transition-colors ${isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-blue-50/40'}`}>
-                        <td className={`px-4 py-3 whitespace-nowrap ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(log.timestamp).toLocaleString()}</td>
+                        <td className={`px-4 py-3 whitespace-nowrap ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{safeFormatDateTime(log.timestamp)}</td>
                         <td className="px-4 py-3 font-mono font-bold text-blue-500">{log.action}</td>
                         <td className={`px-4 py-3 font-semibold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{log.actorEmail || 'system'}</td>
                         <td className="px-4 py-3">{log.actorRole}</td>
