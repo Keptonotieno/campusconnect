@@ -314,6 +314,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
+  // Save payments to local storage whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem('campusconnect_payments', JSON.stringify(payments));
+    } catch {
+      // ignore
+    }
+  }, [payments]);
+
   // 5. Audit Logs
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(() => {
     try {
@@ -324,6 +333,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return [];
   });
+
+  // Save audit logs to local storage
+  useEffect(() => {
+    try {
+      localStorage.setItem('campusconnect_audit_logs', JSON.stringify(auditLogs));
+    } catch {
+      // ignore
+    }
+  }, [auditLogs]);
 
   // 6. Notifications
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
@@ -345,6 +363,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     ];
   });
+
+  // Save notifications to local storage
+  useEffect(() => {
+    try {
+      localStorage.setItem('campusconnect_notifications', JSON.stringify(notifications));
+    } catch {
+      // ignore
+    }
+  }, [notifications]);
 
   // UI state
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -501,6 +528,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       localStorage.setItem('campusconnect_auth', 'true');
       localStorage.setItem('campusconnect_user', JSON.stringify(newUser));
+    } catch {
+      // ignore
+    }
+
+    try {
+      fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUser)
+      }).catch(() => {});
     } catch {
       // ignore
     }

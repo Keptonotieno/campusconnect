@@ -294,6 +294,12 @@ app.get('/api/admin/audit-logs', requireAdminAuth, (_req: AuthenticatedAdminRequ
   return res.json({ logs });
 });
 
+// Registered Users Management
+app.get('/api/admin/users', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
+  const users = dbInstance.getRegisteredUsers();
+  return res.json({ users, count: users.length });
+});
+
 // -----------------------------------------------------------------------------
 // PRODUCTION INTEGRATIONS & API KEYS ENDPOINTS
 // -----------------------------------------------------------------------------
@@ -388,6 +394,16 @@ app.post('/api/submissions', (req: Request, res: Response) => {
     return res.status(201).json({ success: true, submission });
   } catch (err: any) {
     return res.status(400).json({ error: 'SubmissionSaveFailed', message: err.message });
+  }
+});
+
+// Student User Registration
+app.post('/api/users/register', (req: Request, res: Response) => {
+  try {
+    const user = dbInstance.registerUser(req.body);
+    return res.status(201).json({ success: true, user });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'UserRegistrationFailed', message: err.message });
   }
 });
 
