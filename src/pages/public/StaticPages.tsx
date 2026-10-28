@@ -121,3 +121,49 @@ export const ForgotPasswordPage: React.FC = () => {
     </div>
   );
 };
+
+export const DataDeletionPage: React.FC = () => {
+  const { navigateTo } = useApp();
+  return (
+    <div className="py-16 px-6 max-w-3xl mx-auto space-y-6 font-sans">
+      <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Data Deletion Instructions</h1>
+      <p className="text-xs text-slate-400">Effective Date: October 2026</p>
+
+      <div className="p-8 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-5 text-xs text-slate-600 leading-relaxed">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 mb-1">User Data Deletion Policy</h3>
+          <p>
+            igposthub respects your privacy and complies with Meta Platform Data Deletion requirements. You have full ownership of your data and can request deletion at any time.
+          </p>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 mb-1">Method 1: Instant Self-Service Deletion via Dashboard</h3>
+          <ol className="list-decimal list-inside space-y-1.5 text-slate-600 pl-2">
+            <li>Log into your account at <button onClick={() => navigateTo('/login')} className="text-[#1D64EC] underline font-medium">igposthub Login</button>.</li>
+            <li>Navigate to <strong>Settings → Account & Connected Profiles</strong>.</li>
+            <li>Click <strong>Disconnect Instagram</strong> to immediately revoke Meta tokens and erase cached profile data.</li>
+            <li>To delete your entire profile and student submission history, click <strong>Delete Account & Workspace</strong>.</li>
+          </ol>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 mb-1">Method 2: Deletion via Meta / Instagram App</h3>
+          <ol className="list-decimal list-inside space-y-1.5 text-slate-600 pl-2">
+            <li>Open the Instagram app or visit instagram.com.</li>
+            <li>Go to <strong>Settings → Security → Apps and Websites</strong>.</li>
+            <li>Find <strong>igposthub</strong> in your Active apps list.</li>
+            <li>Click <strong>Remove</strong>. Instagram will notify our webhook to automatically purge your associated tokens and data.</li>
+          </ol>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 mb-1">Method 3: Direct Email Request</h3>
+          <p>
+            You may also request complete data eradication by emailing our compliance team at <span className="font-mono text-slate-800">support@igposthub.com</span> with your username or registered email. All user records will be permanently removed within 24–48 hours.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};

@@ -65,13 +65,13 @@ export const LandingPage: React.FC = () => {
 
             {/* Headline */}
             <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-extrabold tracking-tight text-slate-950 leading-[1.12]">
-              Run your campus &<br />
+              Run your<br />
               <span className="text-[#1D64EC]">Instagram from one place.</span>
             </h1>
 
             {/* Subtitle */}
             <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-xl font-normal">
-              CampusConnect unites student communities at top abroad universities (Harvard, Oxford, Miami, Stanford and more) with unified Instagram management.
+              Unite student communities, creators, and businesses with unified Instagram management, direct messaging, comments, and engagement in one place.
             </p>
 
             {/* CTA Buttons */}
@@ -473,34 +473,6 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
       </section>
-
-      {/* 7. FOOTER (matching Screenshot 00:00 / 11:34) */}
-      <footer className="mt-auto border-t border-slate-200/80 bg-white py-10 px-4 sm:px-6 font-sans">
-        <div className="max-w-7xl mx-auto flex flex-col items-center justify-center space-y-4 text-center">
-          
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-lg bg-[#1D64EC] flex items-center justify-center text-white">
-              <Instagram className="w-3 h-3" />
-            </div>
-            <span className="text-sm font-bold text-slate-900">
-              campus<span className="text-[#1D64EC]">connect</span>
-            </span>
-            <span className="text-xs text-slate-400 font-medium">global university & creator network</span>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 font-medium">
-            <button onClick={() => navigateTo('/terms')} className="hover:text-slate-900 cursor-pointer">Terms</button>
-            <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-900 cursor-pointer">Privacy</button>
-            <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-900 cursor-pointer">Data deletion</button>
-            <button onClick={() => navigateTo('/')} className="hover:text-slate-900 cursor-pointer">Campus Network</button>
-          </div>
-
-          <div className="text-[11px] text-slate-400 max-w-lg leading-relaxed">
-            Not affiliated with or endorsed by Instagram or Meta. © 2026 CampusConnect. All rights reserved.
-          </div>
-
-        </div>
-      </footer>
 
     </div>
   );

@@ -37,6 +37,7 @@ import { University, FeaturedSubmission } from '../../types';
 import { ACADEMIC_MAJORS } from '../../data/majors';
 import { generateWatermarkedDerivative } from '../../lib/watermark';
 import { FEATURED_POST_PRICE_USD } from '../../lib/payment';
+import { Footer } from '../../components/layout/Footer';
 
 interface UniversityCommunityPageProps {
   university: University;
@@ -2197,32 +2198,8 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
         </section>
       )}
 
-      {/* ------------------------------------------------------------------- */}
-      {/* 9. FOOTER (EXACT LAYOUT FROM VIDEO)                                */}
-      {/* ------------------------------------------------------------------- */}
-      <footer className="border-t border-slate-100 bg-white py-8 text-xs text-slate-400">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          
-          <div className="font-mono text-slate-600">
-            {university.instagramHandle}
-          </div>
-
-          <div className="flex items-center gap-4 text-[11px]">
-            <button onClick={() => navigateTo('/terms')} className="hover:text-slate-800 transition-colors cursor-pointer">
-              Terms
-            </button>
-            <span>•</span>
-            <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-800 transition-colors cursor-pointer">
-              Privacy
-            </button>
-            <span>•</span>
-            <span>Payments secured by Stripe</span>
-            <span>•</span>
-            <span>© 2026</span>
-          </div>
-
-        </div>
-      </footer>
+      {/* Global Image 1 Footer */}
+      <Footer />
 
     </div>
   );

@@ -17,7 +17,8 @@ import { UniversityCommunityPage } from './pages/public/UniversityCommunityPage'
 import { 
   TermsPage, 
   PrivacyPage, 
-  ForgotPasswordPage 
+  ForgotPasswordPage,
+  DataDeletionPage 
 } from './pages/public/StaticPages';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
@@ -59,7 +60,7 @@ const AppContent: React.FC = () => {
       return undefined;
     }
     const cleanPath = currentRoute.replace(/^\//, '').split('/')[0].split('?')[0];
-    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'forgot-password', 'app'];
+    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'app'];
     if (reservedRoutes.includes(cleanPath)) return undefined;
     return getUniversityBySlug(cleanPath);
   })();
@@ -187,6 +188,7 @@ const AppContent: React.FC = () => {
 
   if (currentRoute === '/terms') PublicComponent = TermsPage;
   else if (currentRoute === '/privacy') PublicComponent = PrivacyPage;
+  else if (currentRoute === '/data-deletion') PublicComponent = DataDeletionPage;
   else if (currentRoute === '/login' || currentRoute === '/business/login') PublicComponent = LoginPage;
   else if (currentRoute === '/register' || currentRoute === '/business/register') PublicComponent = RegisterPage;
   else if (currentRoute === '/forgot-password') PublicComponent = ForgotPasswordPage;

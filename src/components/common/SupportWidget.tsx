@@ -228,29 +228,23 @@ export const SupportWidget: React.FC = () => {
         aria-label="Toggle support chat"
         title={isOpen ? 'Close support chat' : 'Open support chat'}
       >
-        {/* The circular icon container */}
-        <div className="w-12 h-12 rounded-full bg-[#8A5016] shadow-lg flex items-center justify-center border-2 border-white ring-2 ring-amber-400/30 group-hover:scale-105 transition-transform">
+        {/* The circular icon container matching Image 1 */}
+        <div className="w-12 h-12 rounded-full bg-[#8A5016] shadow-lg flex items-center justify-center border-2 border-white ring-2 ring-amber-500/20 group-hover:scale-105 transition-transform">
           <div className="w-10 h-10 rounded-full bg-[#9E5D1D] flex items-center justify-center text-white">
             {isOpen ? (
               <X className="w-5 h-5 text-white" />
             ) : (
-              <span className="text-lg">👋</span>
+              <svg className="w-6 h-6 fill-white" viewBox="0 0 24 24">
+                {/* Speech bubble silhouette with smile cutout */}
+                <path d="M12 3C6.48 3 2 6.94 2 11.8c0 2.8 1.48 5.29 3.79 6.87-.17 1.47-.79 2.91-1.78 3.96a.5.5 0 00.41.82c2.72 0 4.88-1.23 6.07-2.09.73.16 1.49.24 2.28.24 5.52 0 10-3.94 10-8.8S17.52 3 12 3zm0 13c-.64 0-1.27-.07-1.87-.2a.6.6 0 00-.46.09c-.93.64-2.48 1.48-4.32 1.74.55-.8.95-1.73 1.13-2.67a.6.6 0 00-.24-.58C4.54 13.06 3.4 11.02 3.4 8.8 3.4 5.04 7.25 2 12 2s8.6 3.04 8.6 6.8-3.85 7.2-8.6 7.2zm-3.5-5.5a1.2 1.2 0 110-2.4 1.2 1.2 0 010 2.4zm7 0a1.2 1.2 0 110-2.4 1.2 1.2 0 010 2.4zm-5.8 2.2a.6.6 0 01.84-.1c.9.72 2.08.72 2.92 0a.6.6 0 11.76.92 4.1 4.1 0 01-4.42 0 .6.6 0 01-.1-.82z" />
+              </svg>
             )}
           </div>
         </div>
 
-        {/* The arched 'We Are Here!' badge sticker (only shown when closed) */}
+        {/* The red notification badge matching Image 1 */}
         {!isOpen && (
-          <div className="absolute -top-6 -left-12 pointer-events-none select-none">
-            <div className="bg-[#E0F2FE] text-[#0284C7] font-extrabold text-[10px] px-2 py-0.5 rounded-full border border-[#BAE6FD] shadow-xs transform -rotate-12 flex items-center gap-0.5">
-              <span>We Are Here!</span>
-            </div>
-          </div>
-        )}
-
-        {/* The red notification badge */}
-        {!isOpen && (
-          <span className="absolute top-0 right-0 w-4 h-4 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white">
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
             1
           </span>
         )}
