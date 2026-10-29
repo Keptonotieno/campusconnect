@@ -351,17 +351,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore
     }
-    return [
-      {
-        id: 'notif_welcome',
-        recipientUid: 'all',
-        type: 'SYSTEM',
-        title: 'Welcome to Campus Connect',
-        message: 'Discover fellow students, join university communities, and submit your profile to get featured on official Instagram accounts.',
-        read: false,
-        createdAt: 'Just now'
-      }
-    ];
+    return [];
   });
 
   // Save notifications to local storage
@@ -460,17 +450,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: displayName,
       email: cleanEmail,
       role: isAdminUser ? 'Admin' : 'Student',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+      avatarUrl: '',
       universityId: associatedUni.id,
       universityName: associatedUni.name,
       universitySlug: associatedUni.slug,
-      course: 'Bachelor of Science',
-      graduationYear: '2027',
-      bio: 'Enthusiastic university student eager to connect with fellow campus peers.',
-      interests: ['Campus Life', 'Tech', 'Music', 'Sports'],
+      course: '',
+      graduationYear: '',
+      bio: '',
+      interests: [],
       studentVerificationStatus: 'UNVERIFIED',
-      onboardingStep: 2,
-      onboardingCompleted: true
+      onboardingStep: 0,
+      onboardingCompleted: false
     };
 
     setIsAuthenticated(true);
@@ -507,6 +497,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       selectedUniversity || 
                       VERIFIED_UNIVERSITIES[0];
 
+    // Wipe any legacy/prior session records so new user finds 100% clean state
+    try {
+      localStorage.removeItem('campusconnect_instagram_accounts');
+      localStorage.removeItem('campusconnect_notifications');
+      localStorage.removeItem('campusconnect_submissions');
+      localStorage.removeItem('campusconnect_payments');
+      localStorage.removeItem('campusconnect_audit_logs');
+    } catch {}
+
+    setAccounts([]);
+    setNotifications([]);
+    setSubmissions([]);
+    setPayments([]);
+    setAuditLogs([]);
+
     const newUser: User = {
       id: 'usr_' + Date.now(),
       name: cleanName,
@@ -516,9 +521,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       universityId: targetUni.id,
       universityName: targetUni.name,
       universitySlug: targetUni.slug,
+      course: '',
+      graduationYear: '',
+      bio: '',
+      interests: [],
       studentVerificationStatus: 'UNVERIFIED',
-      onboardingStep: 2,
-      onboardingCompleted: true,
+      onboardingStep: 0,
+      onboardingCompleted: false,
       createdAt: new Date().toISOString()
     };
 
@@ -554,9 +563,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
+    setAccounts([]);
+    setNotifications([]);
     try {
       localStorage.removeItem('campusconnect_auth');
       localStorage.removeItem('campusconnect_user');
+      localStorage.removeItem('campusconnect_instagram_accounts');
+      localStorage.removeItem('campusconnect_notifications');
     } catch {
       // ignore
     }
@@ -887,32 +900,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const stored = localStorage.getItem('campusconnect_instagram_accounts');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(a => a.id !== 'ig_moreheadstate_official');
         }
       }
     } catch {}
-    // Default active connected official account matching verified campus
-    return [
-      {
-        id: 'ig_moreheadstate_official',
-        businessId: 'biz_01',
-        username: 'moreheadstate2031class',
-        displayName: 'Morehead State University 2031',
-        profilePictureUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
-        accountType: 'BUSINESS',
-        followersCount: 14200,
-        followingCount: 310,
-        mediaCount: 38,
-        reach28d: 48200,
-        impressions28d: 79000,
-        interactions28d: 6100,
-        status: 'CONNECTED',
-        connectedAt: new Date().toISOString(),
-        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
-        permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
-      }
-    ];
+    return [];
   });
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
@@ -926,35 +919,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [accounts]);
 
   const connectAccount = (data: Partial<InstagramAccount>) => {
-    const handle = (data.username || 'moreheadstate2031class').replace(/^@/, '');
+    const handle = (data.username || 'instagram_account').replace(/^@/, '');
     const title = data.displayName || handle.charAt(0).toUpperCase() + handle.slice(1);
     const newAccount: InstagramAccount = {
       id: 'ig_' + Date.now(),
-      businessId: 'biz_01',
+      businessId: 'biz_' + Date.now(),
       username: handle,
       displayName: title,
       profilePictureUrl: data.profilePictureUrl || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
       accountType: data.accountType || 'BUSINESS',
-      followersCount: data.followersCount || 14200,
-      followingCount: 310,
-      mediaCount: data.mediaCount || 38,
-      reach28d: data.reach28d || 48200,
-      impressions28d: data.impressions28d || 79000,
-      interactions28d: data.interactions28d || 6100,
+      followersCount: data.followersCount || 0,
+      followingCount: data.followingCount || 0,
+      mediaCount: data.mediaCount || 0,
+      reach28d: data.reach28d || 0,
+      impressions28d: data.impressions28d || 0,
+      interactions28d: data.interactions28d || 0,
       status: 'CONNECTED',
       connectedAt: new Date().toISOString(),
       tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
       permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
     };
     setAccounts(prev => {
-      const updated = [newAccount, ...prev.filter(a => a.username !== handle)];
+      const updated = [newAccount, ...prev.filter(a => a.username !== handle && a.id !== 'ig_moreheadstate_official')];
       try {
         localStorage.setItem('campusconnect_instagram_accounts', JSON.stringify(updated));
       } catch {}
       return updated;
     });
     setSelectedAccountId(newAccount.id);
-    addToast('Instagram Connected', `@${handle} connected successfully!`, 'success');
+    addToast('Account Connected', `@${handle} connected via Meta Graph API`, 'success');
   };
 
   const disconnectAccount = (id: string) => {

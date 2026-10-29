@@ -16,14 +16,14 @@ import {
 export const OnboardingPage: React.FC = () => {
   const { currentUser, universities, completeOnboarding, navigateTo } = useApp();
 
-  const [course, setCourse] = useState(currentUser?.course || 'Bachelor of Science in Computer Science');
-  const [graduationYear, setGraduationYear] = useState(currentUser?.graduationYear || '2027');
-  const [bio, setBio] = useState(
-    currentUser?.bio || 'Hey! Freshman at campus excited to meet fellow classmates, study together, and attend university events.'
-  );
-  const [interestsInput, setInterestsInput] = useState('Tech, Coding, Hiking, Music, Basketball');
+  const [course, setCourse] = useState(currentUser?.course || '');
+  const [graduationYear, setGraduationYear] = useState(currentUser?.graduationYear || '2028');
+  const [bio, setBio] = useState(currentUser?.bio || '');
+  const [interestsInput, setInterestsInput] = useState(currentUser?.interests?.join(', ') || '');
   const [personalInstagram, setPersonalInstagram] = useState(currentUser?.personalInstagramHandle || '');
-  const [housingPreference, setHousingPreference] = useState<'On Campus' | 'Off Campus' | 'Looking for Roommate' | 'Not Specified'>('Looking for Roommate');
+  const [housingPreference, setHousingPreference] = useState<'On Campus' | 'Off Campus' | 'Looking for Roommate' | 'Not Specified'>(
+    (currentUser as any)?.housingPreference || 'Not Specified'
+  );
 
   const selectedUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0];
 

@@ -29,43 +29,26 @@ export const DashboardPage: React.FC = () => {
     entryUniversityContext
   } = useApp();
 
-  // Ensure official university Instagram account is connected and synced
-  React.useEffect(() => {
-    if (accounts.length === 0) {
-      const handle = entryUniversityContext?.instagramHandle?.replace('@', '') || selectedUniversity?.instagramHandle?.replace('@', '') || 'moreheadstate2031class';
-      const title = entryUniversityContext?.name || selectedUniversity?.name || 'Morehead State University 2031';
-      connectAccount({
-        username: handle,
-        displayName: title,
-        followersCount: 14200,
-        mediaCount: 38,
-        reach28d: 48200,
-        impressions28d: 79000,
-        interactions28d: 6100
-      });
-    }
-  }, [accounts.length, connectAccount, entryUniversityContext, selectedUniversity]);
+  const isConnected = accounts.length > 0;
+  const primaryAccount = accounts[0];
+  const displayAccounts = accounts;
 
-  const primaryAccount: InstagramAccount = accounts[0] || {
-    id: 'ig_moreheadstate_official',
-    businessId: 'biz_01',
-    username: entryUniversityContext?.instagramHandle?.replace('@', '') || selectedUniversity?.instagramHandle?.replace('@', '') || 'moreheadstate2031class',
-    displayName: entryUniversityContext?.name || selectedUniversity?.name || 'Morehead State University 2031',
-    followersCount: 14200,
-    mediaCount: 38,
-    reach28d: 48200,
-    impressions28d: 79000,
-    interactions28d: 6100,
-    status: 'CONNECTED',
-    profilePictureUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
-    accountType: 'BUSINESS',
-    connectedAt: new Date().toISOString(),
-    tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
-    permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
-  };
+  const totalFollowers = accounts.reduce((sum, a) => sum + (a.followersCount || 0), 0);
+  const totalReach = accounts.reduce((sum, a) => sum + (a.reach28d || 0), 0);
+  const totalInteractions = accounts.reduce((sum, a) => sum + (a.interactions28d || 0), 0);
+  const totalPosts = accounts.reduce((sum, a) => sum + (a.mediaCount || 0), 0);
 
-  const displayAccounts = accounts.length > 0 ? accounts : [primaryAccount];
-  const isConnected = true;
+  // Dynamic setup steps tracking (starts at 0 of 4 for fresh signups)
+  const isProfileCompleted = Boolean(currentUser?.onboardingCompleted || (currentUser?.course && currentUser?.bio));
+  const isInstagramConnected = accounts.length > 0;
+  const isFirstPostPublished = totalPosts > 0;
+  const isPrimaryAccountChosen = accounts.length > 0 && Boolean((accounts[0] as any).isPrimary || accounts.length > 1);
+
+  const completedStepsCount = 
+    (isProfileCompleted ? 1 : 0) + 
+    (isInstagramConnected ? 1 : 0) + 
+    (isFirstPostPublished ? 1 : 0) + 
+    (isPrimaryAccountChosen ? 1 : 0);
 
   // Dynamic greeting based on time of day
   const hour = new Date().getHours();
@@ -78,7 +61,7 @@ export const DashboardPage: React.FC = () => {
     month: 'long'
   });
 
-  const rawName = currentUser?.name || 'hospitality';
+  const rawName = currentUser?.name || 'there';
   const businessName = rawName.includes(' ') ? rawName.split(' ')[0] : rawName;
 
   return (
@@ -121,7 +104,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-3">
             <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
-              {isConnected ? primaryAccount.followersCount.toLocaleString() : '0'}
+              {isConnected ? totalFollowers.toLocaleString() : '0'}
             </div>
             <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
               {isConnected ? `across ${accounts.length} account${accounts.length > 1 ? 's' : ''}` : 'across 0 accounts'}
@@ -139,7 +122,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-3">
             <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
-              {isConnected ? `${(primaryAccount.reach28d / 1000).toFixed(1)}K` : '—'}
+              {isConnected ? (totalReach > 0 ? `${(totalReach / 1000).toFixed(1)}K` : '0') : '—'}
             </div>
             <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
               last 28 days
@@ -157,7 +140,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-3">
             <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
-              {isConnected ? `${(primaryAccount.interactions28d / 1000).toFixed(1)}K` : '—'}
+              {isConnected ? (totalInteractions > 0 ? `${(totalInteractions / 1000).toFixed(1)}K` : '0') : '—'}
             </div>
             <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
               likes, comments, shares, saves
@@ -165,7 +148,7 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Posts (Matching Screenshot 11:36 with grid icon) */}
+        {/* Posts */}
         <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
             <span>Posts</span>
@@ -175,7 +158,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-3">
             <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
-              {isConnected ? (primaryAccount.mediaCount || 248) : '0'}
+              {isConnected ? totalPosts.toLocaleString() : '0'}
             </div>
             <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
               published in total
@@ -185,10 +168,10 @@ export const DashboardPage: React.FC = () => {
 
       </div>
 
-      {/* 3. MAIN SECTION: YOUR ACCOUNTS + GET SET UP CHECKLIST (Matching Screenshots 00:08, 00:10, 11:36) */}
+      {/* 3. MAIN SECTION: YOUR ACCOUNTS + GET SET UP CHECKLIST */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
         
-        {/* Left Column: Your accounts (lg:col-span-8) */}
+        {/* Left Column: Your accounts */}
         <div className="lg:col-span-8 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-2xs space-y-6">
           
           <div className="flex items-center justify-between">
@@ -202,10 +185,9 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {!isConnected ? (
-            /* EMPTY STATE: Matching Screenshot 11:36 and 00:08 */
+            /* EMPTY STATE */
             <div className="py-12 sm:py-16 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3.5">
               
-              {/* Instagram Gradient Icon */}
               <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shadow-md">
                 <Instagram className="w-9 h-9" />
               </div>
@@ -220,19 +202,7 @@ export const DashboardPage: React.FC = () => {
 
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
                 <button
-                  onClick={() => {
-                    const handle = entryUniversityContext?.instagramHandle?.replace('@', '') || selectedUniversity?.instagramHandle?.replace('@', '') || 'moreheadstate2031class';
-                    const title = entryUniversityContext?.name || selectedUniversity?.name || 'Morehead State University 2031';
-                    connectAccount({
-                      username: handle,
-                      displayName: title,
-                      followersCount: 14200,
-                      mediaCount: 38,
-                      reach28d: 48200,
-                      impressions28d: 79000,
-                      interactions28d: 6100
-                    });
-                  }}
+                  onClick={() => setOAuthModalOpen(true)}
                   className="px-6 py-3 rounded-xl bg-[#1D64EC] hover:bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-2"
                 >
                   <Instagram className="w-4 h-4" />
@@ -305,37 +275,53 @@ export const DashboardPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900">Get set up</h3>
               <span className="text-xs font-bold text-[#1D64EC]">
-                {isConnected ? '2 of 4' : '1 of 4'}
+                {completedStepsCount} of 4
               </span>
             </div>
 
             <div className="space-y-3">
               <div className="flex items-center gap-3 text-xs text-slate-700">
-                <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                  <Check className="w-3.5 h-3.5" />
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                  isProfileCompleted ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
+                }`}>
+                  {isProfileCompleted && <Check className="w-3.5 h-3.5" />}
                 </div>
-                <span className="line-through text-slate-400">Create your business</span>
+                <span className={isProfileCompleted ? 'line-through text-slate-400' : 'font-medium text-slate-700'}>
+                  Complete your business profile
+                </span>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-slate-700">
                 <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                  isConnected ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
+                  isInstagramConnected ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
                 }`}>
-                  {isConnected && <Check className="w-3.5 h-3.5" />}
+                  {isInstagramConnected && <Check className="w-3.5 h-3.5" />}
                 </div>
-                <span className={isConnected ? 'line-through text-slate-400' : 'font-medium'}>
+                <span className={isInstagramConnected ? 'line-through text-slate-400' : 'font-medium text-slate-700'}>
                   Connect an Instagram account
                 </span>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-slate-700">
-                <div className="w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center shrink-0" />
-                <span className="font-medium text-slate-600">Publish your first post</span>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                  isFirstPostPublished ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
+                }`}>
+                  {isFirstPostPublished && <Check className="w-3.5 h-3.5" />}
+                </div>
+                <span className={isFirstPostPublished ? 'line-through text-slate-400' : 'font-medium text-slate-700'}>
+                  Publish your first post
+                </span>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-slate-700">
-                <div className="w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center shrink-0" />
-                <span className="font-medium text-slate-600">Choose your primary account</span>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                  isPrimaryAccountChosen ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
+                }`}>
+                  {isPrimaryAccountChosen && <Check className="w-3.5 h-3.5" />}
+                </div>
+                <span className={isPrimaryAccountChosen ? 'line-through text-slate-400' : 'font-medium text-slate-700'}>
+                  Choose your primary account
+                </span>
               </div>
             </div>
           </div>
@@ -344,14 +330,21 @@ export const DashboardPage: React.FC = () => {
           <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-2xs space-y-3">
             <h3 className="text-sm font-bold text-slate-900">Recent activity</h3>
             <div className="space-y-3 text-xs">
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                <div className="font-semibold text-slate-800">
-                  Welcome to CampusConnect
+              {accounts.length > 0 ? (
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                  <div className="font-semibold text-slate-800">
+                    Connected @{accounts[0].username}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    Active
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-400">
-                  Just now
+              ) : (
+                <div className="p-4 rounded-2xl bg-slate-50/60 border border-slate-100 text-center space-y-1">
+                  <p className="text-xs text-slate-500 font-medium">No activity yet</p>
+                  <p className="text-[11px] text-slate-400">Your recent posts, comments, and messages will appear here once active.</p>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 

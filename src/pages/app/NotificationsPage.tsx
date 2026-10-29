@@ -20,33 +20,43 @@ export const NotificationsPage: React.FC = () => {
 
       {/* Notifications list */}
       <div className="space-y-4 max-w-3xl mx-auto">
-        {notifications.map((item) => (
-          <div
-            key={item.id}
-            className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-start justify-between gap-4"
-          >
-            <div className="flex items-start gap-4">
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
-                <Check className="w-4 h-4 stroke-[3]" />
-              </div>
-              <div className="space-y-1">
-                <div className="text-xs font-bold text-slate-950">
-                  {item.title}
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed max-w-xl">
-                  {item.message}
-                </p>
-              </div>
+        {notifications.length === 0 ? (
+          <div className="p-12 rounded-3xl bg-white border border-slate-200/90 shadow-xs text-center max-w-md mx-auto space-y-2">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#1D64EC] flex items-center justify-center mx-auto">
+              <Check className="w-5 h-5 stroke-[2.5]" />
             </div>
-
-            <div className="flex items-center gap-2 shrink-0 pt-0.5">
-              <span className="text-[11px] text-slate-400">{item.createdAt}</span>
-              {!item.read && (
-                <span className="w-2 h-2 rounded-full bg-[#1D64EC]" />
-              )}
-            </div>
+            <h3 className="text-sm font-bold text-slate-900">No notifications yet</h3>
+            <p className="text-xs text-slate-500">You're all caught up! New campus activity and Instagram alerts will appear here.</p>
           </div>
-        ))}
+        ) : (
+          notifications.map((item) => (
+            <div
+              key={item.id}
+              className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-start justify-between gap-4"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-4 h-4 stroke-[3]" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-bold text-slate-950">
+                    {item.title}
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed max-w-xl">
+                    {item.message}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                <span className="text-[11px] text-slate-400">{item.createdAt}</span>
+                {!item.read && (
+                  <span className="w-2 h-2 rounded-full bg-[#1D64EC]" />
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

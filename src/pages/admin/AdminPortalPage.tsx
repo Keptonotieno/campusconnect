@@ -141,6 +141,7 @@ export const AdminPortalPage: React.FC = () => {
   const [newCampusEnabled, setNewCampusEnabled] = useState(true);
   const [campusSaving, setCampusSaving] = useState(false);
   const [campusError, setCampusError] = useState<string | null>(null);
+  const [overviewCampusSearch, setOverviewCampusSearch] = useState('');
 
   // Email Test State
   const [testEmailRecipient, setTestEmailRecipient] = useState('');
@@ -515,7 +516,8 @@ export const AdminPortalPage: React.FC = () => {
       setShowCreateCampusModal(false);
       setEditingCampus(null);
       resetCampusForm();
-      loadAllAdminData();
+      refreshCampuses();
+      await loadAllAdminData();
     } catch (err: any) {
       setCampusError(err.message || 'Failed to save campus.');
     } finally {
@@ -683,6 +685,21 @@ export const AdminPortalPage: React.FC = () => {
       return matchesSearch && matchesFilter;
     });
   }, [campuses, campusSearch, campusStatusFilter]);
+
+  // Overview Tab Universities Filter
+  const overviewCampuses = useMemo(() => {
+    const list = Array.isArray(campuses) ? campuses : [];
+    if (!overviewCampusSearch.trim()) return list;
+    const q = overviewCampusSearch.toLowerCase().trim();
+    return list.filter(c => {
+      if (!c) return false;
+      const name = (c.name || '').toLowerCase();
+      const slug = (c.slug || '').toLowerCase();
+      const loc = (c.location || '').toLowerCase();
+      const handle = (c.instagramHandle || '').toLowerCase();
+      return name.includes(q) || slug.includes(q) || loc.includes(q) || handle.includes(q);
+    });
+  }, [campuses, overviewCampusSearch]);
 
   // ---------------------------------------------------------------------------
   // RENDER 1: AUTHENTICATION / BOOTSTRAP GATEWAY (WHEN NOT LOGGED IN)
@@ -1143,8 +1160,8 @@ export const AdminPortalPage: React.FC = () => {
               </p>
             </div>
 
-            {/* 4 Primary KPI Metric Cards (Loaded from real database) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 5 Primary KPI Metric Cards (Loaded from real database) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               
               {/* 1. Total amount paid */}
               <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
@@ -1164,7 +1181,25 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* 2. Connected Instagram accounts */}
+              {/* 2. Registered Universities & Hubs */}
+              <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
+                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
+              }`}>
+                <div className={`flex items-center justify-between text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <span>Registered Campuses</span>
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                  {(campuses || []).length}
+                </div>
+                <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold">
+                  {(campuses || []).filter(c => c?.communityEnabled).length} active community hubs
+                </div>
+              </div>
+
+              {/* 3. Connected Instagram accounts */}
               <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
                 isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
               }`}>
@@ -1182,25 +1217,25 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* 3. Registered users */}
+              {/* 4. Registered users */}
               <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
                 isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
               }`}>
                 <div className={`flex items-center justify-between text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                   <span>Registered Users</span>
-                  <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
                     <User className="w-4 h-4" />
                   </div>
                 </div>
                 <div className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                   {overviewData?.registeredUsers ?? 0}
                 </div>
-                <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold">
+                <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
                   Across registered campus profiles
                 </div>
               </div>
 
-              {/* 4. Successful payments */}
+              {/* 5. Successful payments */}
               <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
                 isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
               }`}>
@@ -1218,6 +1253,217 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               </div>
 
+            </div>
+
+            {/* Registered Universities & Campus Hubs (Immediately visible in Overview with Accessible Links) */}
+            <div className={`p-6 rounded-3xl border space-y-5 ${
+              isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-xs'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className={`text-base font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                      Registered Universities & Campus Communities
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-mono">
+                      {(campuses || []).length} Total Campuses
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      {(campuses || []).filter(c => c?.communityEnabled).length} Active Networks
+                    </span>
+                  </div>
+                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} mt-0.5`}>
+                    Every registered university is immediately available in the public routing engine with live, accessible links.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCampus(null);
+                      resetCampusForm();
+                      setShowCreateCampusModal(true);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-md transition-colors whitespace-nowrap"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Register New University</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('CAMPUSES')}
+                    className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Full Campus Manager →</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Search filter for universities on overview */}
+              <div className="relative">
+                <Search className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+                <input
+                  type="text"
+                  value={overviewCampusSearch}
+                  onChange={(e) => setOverviewCampusSearch(e.target.value)}
+                  placeholder="Search registered universities by name, slug, or location..."
+                  className={`w-full rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 border ${
+                    isDarkMode 
+                      ? 'bg-[#0A0E1A] border-slate-800 text-white placeholder-slate-500' 
+                      : 'bg-slate-50/70 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white'
+                  }`}
+                />
+              </div>
+
+              {/* Grid of registered universities with accessible live links */}
+              {overviewCampuses.length === 0 ? (
+                <div className={`p-8 rounded-2xl border text-center space-y-3 ${
+                  isDarkMode ? 'bg-[#0A0E1A] border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
+                }`}>
+                  <Building2 className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
+                  <p className="text-xs font-medium">No registered universities match your search criteria.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {overviewCampuses.map((campus) => {
+                    const canonicalUrl = `/ig/${campus.slug}`;
+                    const fullHubUrl = `/university/${campus.slug}`;
+                    const isActive = campus.communityEnabled;
+
+                    return (
+                      <div 
+                        key={campus.id}
+                        className={`rounded-2xl border overflow-hidden flex flex-col justify-between transition-all ${
+                          isDarkMode 
+                            ? 'bg-[#0F1626] border-slate-800 hover:border-slate-700' 
+                            : 'bg-white border-slate-200/90 hover:border-blue-500 shadow-2xs hover:shadow-md'
+                        }`}
+                      >
+                        {/* Cover header */}
+                        <div className="h-20 w-full relative bg-slate-800 overflow-hidden">
+                          {campus.coverUrl ? (
+                            <img 
+                              src={campus.coverUrl} 
+                              alt={campus.name} 
+                              className="w-full h-full object-cover opacity-80" 
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-r from-blue-900 to-indigo-900" />
+                          )}
+                          <div className="absolute top-2 right-2">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-xs ${
+                              isActive 
+                                ? 'bg-emerald-500 text-white' 
+                                : 'bg-slate-700 text-slate-300'
+                            }`}>
+                              {isActive ? 'Active Network' : 'Paused'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Body details */}
+                        <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                          <div className="space-y-1.5">
+                            <div className="flex items-start gap-2.5">
+                              {campus.logoUrl ? (
+                                <img 
+                                  src={campus.logoUrl} 
+                                  alt={campus.name} 
+                                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/10 shrink-0 bg-white" 
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                                  {campus.name.charAt(0)}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <h4 className={`text-xs sm:text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`} title={campus.name}>
+                                  {campus.name}
+                                </h4>
+                                <div className="flex items-center gap-1.5 text-[11px] text-pink-600 dark:text-pink-400 font-semibold truncate">
+                                  <Instagram className="w-3 h-3 shrink-0" />
+                                  <span className="truncate">{campus.instagramHandle}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <p className={`text-[11px] line-clamp-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {campus.description || `${campus.name} official community network and Instagram features.`}
+                            </p>
+                          </div>
+
+                          {/* Direct Accessible Links Box */}
+                          <div className={`p-2.5 rounded-xl border space-y-2 text-[11px] font-mono ${
+                            isDarkMode ? 'bg-[#0A0E1A] border-slate-800/80' : 'bg-slate-50 border-slate-200'
+                          }`}>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={`text-[10px] uppercase font-bold tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                Canonical Route:
+                              </span>
+                              <span className="font-bold text-blue-500 truncate">{canonicalUrl}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={`text-[10px] uppercase font-bold tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                Hub URL:
+                              </span>
+                              <span className="text-slate-400 truncate">{fullHubUrl}</span>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigateTo(fullHubUrl);
+                              }}
+                              className="py-1.5 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                              title="Open live student campus page"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Open Live Page</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const fullUrl = `${window.location.origin}${canonicalUrl}`;
+                                navigator.clipboard.writeText(fullUrl);
+                                addToast('Link Copied', `Copied ${fullUrl} to clipboard.`, 'success');
+                              }}
+                              className={`py-1.5 px-2.5 rounded-xl border font-bold text-[11px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                                isDarkMode 
+                                  ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700' 
+                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs'
+                              }`}
+                              title="Copy canonical share link"
+                            >
+                              <Copy className="w-3.5 h-3.5 text-blue-500" />
+                              <span>Copy Link</span>
+                            </button>
+                          </div>
+
+                          <div className="pt-0.5 flex items-center justify-between text-[11px]">
+                            <span className={isDarkMode ? 'text-slate-500' : 'text-slate-400'}>
+                              {campus.location || 'Global Campus'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(campus)}
+                              className="text-blue-500 hover:underline font-semibold cursor-pointer"
+                            >
+                              Edit Settings
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Integrations Section */}

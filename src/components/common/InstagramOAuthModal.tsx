@@ -60,11 +60,11 @@ export const InstagramOAuthModal: React.FC = () => {
         username: cleanHandle,
         displayName: displayTitle,
         accountType,
-        followersCount: 14200,
-        mediaCount: 38,
-        reach28d: 48200,
-        impressions28d: 79000,
-        interactions28d: 6100,
+        followersCount: 0,
+        mediaCount: 0,
+        reach28d: 0,
+        impressions28d: 0,
+        interactions28d: 0,
         profilePictureUrl: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80`
       });
 

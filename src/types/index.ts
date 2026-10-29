@@ -26,7 +26,7 @@ export interface University {
 }
 
 export type StudentVerificationStatus = 'UNVERIFIED' | 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED';
-export type OnboardingStep = 1 | 2 | 3 | 4; // 1: University & Account, 2: Profile, 3: Student Verification, 4: Complete
+export type OnboardingStep = 0 | 1 | 2 | 3 | 4; // 0: Not Started, 1: University & Account, 2: Profile, 3: Student Verification, 4: Complete
 
 export interface User {
   id: string;

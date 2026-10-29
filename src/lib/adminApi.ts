@@ -701,32 +701,14 @@ function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}
     if (rawIg) {
       try {
         const parsed = JSON.parse(rawIg);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return { accounts: parsed } as unknown as T;
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter((a: any) => a && a.id !== 'ig_moreheadstate_official');
+          return { accounts: valid } as unknown as T;
         }
       } catch {}
     }
     return {
-      accounts: [
-        {
-          id: 'ig_moreheadstate_official',
-          businessId: 'biz_01',
-          username: 'moreheadstate2031class',
-          displayName: 'Morehead State University 2031',
-          profilePictureUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
-          accountType: 'BUSINESS',
-          followersCount: 14200,
-          followingCount: 310,
-          mediaCount: 38,
-          reach28d: 48200,
-          impressions28d: 79000,
-          interactions28d: 6100,
-          status: 'CONNECTED',
-          connectedAt: new Date().toISOString(),
-          tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
-          permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
-        }
-      ]
+      accounts: []
     } as unknown as T;
   }
 

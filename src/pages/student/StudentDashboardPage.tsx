@@ -27,7 +27,12 @@ export const StudentDashboardPage: React.FC = () => {
     universities 
   } = useApp();
 
-  const userUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0];
+  const userUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0] || { 
+    id: 'default',
+    name: 'Campus Hub', 
+    slug: 'all', 
+    instagramHandle: '@campusconnect' 
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-6 sm:p-8 space-y-8 font-sans">
@@ -35,12 +40,18 @@ export const StudentDashboardPage: React.FC = () => {
       {/* 1. TOP PROFILE & UNIVERSITY SUMMARY CARD */}
       <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-start sm:items-center gap-5">
-          <img 
-            src={currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'} 
-            alt={currentUser?.name || 'Student'} 
-            referrerPolicy="no-referrer"
-            className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover ring-4 ring-blue-500/10 shadow-xs shrink-0"
-          />
+          {currentUser?.avatarUrl ? (
+            <img 
+              src={currentUser.avatarUrl} 
+              alt={currentUser?.name || 'Student'} 
+              referrerPolicy="no-referrer"
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover ring-4 ring-blue-500/10 shadow-xs shrink-0"
+            />
+          ) : (
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-blue-600 text-white font-extrabold text-2xl flex items-center justify-center shadow-xs shrink-0 ring-4 ring-blue-500/10">
+              {(currentUser?.name || 'S').charAt(0).toUpperCase()}
+            </div>
+          )}
 
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
@@ -60,12 +71,16 @@ export const StudentDashboardPage: React.FC = () => {
               <span>•</span>
               <span className="text-slate-500 flex items-center gap-1">
                 <GraduationCap className="w-3.5 h-3.5" />
-                <span>{currentUser?.course || 'Undergraduate'} • Class of {currentUser?.graduationYear || '2027'}</span>
+                <span>
+                  {currentUser?.course 
+                    ? `${currentUser.course} • Class of ${currentUser.graduationYear || '2028'}` 
+                    : 'Profile details not set'}
+                </span>
               </span>
             </div>
 
             <p className="text-xs text-slate-500 line-clamp-1 max-w-lg">
-              {currentUser?.bio || 'Connecting with peers across the university network on Campus Connect.'}
+              {currentUser?.bio || 'No bio added yet.'}
             </p>
           </div>
         </div>
