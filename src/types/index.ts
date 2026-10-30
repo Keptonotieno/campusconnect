@@ -50,6 +50,12 @@ export interface User {
   verificationDocumentUrl?: string;
   onboardingStep?: OnboardingStep;
   onboardingCompleted?: boolean;
+  emailAlertsEnabled?: boolean;
+  emailAlertPreferences?: {
+    instantSubmission?: boolean;
+    liveFeature?: boolean;
+    classmateInteractions?: boolean;
+  };
   createdAt?: string;
   updatedAt?: string;
 }

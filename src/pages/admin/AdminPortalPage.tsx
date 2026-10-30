@@ -37,6 +37,7 @@ import {
   Sliders
 } from 'lucide-react';
 import { FeaturedSubmission, University, PaymentRecord, InstagramAccount, AuditLogItem } from '../../types';
+import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 import { 
   getAdminStatus, 
   bootstrapAdmin, 
@@ -125,20 +126,20 @@ export const AdminPortalPage: React.FC = () => {
     } catch {
       // ignore
     }
-    return universities && universities.length > 0 ? universities : [];
+    return universities && universities.length > 0 ? universities : VERIFIED_UNIVERSITIES;
   });
 
-  // Keep campuses synchronized with AppContext
+  // Keep campuses synchronized with AppContext and verified institutions
   useEffect(() => {
-    if (universities && universities.length > 0) {
-      setCampuses(prev => {
-        if (prev.length === 0) return universities;
-        const map = new Map<string, University>();
+    setCampuses(prev => {
+      const map = new Map<string, University>();
+      VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug, u));
+      if (universities && universities.length > 0) {
         universities.forEach(u => map.set(u.slug, u));
-        prev.forEach(u => map.set(u.slug, u));
-        return Array.from(map.values());
-      });
-    }
+      }
+      prev.forEach(u => map.set(u.slug, u));
+      return Array.from(map.values());
+    });
   }, [universities]);
 
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -265,7 +266,13 @@ export const AdminPortalPage: React.FC = () => {
         setOverviewData(ov);
       }
       if (Array.isArray(cp?.campuses) && cp.campuses.length > 0) {
-        setCampuses(cp.campuses);
+        setCampuses(prev => {
+          const map = new Map<string, University>();
+          VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug, u));
+          prev.forEach(u => map.set(u.slug, u));
+          cp.campuses.forEach(c => map.set(c.slug, c));
+          return Array.from(map.values());
+        });
         cp.campuses.forEach(c => addOrUpdateCampus(c));
       }
       if (Array.isArray(py?.payments)) {

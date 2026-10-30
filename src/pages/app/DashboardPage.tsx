@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Users, 
@@ -13,7 +13,10 @@ import {
   ChevronRight,
   ShieldCheck,
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Mail,
+  Bell,
+  X
 } from 'lucide-react';
 import { InstagramAccount } from '../../types';
 
@@ -26,7 +29,11 @@ export const DashboardPage: React.FC = () => {
     disconnectAccount,
     connectAccount,
     selectedUniversity,
-    entryUniversityContext
+    entryUniversityContext,
+    mySubmissions,
+    updateUserProfile,
+    addToast,
+    universities
   } = useApp();
 
   const isConnected = accounts.length > 0;
@@ -38,17 +45,50 @@ export const DashboardPage: React.FC = () => {
   const totalInteractions = accounts.reduce((sum, a) => sum + (a.interactions28d || 0), 0);
   const totalPosts = accounts.reduce((sum, a) => sum + (a.mediaCount || 0), 0);
 
-  // Dynamic setup steps tracking (starts at 0 of 4 for fresh signups)
-  const isProfileCompleted = Boolean(currentUser?.onboardingCompleted || (currentUser?.course && currentUser?.bio));
+  // Target university for submissions
+  const userUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || 
+                  entryUniversityContext || 
+                  selectedUniversity || 
+                  universities[0];
+
+  // Exact 3 Setup Steps:
+  // Step 1: Connect your Instagram account
+  // Step 2: Publish your first post
+  // Step 3: Choose your email alerts
   const isInstagramConnected = accounts.length > 0;
-  const isFirstPostPublished = totalPosts > 0;
-  const isPrimaryAccountChosen = accounts.length > 0 && Boolean((accounts[0] as any).isPrimary || accounts.length > 1);
+  const isFirstPostPublished = totalPosts > 0 || (mySubmissions && mySubmissions.length > 0);
+  const isEmailAlertsChosen = Boolean(currentUser?.emailAlertsEnabled || currentUser?.emailAlertPreferences);
 
   const completedStepsCount = 
-    (isProfileCompleted ? 1 : 0) + 
     (isInstagramConnected ? 1 : 0) + 
     (isFirstPostPublished ? 1 : 0) + 
-    (isPrimaryAccountChosen ? 1 : 0);
+    (isEmailAlertsChosen ? 1 : 0);
+
+  // Email alerts modal & selection state
+  const [showEmailAlertsModal, setShowEmailAlertsModal] = useState(false);
+  const [alertSubmissionUpdate, setAlertSubmissionUpdate] = useState(
+    currentUser?.emailAlertPreferences?.instantSubmission ?? true
+  );
+  const [alertLiveFeature, setAlertLiveFeature] = useState(
+    currentUser?.emailAlertPreferences?.liveFeature ?? true
+  );
+  const [alertCampusNews, setAlertCampusNews] = useState(
+    currentUser?.emailAlertPreferences?.classmateInteractions ?? true
+  );
+
+  const handleSaveEmailAlerts = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateUserProfile({
+      emailAlertsEnabled: true,
+      emailAlertPreferences: {
+        instantSubmission: alertSubmissionUpdate,
+        liveFeature: alertLiveFeature,
+        classmateInteractions: alertCampusNews
+      }
+    });
+    addToast('Email Alerts Configured', 'Your notification preferences are active.', 'success');
+    setShowEmailAlertsModal(false);
+  };
 
   // Dynamic greeting based on time of day
   const hour = new Date().getHours();
@@ -270,58 +310,112 @@ export const DashboardPage: React.FC = () => {
         {/* Right Column: Get set up checklist & Recent activity (lg:col-span-4 - Matching Screenshot 00:08) */}
         <div className="lg:col-span-4 space-y-5 sm:space-y-6">
           
-          {/* Get set up Card */}
+          {/* Get set up Card - Exact 3 Steps */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-2xs space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">Get set up</h3>
-              <span className="text-xs font-bold text-[#1D64EC]">
-                {completedStepsCount} of 4
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Get set up</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">Complete your profile setup to get featured</p>
+              </div>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#1D64EC] border border-blue-100">
+                {completedStepsCount} of 3
               </span>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 text-xs text-slate-700">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                  isProfileCompleted ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
-                }`}>
-                  {isProfileCompleted && <Check className="w-3.5 h-3.5" />}
+            {/* Progress bar */}
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+              <div 
+                className="bg-[#1D64EC] h-full rounded-full transition-all duration-300"
+                style={{ width: `${(completedStepsCount / 3) * 100}%` }}
+              />
+            </div>
+
+            <div className="space-y-3 pt-1">
+              {/* Step 1: Connect your Instagram account */}
+              <div className="flex items-center justify-between gap-3 text-xs p-2.5 rounded-2xl bg-slate-50/70 border border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                    isInstagramConnected ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300 bg-white'
+                  }`}>
+                    {isInstagramConnected ? <Check className="w-3.5 h-3.5" /> : <span className="text-[10px] text-slate-400 font-bold">1</span>}
+                  </div>
+                  <div>
+                    <span className={isInstagramConnected ? 'line-through text-slate-400 font-medium' : 'font-semibold text-slate-800'}>
+                      Connect your Instagram account
+                    </span>
+                    <p className="text-[10px] text-slate-400">
+                      {isInstagramConnected && accounts[0] ? `@${accounts[0].username} connected` : 'Link account to verify ownership'}
+                    </p>
+                  </div>
                 </div>
-                <span className={isProfileCompleted ? 'line-through text-slate-400' : 'font-medium text-slate-700'}>
-                  Complete your business profile
-                </span>
+                {!isInstagramConnected ? (
+                  <button
+                    onClick={() => setOAuthModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg bg-[#1D64EC] text-white text-[11px] font-semibold hover:bg-blue-600 transition-colors shrink-0 shadow-2xs"
+                  >
+                    Connect
+                  </button>
+                ) : (
+                  <span className="text-[10px] font-bold text-emerald-600 shrink-0">Done</span>
+                )}
               </div>
 
-              <div className="flex items-center gap-3 text-xs text-slate-700">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                  isInstagramConnected ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
-                }`}>
-                  {isInstagramConnected && <Check className="w-3.5 h-3.5" />}
+              {/* Step 2: Publish your first post */}
+              <div className="flex items-center justify-between gap-3 text-xs p-2.5 rounded-2xl bg-slate-50/70 border border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                    isFirstPostPublished ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300 bg-white'
+                  }`}>
+                    {isFirstPostPublished ? <Check className="w-3.5 h-3.5" /> : <span className="text-[10px] text-slate-400 font-bold">2</span>}
+                  </div>
+                  <div>
+                    <span className={isFirstPostPublished ? 'line-through text-slate-400 font-medium' : 'font-semibold text-slate-800'}>
+                      Publish your first post
+                    </span>
+                    <p className="text-[10px] text-slate-400">
+                      {isFirstPostPublished ? 'Profile submission registered' : 'Submit photo for university spotlight'}
+                    </p>
+                  </div>
                 </div>
-                <span className={isInstagramConnected ? 'line-through text-slate-400' : 'font-medium text-slate-700'}>
-                  Connect an Instagram account
-                </span>
+                {!isFirstPostPublished ? (
+                  <button
+                    onClick={() => navigateTo(userUni?.slug ? `/submit/${userUni.slug}` : '/app/submit')}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] font-semibold hover:bg-slate-50 transition-colors shrink-0"
+                  >
+                    Post ($6)
+                  </button>
+                ) : (
+                  <span className="text-[10px] font-bold text-emerald-600 shrink-0">Done</span>
+                )}
               </div>
 
-              <div className="flex items-center gap-3 text-xs text-slate-700">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                  isFirstPostPublished ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
-                }`}>
-                  {isFirstPostPublished && <Check className="w-3.5 h-3.5" />}
+              {/* Step 3: Choose your email alerts */}
+              <div className="flex items-center justify-between gap-3 text-xs p-2.5 rounded-2xl bg-slate-50/70 border border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                    isEmailAlertsChosen ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300 bg-white'
+                  }`}>
+                    {isEmailAlertsChosen ? <Check className="w-3.5 h-3.5" /> : <span className="text-[10px] text-slate-400 font-bold">3</span>}
+                  </div>
+                  <div>
+                    <span className={isEmailAlertsChosen ? 'line-through text-slate-400 font-medium' : 'font-semibold text-slate-800'}>
+                      Choose your email alerts
+                    </span>
+                    <p className="text-[10px] text-slate-400">
+                      {isEmailAlertsChosen ? 'Alert preferences active' : 'Get notified when your post goes live'}
+                    </p>
+                  </div>
                 </div>
-                <span className={isFirstPostPublished ? 'line-through text-slate-400' : 'font-medium text-slate-700'}>
-                  Publish your first post
-                </span>
-              </div>
-
-              <div className="flex items-center gap-3 text-xs text-slate-700">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                  isPrimaryAccountChosen ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300'
-                }`}>
-                  {isPrimaryAccountChosen && <Check className="w-3.5 h-3.5" />}
-                </div>
-                <span className={isPrimaryAccountChosen ? 'line-through text-slate-400' : 'font-medium text-slate-700'}>
-                  Choose your primary account
-                </span>
+                <button
+                  onClick={() => setShowEmailAlertsModal(true)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors shrink-0 ${
+                    isEmailAlertsChosen 
+                      ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' 
+                      : 'bg-[#1D64EC] text-white hover:bg-blue-600 shadow-2xs'
+                  }`}
+                >
+                  {isEmailAlertsChosen ? 'Edit' : 'Choose'}
+                </button>
               </div>
             </div>
           </div>
@@ -376,6 +470,99 @@ export const DashboardPage: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Email Alerts Modal (Step 3) */}
+      {showEmailAlertsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in duration-200">
+            <button
+              onClick={() => setShowEmailAlertsModal(false)}
+              className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#1D64EC] flex items-center justify-center">
+                <Mail className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Choose Email Alerts</h3>
+                <p className="text-xs text-slate-500">Step 3 of your profile setup</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 mb-5 leading-relaxed">
+              Configure which notifications are delivered to <span className="font-semibold text-slate-800">{currentUser?.email || 'your email'}</span>:
+            </p>
+
+            <form onSubmit={handleSaveEmailAlerts} className="space-y-3.5">
+              <label className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={alertSubmissionUpdate}
+                  onChange={(e) => setAlertSubmissionUpdate(e.target.checked)}
+                  className="mt-0.5 rounded text-[#1D64EC] focus:ring-blue-500"
+                />
+                <div className="text-xs">
+                  <span className="font-semibold text-slate-900 block">Submission & $6 Payment Confirmation</span>
+                  <span className="text-slate-500 block text-[11px] mt-0.5">
+                    Receive immediate updates when your $6 spotlight fee is confirmed and pending admin review.
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={alertLiveFeature}
+                  onChange={(e) => setAlertLiveFeature(e.target.checked)}
+                  className="mt-0.5 rounded text-[#1D64EC] focus:ring-blue-500"
+                />
+                <div className="text-xs">
+                  <span className="font-semibold text-slate-900 block">
+                    Spotlight Live on {userUni?.instagramHandle || '@campus_ig'}
+                  </span>
+                  <span className="text-slate-500 block text-[11px] mt-0.5">
+                    Get an instant email containing your live Instagram post link the moment the admin publishes it.
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={alertCampusNews}
+                  onChange={(e) => setAlertCampusNews(e.target.checked)}
+                  className="mt-0.5 rounded text-[#1D64EC] focus:ring-blue-500"
+                />
+                <div className="text-xs">
+                  <span className="font-semibold text-slate-900 block">Campus Community & Classmate Alerts</span>
+                  <span className="text-slate-500 block text-[11px] mt-0.5">
+                    Updates when classmates from {userUni?.name || 'your university'} join and get spotlighted.
+                  </span>
+                </div>
+              </label>
+
+              <div className="pt-3 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowEmailAlertsModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold text-white bg-[#1D64EC] hover:bg-blue-600 rounded-xl shadow-xs transition-colors"
+                >
+                  Save Alert Preferences
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

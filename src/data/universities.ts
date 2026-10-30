@@ -2,6 +2,30 @@ import { University } from '../types';
 
 export const VERIFIED_UNIVERSITIES: University[] = [
   {
+    id: 'uni_eku2031class',
+    name: 'Eastern Kentucky University (EKU)',
+    slug: 'eku2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'Official student community and Instagram spotlight network for Eastern Kentucky University Colonels.',
+    location: 'Richmond, Kentucky, USA',
+    officialWebsiteUrl: 'https://www.eku.edu',
+    instagramProfileUrl: 'https://instagram.com/eku2031class',
+    instagramHandle: '@eku2031class',
+    communityEnabled: true,
+    studentCount: 3500,
+    featuredCount: 52,
+    established: '1874',
+    classYear: '2031',
+    primaryColor: '#591126', // EKU Maroon
+    accentColor: '#8C1D40',
+    gradientFrom: '#591126',
+    gradientTo: '#2D0813',
+    tagline: 'Go Colonels! 🦅 EKU forever',
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-10-30T00:00:00Z'
+  },
+  {
     id: 'uni_thomasmoreuniversity2031class',
     name: 'Thomas More University',
     slug: 'thomasmoreuniversity2031class',
@@ -282,7 +306,11 @@ const SLUG_ALIASES: Record<string, string> = {
   'lwc_classof2031': 'lindseywilsoncollege2031class',
   'lindseywilsoncollege2031class': 'lindseywilsoncollege2031class',
   'harvard': 'harvard',
-  'harvard2028': 'harvard'
+  'harvard2028': 'harvard',
+  'eku': 'eku2031class',
+  'eku2031': 'eku2031class',
+  'eku2031class': 'eku2031class',
+  'easternkentuckyuniversity': 'eku2031class'
 };
 
 export const findUniversityBySlug = (slug: string): University | undefined => {

@@ -41,6 +41,7 @@ import { Footer } from '../../components/layout/Footer';
 
 interface UniversityCommunityPageProps {
   university: University;
+  initialView?: 'LANDING' | 'BUILDER';
 }
 
 interface UploadedPhoto {
@@ -50,7 +51,7 @@ interface UploadedPhoto {
   isCover: boolean;
 }
 
-export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = ({ university }) => {
+export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = ({ university, initialView }) => {
   const { 
     currentUser,
     submissions, 
@@ -65,7 +66,13 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   } = useApp();
 
   // Page View Mode: 'LANDING' or 'BUILDER'
-  const [pageView, setPageView] = useState<'LANDING' | 'BUILDER'>('LANDING');
+  const [pageView, setPageView] = useState<'LANDING' | 'BUILDER'>(() => {
+    if (initialView) return initialView;
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/submit/')) {
+      return 'BUILDER';
+    }
+    return 'LANDING';
+  });
 
   // Builder multi-step state: 1 (Upload/Profile) -> 2 (Details) -> 3 (Preview & Pay) -> 'SUCCESS'
   const [builderStep, setBuilderStep] = useState<1 | 2 | 3 | 'SUCCESS'>(1);
@@ -153,12 +160,18 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     setEntryUniversityContext(university);
     setPageView('BUILDER');
     setBuilderStep(1);
+    if (typeof window !== 'undefined' && window.history.pushState) {
+      window.history.pushState({}, '', `/submit/${university.slug}`);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Exit builder back to landing
   const exitBuilder = () => {
     setPageView('LANDING');
+    if (typeof window !== 'undefined' && window.history.pushState) {
+      window.history.pushState({}, '', `/ig/${university.slug}`);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

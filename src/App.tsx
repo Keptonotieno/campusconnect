@@ -49,7 +49,7 @@ const AppContent: React.FC = () => {
     universities 
   } = useApp();
 
-  // 1. Resolve University Community route (/university/:slug, /u/:slug, /ig/:slug, /:slug, or ?uni= query)
+  // 1. Resolve University Community route (/university/:slug, /u/:slug, /ig/:slug, /submit/:slug, /:slug, or ?uni= query)
   const isDirectCampusSlug = (() => {
     if (currentRoute === '/' || currentRoute === '') {
       const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -62,12 +62,17 @@ const AppContent: React.FC = () => {
     const cleanPath = currentRoute.replace(/^\//, '').split('/')[0].split('?')[0];
     const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'app'];
     if (reservedRoutes.includes(cleanPath)) return undefined;
+    if (cleanPath === 'submit') {
+      const subSlug = currentRoute.replace('/submit/', '').split('/')[0].split('?')[0];
+      return getUniversityBySlug(subSlug);
+    }
     return getUniversityBySlug(cleanPath);
   })();
 
   const isCampusRoute = currentRoute.startsWith('/university/') || 
                        currentRoute.startsWith('/u/') || 
                        currentRoute.startsWith('/ig/') ||
+                       currentRoute.startsWith('/submit/') ||
                        isDirectCampusSlug !== undefined;
 
   if (isCampusRoute) {
@@ -75,6 +80,7 @@ const AppContent: React.FC = () => {
       .replace('/university/', '')
       .replace('/u/', '')
       .replace('/ig/', '')
+      .replace('/submit/', '')
       .replace(/^\//, '')
       .split('/')[0]
       .split('?')[0];
@@ -84,7 +90,10 @@ const AppContent: React.FC = () => {
     return (
       <div className="min-h-screen bg-white text-slate-900 flex flex-col antialiased font-sans">
         <main className="flex-1">
-          <UniversityCommunityPage university={matchedUniversity} />
+          <UniversityCommunityPage 
+            university={matchedUniversity} 
+            initialView={currentRoute.startsWith('/submit/') ? 'BUILDER' : undefined}
+          />
         </main>
         <ToastContainer />
         <SupportWidget />
