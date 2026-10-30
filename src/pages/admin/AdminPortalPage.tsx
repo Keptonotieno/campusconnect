@@ -75,6 +75,8 @@ export const AdminPortalPage: React.FC = () => {
     publishToInstagram, 
     addToast,
     refreshCampuses,
+    universities,
+    addOrUpdateCampus,
     navigateTo 
   } = useApp();
 
@@ -113,7 +115,32 @@ export const AdminPortalPage: React.FC = () => {
 
   // Backend Live Data
   const [overviewData, setOverviewData] = useState<AdminOverviewData | null>(null);
-  const [campuses, setCampuses] = useState<University[]>([]);
+  const [campuses, setCampuses] = useState<University[]>(() => {
+    try {
+      const stored = localStorage.getItem('campusconnect_campuses');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return universities && universities.length > 0 ? universities : [];
+  });
+
+  // Keep campuses synchronized with AppContext
+  useEffect(() => {
+    if (universities && universities.length > 0) {
+      setCampuses(prev => {
+        if (prev.length === 0) return universities;
+        const map = new Map<string, University>();
+        universities.forEach(u => map.set(u.slug, u));
+        prev.forEach(u => map.set(u.slug, u));
+        return Array.from(map.values());
+      });
+    }
+  }, [universities]);
+
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [paymentTotals, setPaymentTotals] = useState<{ usd: number }>({ usd: 0 });
   const [instagramAccounts, setInstagramAccounts] = useState<InstagramAccount[]>([]);
@@ -224,19 +251,22 @@ export const AdminPortalPage: React.FC = () => {
     setLoadingData(true);
     try {
       const [ov, cp, py, ig, em, al, itg, subsData] = await Promise.all([
-        fetchAdminOverview(),
-        fetchAdminCampuses(),
-        fetchAdminPayments(),
-        fetchAdminInstagram(),
-        fetchAdminEmail(),
-        fetchAdminAuditLogs(),
+        fetchAdminOverview().catch(() => null),
+        fetchAdminCampuses().catch(() => ({ campuses: [] })),
+        fetchAdminPayments().catch(() => ({ payments: [], totals: { usd: 0 } })),
+        fetchAdminInstagram().catch(() => ({ accounts: [] })),
+        fetchAdminEmail().catch(() => null),
+        fetchAdminAuditLogs().catch(() => ({ logs: [] })),
         fetchAdminIntegrations().catch(() => ({ integrations: [] })),
         fetchAdminSubmissions().catch(() => ({ submissions: [] }))
       ]);
 
-      setOverviewData(ov || null);
-      if (Array.isArray(cp?.campuses)) {
+      if (ov) {
+        setOverviewData(ov);
+      }
+      if (Array.isArray(cp?.campuses) && cp.campuses.length > 0) {
         setCampuses(cp.campuses);
+        cp.campuses.forEach(c => addOrUpdateCampus(c));
       }
       if (Array.isArray(py?.payments)) {
         setPayments(py.payments);
@@ -479,24 +509,29 @@ export const AdminPortalPage: React.FC = () => {
     try {
       if (editingCampus) {
         // Update existing
-        await updateAdminCampus(editingCampus.id, {
+        const updatedCampus: University = {
+          ...editingCampus,
           name: newCampusName.trim(),
           slug: newCampusSlug.trim(),
           instagramHandle: newCampusHandle.trim(),
           location: newCampusLocation.trim(),
           description: newCampusDesc.trim(),
-          logoUrl: newCampusLogo.trim() || undefined,
-          coverUrl: newCampusCover.trim() || undefined,
+          logoUrl: newCampusLogo.trim() || editingCampus.logoUrl,
+          coverUrl: newCampusCover.trim() || editingCampus.coverUrl,
           primaryColor: newCampusPrimaryColor.trim() || '#004B87',
           accentColor: newCampusAccentColor.trim() || '#0284C7',
           classYear: newCampusClassYear.trim() || '2031',
           tagline: newCampusTagline.trim() || `${newCampusName.trim()} forever.`,
-          communityEnabled: newCampusEnabled
-        });
+          communityEnabled: newCampusEnabled,
+          updatedAt: new Date().toISOString()
+        };
+        await updateAdminCampus(editingCampus.id, updatedCampus);
+        setCampuses(prev => prev.map(c => c.id === editingCampus.id ? updatedCampus : c));
+        addOrUpdateCampus(updatedCampus);
         addToast('Campus Updated', `Saved settings for ${newCampusName}.`, 'success');
       } else {
         // Create new
-        const res = await createAdminCampus({
+        const newPayload = {
           name: newCampusName.trim(),
           slug: newCampusSlug.trim(),
           instagramHandle: newCampusHandle.trim(),
@@ -509,8 +544,23 @@ export const AdminPortalPage: React.FC = () => {
           classYear: newCampusClassYear.trim() || '2031',
           tagline: newCampusTagline.trim() || `${newCampusName.trim()} forever.`,
           communityEnabled: newCampusEnabled
+        };
+        const res = await createAdminCampus(newPayload);
+        const saved = res.campus || {
+          id: 'uni_' + newCampusSlug.trim().replace(/[^a-z0-9]/g, ''),
+          ...newPayload,
+          studentCount: 0,
+          featuredCount: 0,
+          established: '2026',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        setCampuses(prev => {
+          const filtered = prev.filter(c => c.id !== saved.id && c.slug !== saved.slug);
+          return [saved, ...filtered];
         });
-        addToast('Campus Created', `Created ${res.campus.name}. Canonical route: /ig/${res.campus.slug}`, 'success');
+        addOrUpdateCampus(saved);
+        addToast('Campus Created', `Created ${saved.name}. Canonical route: /ig/${saved.slug}`, 'success');
       }
 
       setShowCreateCampusModal(false);
@@ -561,6 +611,9 @@ export const AdminPortalPage: React.FC = () => {
   // Toggle Campus Status (Active / Deactivated)
   const handleToggleCampusStatus = async (c: University) => {
     const nextStatus = !c.communityEnabled;
+    const updated = { ...c, communityEnabled: nextStatus, updatedAt: new Date().toISOString() };
+    setCampuses(prev => prev.map(item => item.id === c.id ? updated : item));
+    addOrUpdateCampus(updated);
     try {
       await updateAdminCampus(c.id, { communityEnabled: nextStatus });
       addToast(
@@ -1792,15 +1845,15 @@ export const AdminPortalPage: React.FC = () => {
                         Edit
                       </button>
 
-                      <a
-                        href={`/ig/${c.slug}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1 shadow-2xs"
+                      <button
+                        type="button"
+                        onClick={() => navigateTo(`/ig/${c.slug}`)}
+                        className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
+                        title={`Preview live campus hub /ig/${c.slug}`}
                       >
                         <span>Preview</span>
                         <ExternalLink className="w-3 h-3" />
-                      </a>
+                      </button>
                     </div>
                   </div>
 

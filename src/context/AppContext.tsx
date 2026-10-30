@@ -35,6 +35,7 @@ interface AppContextType {
   getUniversityBySlug: (slug: string) => University | undefined;
   getUniversityById: (id: string) => University | undefined;
   refreshCampuses: () => Promise<void>;
+  addOrUpdateCampus: (campus: University) => void;
 
   // Authentication & Profile
   isAuthenticated: boolean;
@@ -163,6 +164,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     refreshCampuses();
   }, [refreshCampuses]);
+
+  // Synchronous upsert for campuses (used by Admin creation & updates)
+  const addOrUpdateCampus = useCallback((campus: University) => {
+    setUniversities(prev => {
+      const idx = prev.findIndex(u => u.id === campus.id || u.slug === campus.slug);
+      let next: University[];
+      if (idx !== -1) {
+        next = [...prev];
+        next[idx] = { ...next[idx], ...campus };
+      } else {
+        next = [campus, ...prev];
+      }
+      try {
+        localStorage.setItem('campusconnect_campuses', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
 
   // Dynamic resolver for universities / campuses
   const getUniversityBySlug = useCallback((slug: string): University | undefined => {
@@ -990,6 +1011,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getUniversityBySlug,
     getUniversityById,
     refreshCampuses,
+    addOrUpdateCampus,
 
     isAuthenticated,
     currentUser,
@@ -1055,6 +1077,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getUniversityBySlug,
     getUniversityById,
     refreshCampuses,
+    addOrUpdateCampus,
     isAuthenticated,
     currentUser,
     isAdmin,

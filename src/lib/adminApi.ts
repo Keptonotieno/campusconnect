@@ -299,7 +299,12 @@ function getLocalAdminEmail(): string {
     const raw = localStorage.getItem(USER_KEY);
     if (raw) {
       const u = JSON.parse(raw);
-      return u?.email || '';
+      if (u?.email) return u.email;
+    }
+    const rawUser = localStorage.getItem('campusconnect_user');
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      if (u?.email) return u.email;
     }
   } catch {}
   return '';
@@ -308,7 +313,7 @@ function getLocalAdminEmail(): string {
 /**
  * Robust fetch wrapper that communicates with the Express backend if reachable,
  * and gracefully falls back to persistent client storage if the host returns 405 (Method Not Allowed),
- * 404 (Not Found), 502/503, or network failure on Cloudflare Workers or static mobile previews.
+ * 404 (Not Found), 502/503, non-JSON HTML (SPA redirect on Cloudflare Workers), or network failure.
  */
 async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredAdminToken();
@@ -337,30 +342,37 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
     isBackendError = true;
   }
 
-  // If server responded with 200-299, parse JSON directly
+  // If server responded with 200-299, verify it is genuine JSON and NOT an SPA index.html fallback
   if (res && res.ok) {
-    try {
-      const data = await res.json();
-      return data as T;
-    } catch {
-      // Empty body or non-JSON
-      return {} as T;
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        const data = await res.json();
+        if (data && typeof data === 'object') {
+          return data as T;
+        }
+      } catch {
+        // Corrupt or non-JSON payload; fall through to resilient fallback below
+      }
     }
+    // If response was HTML or not JSON, fall through to handleLocalFallbackRoute
   }
 
-  // If server returned 405 (Method Not Allowed - Cloudflare Workers / static hosting)
-  // or 404 (Not Found - static deployment), or 401/403 for master admin / resilient session,
-  // execute resilient client handler
+  // Determine fallback conditions (Workers, Pages, static preview, or offline)
   const status = res?.status || 0;
+  const contentType = res ? (res.headers.get('content-type') || '') : '';
   const isResilientToken = Boolean(token && token.startsWith('adm_resilient_'));
   const isClientMasterAdmin = isMasterAdminEmail(getLocalAdminEmail());
+  const isAuthorized = Boolean(token || isResilientToken || isClientMasterAdmin);
+  const isSpaHtmlResponse = Boolean(res && res.ok && !contentType.includes('application/json'));
 
   if (
     isBackendError ||
+    isSpaHtmlResponse ||
     status === 405 ||
     status === 404 ||
     status >= 500 ||
-    ((status === 401 || status === 403) && (isResilientToken || isClientMasterAdmin))
+    ((status === 401 || status === 403) && isAuthorized)
   ) {
     const fallbackData = handleLocalFallbackRoute<T>(endpoint, options);
     if (fallbackData !== null) {
@@ -403,16 +415,19 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
       return { submissions: getLocalSubmissions() } as unknown as T;
     }
     if (cleanEndpoint.includes('overview')) {
+      const campuses = getLocalCampuses();
+      const payments = getLocalPayments();
+      const totalUsd = payments.reduce((sum, p) => sum + (p.amountUsd || 0), 0);
       return {
-        totalAmountPaid: { usd: 0, formattedUsd: '$0.00' },
-        connectedInstagramAccounts: 0,
+        totalAmountPaid: { usd: totalUsd, formattedUsd: `$${totalUsd.toFixed(2)}` },
+        connectedInstagramAccounts: campuses.filter(c => c.instagramHandle).length,
         registeredUsers: 1,
-        successfulPayments: 0,
-        totalCampuses: 0,
-        activeCampuses: 0,
-        integrations: [],
+        successfulPayments: payments.length,
+        totalCampuses: campuses.length,
+        activeCampuses: campuses.filter(c => c.communityEnabled !== false).length,
+        integrations: getLocalIntegrations(),
         recentDeliveries: [],
-        recentAuditLogs: []
+        recentAuditLogs: getLocalAuditLogs().slice(0, 10)
       } as unknown as T;
     }
     return { success: true, processedLocally: true } as unknown as T;
@@ -1088,21 +1103,51 @@ export async function fetchAdminOverview(): Promise<AdminOverviewData> {
 
 // 3. Campuses
 export async function fetchAdminCampuses(): Promise<{ campuses: University[] }> {
-  return adminFetch<{ campuses: University[] }>('/api/admin/campuses');
+  try {
+    const res = await adminFetch<{ campuses: University[] }>('/api/admin/campuses');
+    if (res && Array.isArray(res.campuses) && res.campuses.length > 0) {
+      saveLocalCampuses(res.campuses);
+      return res;
+    }
+  } catch {}
+  return { campuses: getLocalCampuses() };
 }
 
 export async function createAdminCampus(campusData: Partial<University>): Promise<{ success: boolean; campus: University; canonicalUrls: Record<string, string> }> {
-  return adminFetch<{ success: boolean; campus: University; canonicalUrls: Record<string, string> }>('/api/admin/campuses', {
+  const res = await adminFetch<{ success: boolean; campus: University; canonicalUrls: Record<string, string> }>('/api/admin/campuses', {
     method: 'POST',
     body: JSON.stringify(campusData)
   });
+
+  if (res && res.campus) {
+    try {
+      const list = getLocalCampuses();
+      const next = [res.campus, ...list.filter(c => c.id !== res.campus.id && c.slug !== res.campus.slug)];
+      saveLocalCampuses(next);
+    } catch {}
+  }
+
+  return res;
 }
 
 export async function updateAdminCampus(id: string, updates: Partial<University>): Promise<{ success: boolean; campus: University }> {
-  return adminFetch<{ success: boolean; campus: University }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
+  const res = await adminFetch<{ success: boolean; campus: University }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: JSON.stringify(updates)
   });
+
+  if (res && res.campus) {
+    try {
+      const list = getLocalCampuses();
+      const idx = list.findIndex(c => c.id === id);
+      if (idx !== -1) {
+        list[idx] = res.campus;
+        saveLocalCampuses(list);
+      }
+    } catch {}
+  }
+
+  return res;
 }
 
 // 4. Payments
