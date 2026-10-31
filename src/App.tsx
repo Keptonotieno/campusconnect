@@ -54,26 +54,48 @@ const AppContent: React.FC = () => {
 
   // 1. Identify if the current URL explicitly requests a specific campus portal
   const requestedCampusSlug = (() => {
+    const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const rawParam = sp?.get('uni') || sp?.get('university') || sp?.get('campus') || sp?.get('slug') || sp?.get('url');
+
+    const sanitizeSlug = (val: string | null | undefined): string | null => {
+      if (!val) return null;
+      let s = val.trim();
+      if (s.includes('/ig/')) {
+        s = s.split('/ig/')[1];
+      } else if (s.includes('/u/')) {
+        s = s.split('/u/')[1];
+      } else if (s.includes('/university/')) {
+        s = s.split('/university/')[1];
+      } else if (s.includes('/submit/')) {
+        s = s.split('/submit/')[1];
+      }
+      return s.split('/')[0].split('?')[0].split('#')[0].replace(/^@/, '').trim() || null;
+    };
+
+    if (rawParam) {
+      const extracted = sanitizeSlug(rawParam);
+      if (extracted) return extracted;
+    }
+
     if (currentRoute === '/' || currentRoute === '') {
-      const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-      return sp?.get('uni') || sp?.get('university') || null;
+      return null;
     }
     if (currentRoute.startsWith('/ig/')) {
-      return currentRoute.replace('/ig/', '').split('/')[0].split('?')[0];
+      return sanitizeSlug(currentRoute.replace('/ig/', ''));
     }
     if (currentRoute.startsWith('/u/')) {
-      return currentRoute.replace('/u/', '').split('/')[0].split('?')[0];
+      return sanitizeSlug(currentRoute.replace('/u/', ''));
     }
     if (currentRoute.startsWith('/university/')) {
-      return currentRoute.replace('/university/', '').split('/')[0].split('?')[0];
+      return sanitizeSlug(currentRoute.replace('/university/', ''));
     }
     if (currentRoute.startsWith('/submit/')) {
-      return currentRoute.replace('/submit/', '').split('/')[0].split('?')[0];
+      return sanitizeSlug(currentRoute.replace('/submit/', ''));
     }
     const cleanPath = currentRoute.replace(/^\//, '').split('/')[0].split('?')[0];
     const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'app', 'ig', 'u', 'university', 'submit'];
     if (reservedRoutes.includes(cleanPath)) return null;
-    return cleanPath;
+    return sanitizeSlug(cleanPath);
   })();
 
   // Asynchronous remote resolution state for direct university links

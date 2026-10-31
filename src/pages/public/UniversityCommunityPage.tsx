@@ -1706,19 +1706,20 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
             </div>
           </div>
 
-          {/* Right: Submissions link + Get featured button */}
-          <div className="flex items-center gap-3">
+          {/* Right: Sign in link + Get featured button */}
+          <div className="flex items-center gap-2 sm:gap-3">
             <button 
+              type="button"
               onClick={() => {
                 if (!isAuthenticated) {
                   navigateTo(`/login?uni=${university.slug}`);
                 } else {
-                  navigateTo('/app/dashboard');
+                  navigateTo(`/app/dashboard?uni=${university.slug}`);
                 }
               }}
-              className="text-xs font-semibold text-slate-600 hover:text-slate-950 transition-colors cursor-pointer px-2 py-1.5 hidden sm:block"
+              className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-950 transition-colors cursor-pointer px-2.5 sm:px-3 py-1.5 rounded-xl hover:bg-slate-100"
             >
-              My submissions
+              {isAuthenticated ? 'Dashboard' : 'Sign in'}
             </button>
 
             <button
@@ -1726,7 +1727,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
               style={{
                 background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)`
               }}
-              className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl text-white font-bold text-xs sm:text-sm shadow-xs hover:opacity-95 active:scale-98 transition-all cursor-pointer flex items-center gap-1.5"
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-white font-bold text-xs sm:text-sm shadow-xs hover:opacity-95 active:scale-98 transition-all cursor-pointer flex items-center gap-1.5"
             >
               <span>Get featured</span>
             </button>

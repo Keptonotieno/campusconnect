@@ -404,11 +404,32 @@ class Database {
   }
 
   public getCampusBySlug(slug: string): University | undefined {
-    const normalized = slug.toLowerCase().trim();
-    return this.campuses.find(c => 
+    if (!slug) return undefined;
+    const normalized = slug
+      .toLowerCase()
+      .trim()
+      .replace(/^@/, '')
+      .replace(/^\/ig\//, '')
+      .replace(/^\/u\//, '')
+      .replace(/^\/university\//, '');
+
+    // 1. Check custom database campuses created by admin
+    const inDb = this.campuses.find(c => 
       c.slug.toLowerCase() === normalized ||
       c.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
-      c.id === normalized
+      c.id.toLowerCase() === normalized ||
+      c.id.replace('uni_', '').toLowerCase() === normalized ||
+      c.instagramHandle.toLowerCase().replace('@', '') === normalized
+    );
+    if (inDb) return inDb;
+
+    // 2. Check verified campus network (including sample eku2031class)
+    return VERIFIED_UNIVERSITIES.find(v => 
+      v.slug.toLowerCase() === normalized ||
+      v.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
+      v.id.toLowerCase() === normalized ||
+      v.id.replace('uni_', '').toLowerCase() === normalized ||
+      v.instagramHandle.toLowerCase().replace('@', '') === normalized
     );
   }
 
