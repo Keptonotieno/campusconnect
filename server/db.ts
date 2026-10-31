@@ -174,7 +174,7 @@ class Database {
 
     this.admins = readJsonFile<AdminUser[]>('admins.json', []);
     this.sessions = readJsonFile<AdminSession[]>('sessions.json', []);
-    this.campuses = readJsonFile<University[]>('campuses.json', VERIFIED_UNIVERSITIES);
+    this.campuses = readJsonFile<University[]>('campuses.json', []);
     
     this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
     this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
@@ -536,6 +536,27 @@ class Database {
     });
 
     return campus;
+  }
+
+  public deleteCampus(id: string, actorEmail: string): boolean {
+    const idx = this.campuses.findIndex(c => c.id === id || c.slug === id);
+    if (idx === -1) {
+      throw new Error(`Campus with identifier "${id}" not found.`);
+    }
+    const [removed] = this.campuses.splice(idx, 1);
+    writeJsonFile('campuses.json', this.campuses);
+
+    this.logAudit({
+      actorUid: 'admin',
+      actorEmail,
+      actorRole: 'Admin',
+      action: 'CAMPUS_DELETED',
+      targetType: 'UNIVERSITY',
+      targetId: removed.id,
+      details: `Deleted campus "${removed.name}" (/ig/${removed.slug})`
+    });
+
+    return true;
   }
 
   // Payments Management

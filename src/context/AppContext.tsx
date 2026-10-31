@@ -34,6 +34,7 @@ interface AppContextType {
   setEntryUniversityContext: (uni: University | null) => void;
   getUniversityBySlug: (slug: string) => University | undefined;
   getUniversityById: (id: string) => University | undefined;
+  fetchCampusBySlug: (slug: string) => Promise<University | undefined>;
   refreshCampuses: () => Promise<void>;
   addOrUpdateCampus: (campus: University) => void;
 
@@ -122,12 +123,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const stored = localStorage.getItem('campusconnect_campuses');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {
       // ignore
     }
-    return VERIFIED_UNIVERSITIES;
+    return [];
   });
 
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
@@ -139,16 +140,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const res = await fetch('/api/campuses', { headers: { 'Cache-Control': 'no-cache' } });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.campuses) && data.campuses.length > 0) {
-          setUniversities(prev => {
-            if (
-              prev.length === data.campuses.length &&
-              prev.every((u, idx) => u.id === data.campuses[idx]?.id && u.updatedAt === data.campuses[idx]?.updatedAt)
-            ) {
-              return prev;
-            }
-            return data.campuses;
-          });
+        if (Array.isArray(data.campuses)) {
+          setUniversities(data.campuses);
           try {
             localStorage.setItem('campusconnect_campuses', JSON.stringify(data.campuses));
           } catch {
@@ -196,7 +189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .replace(/^\/u\//, '')
       .replace(/^\/university\//, '');
     
-    // 1. Check live state first (includes any newly created campus like Lindsey Wilson College)
+    // 1. Check live state first (includes any newly created campus)
     const found = universities.find(
       u => u.slug.toLowerCase() === normalized ||
            u.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
@@ -208,13 +201,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     if (found) return found;
 
-    // 2. Check alias mappings & verified universities
+    // 2. Check localStorage cache if not yet hydrated into memory
+    try {
+      const stored = localStorage.getItem('campusconnect_campuses');
+      if (stored) {
+        const parsed: University[] = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const match = parsed.find(
+            u => u.slug.toLowerCase() === normalized ||
+                 u.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
+                 u.id.toLowerCase() === normalized ||
+                 u.id.replace('uni_', '').toLowerCase() === normalized ||
+                 u.instagramHandle.toLowerCase().replace('@', '') === normalized
+          );
+          if (match) return match;
+        }
+      }
+    } catch {}
+
+    // 3. Check alias mappings & verified universities (strictly returns undefined if no match)
     return findUniversityBySlug(normalized);
   }, [universities]);
 
   const getUniversityById = useCallback((id: string): University | undefined => {
+    if (!id) return undefined;
     return universities.find(u => u.id === id) || findUniversityById(id);
   }, [universities]);
+
+  // Asynchronous remote campus resolver for direct links
+  const fetchCampusBySlug = useCallback(async (slug: string): Promise<University | undefined> => {
+    if (!slug) return undefined;
+    const existing = getUniversityBySlug(slug);
+    if (existing) return existing;
+
+    try {
+      const clean = slug.replace(/^@/, '').replace(/^\/ig\//, '').replace(/^\/u\//, '').replace(/^\/university\//, '');
+      const res = await fetch(`/api/campuses/${encodeURIComponent(clean)}`, {
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.campus) {
+          addOrUpdateCampus(data.campus);
+          return data.campus;
+        }
+      }
+    } catch (err) {
+      console.warn(`Could not remote-fetch campus for slug "${slug}":`, err);
+    }
+    return undefined;
+  }, [getUniversityBySlug, addOrUpdateCampus]);
 
   // Detect and preserve university context from Instagram link or URL path
   useEffect(() => {
@@ -1010,6 +1046,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEntryUniversityContext,
     getUniversityBySlug,
     getUniversityById,
+    fetchCampusBySlug,
     refreshCampuses,
     addOrUpdateCampus,
 
@@ -1076,6 +1113,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     entryUniversityContext,
     getUniversityBySlug,
     getUniversityById,
+    fetchCampusBySlug,
     refreshCampuses,
     addOrUpdateCampus,
     isAuthenticated,

@@ -34,10 +34,10 @@ import {
   Sun,
   Moon,
   Key,
-  Sliders
+  Sliders,
+  Trash2
 } from 'lucide-react';
 import { FeaturedSubmission, University, PaymentRecord, InstagramAccount, AuditLogItem } from '../../types';
-import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 import { 
   getAdminStatus, 
   bootstrapAdmin, 
@@ -50,6 +50,7 @@ import {
   fetchAdminCampuses,
   createAdminCampus,
   updateAdminCampus,
+  deleteAdminCampus,
   fetchAdminPayments,
   simulateWebhookTest,
   fetchAdminInstagram,
@@ -121,25 +122,19 @@ export const AdminPortalPage: React.FC = () => {
       const stored = localStorage.getItem('campusconnect_campuses');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {
       // ignore
     }
-    return universities && universities.length > 0 ? universities : VERIFIED_UNIVERSITIES;
+    return universities || [];
   });
 
-  // Keep campuses synchronized with AppContext and verified institutions
+  // Keep campuses synchronized with AppContext (live database/admin created only)
   useEffect(() => {
-    setCampuses(prev => {
-      const map = new Map<string, University>();
-      VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug, u));
-      if (universities && universities.length > 0) {
-        universities.forEach(u => map.set(u.slug, u));
-      }
-      prev.forEach(u => map.set(u.slug, u));
-      return Array.from(map.values());
-    });
+    if (universities) {
+      setCampuses(universities);
+    }
   }, [universities]);
 
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -265,14 +260,8 @@ export const AdminPortalPage: React.FC = () => {
       if (ov) {
         setOverviewData(ov);
       }
-      if (Array.isArray(cp?.campuses) && cp.campuses.length > 0) {
-        setCampuses(prev => {
-          const map = new Map<string, University>();
-          VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug, u));
-          prev.forEach(u => map.set(u.slug, u));
-          cp.campuses.forEach(c => map.set(c.slug, c));
-          return Array.from(map.values());
-        });
+      if (Array.isArray(cp?.campuses)) {
+        setCampuses(cp.campuses);
         cp.campuses.forEach(c => addOrUpdateCampus(c));
       }
       if (Array.isArray(py?.payments)) {
@@ -631,6 +620,22 @@ export const AdminPortalPage: React.FC = () => {
       loadAllAdminData();
     } catch (err: any) {
       addToast('Error', err.message || 'Failed to update campus status.', 'error');
+    }
+  };
+
+  // Delete Campus
+  const handleDeleteCampus = async (c: University) => {
+    if (!window.confirm(`Are you sure you want to delete "${c.name}"? This action removes the campus website and canonical route.`)) {
+      return;
+    }
+    try {
+      await deleteAdminCampus(c.id);
+      setCampuses(prev => prev.filter(item => item.id !== c.id));
+      addToast('Campus Deleted', `Removed ${c.name} from directory.`, 'success');
+      refreshCampuses();
+      loadAllAdminData();
+    } catch (err: any) {
+      addToast('Error', err.message || 'Failed to delete campus.', 'error');
     }
   };
 
@@ -1840,7 +1845,16 @@ export const AdminPortalPage: React.FC = () => {
                       {c.communityEnabled ? 'Deactivate' : 'Activate'}
                     </button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCampus(c)}
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        title={`Delete ${c.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+
                       <button
                         onClick={() => openEditModal(c)}
                         className={`px-2.5 py-1 rounded-lg cursor-pointer font-medium ${

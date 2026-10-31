@@ -49,7 +49,7 @@ export const DashboardPage: React.FC = () => {
   const userUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || 
                   entryUniversityContext || 
                   selectedUniversity || 
-                  universities[0];
+                  (universities.length > 0 ? universities[0] : null);
 
   // Exact 3 Setup Steps:
   // Step 1: Connect your Instagram account

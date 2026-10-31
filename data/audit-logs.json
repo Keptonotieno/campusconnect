@@ -1,5 +1,60 @@
 [
   {
+    "actorUid": "admin",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "CAMPUS_CREATED",
+    "targetType": "UNIVERSITY",
+    "targetId": "uni_spaldinguniversity2031class",
+    "details": "Created new campus \"Spalding University\" with canonical route /ig/spaldinguniversity2031class",
+    "id": "log_084fc53393c7",
+    "timestamp": "2026-10-31T10:14:23.158Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_e1c7cb53fe86",
+    "timestamp": "2026-10-31T10:14:23.142Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "CAMPUS_CREATED",
+    "targetType": "UNIVERSITY",
+    "targetId": "uni_eku2031class",
+    "details": "Created new campus \"Eastern Kentucky University (EKU)\" with canonical route /ig/eku2031class",
+    "id": "log_8a0e8d3e5b3f",
+    "timestamp": "2026-10-31T10:14:16.394Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_71536ae6313d",
+    "timestamp": "2026-10-31T10:14:16.379Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_482225579b91",
+    "timestamp": "2026-10-31T10:14:10.033Z"
+  },
+  {
     "actorUid": "admin_secondary_campusconnect",
     "actorEmail": "campusconnect@gmail.com",
     "actorRole": "Admin",

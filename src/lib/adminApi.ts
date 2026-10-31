@@ -255,10 +255,10 @@ function getLocalCampuses(): University[] {
     const raw = localStorage.getItem('campusconnect_campuses');
     if (raw) {
       const list = JSON.parse(raw);
-      if (Array.isArray(list) && list.length > 0) return list;
+      if (Array.isArray(list)) return list;
     }
   } catch {}
-  return VERIFIED_UNIVERSITIES;
+  return [];
 }
 
 function saveLocalCampuses(campuses: University[]) {
@@ -1105,7 +1105,7 @@ export async function fetchAdminOverview(): Promise<AdminOverviewData> {
 export async function fetchAdminCampuses(): Promise<{ campuses: University[] }> {
   try {
     const res = await adminFetch<{ campuses: University[] }>('/api/admin/campuses');
-    if (res && Array.isArray(res.campuses) && res.campuses.length > 0) {
+    if (res && Array.isArray(res.campuses)) {
       saveLocalCampuses(res.campuses);
       return res;
     }
@@ -1148,6 +1148,20 @@ export async function updateAdminCampus(id: string, updates: Partial<University>
   }
 
   return res;
+}
+
+export async function deleteAdminCampus(id: string): Promise<{ success: boolean }> {
+  const res = await adminFetch<{ success: boolean }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
+
+  try {
+    const list = getLocalCampuses();
+    const next = list.filter(c => c.id !== id && c.slug !== id);
+    saveLocalCampuses(next);
+  } catch {}
+
+  return res || { success: true };
 }
 
 // 4. Payments

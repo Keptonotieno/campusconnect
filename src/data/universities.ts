@@ -314,7 +314,7 @@ const SLUG_ALIASES: Record<string, string> = {
 };
 
 export const findUniversityBySlug = (slug: string): University | undefined => {
-  if (!slug) return VERIFIED_UNIVERSITIES[0];
+  if (!slug) return undefined;
   const normalized = slug
     .toLowerCase()
     .trim()
@@ -348,9 +348,11 @@ export const findUniversityBySlug = (slug: string): University | undefined => {
   );
   if (partial) return partial;
 
-  return VERIFIED_UNIVERSITIES[0];
+  return undefined;
 };
 
 export const findUniversityById = (id: string): University | undefined => {
-  return VERIFIED_UNIVERSITIES.find(u => u.id === id) || VERIFIED_UNIVERSITIES[0];
+  if (!id) return undefined;
+  return VERIFIED_UNIVERSITIES.find(u => u.id === id);
 };
+

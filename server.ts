@@ -228,6 +228,22 @@ app.put('/api/admin/campuses/:id', requireAdminAuth, (req: AuthenticatedAdminReq
   }
 });
 
+// Delete Existing Campus
+app.delete('/api/admin/campuses/:id', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    dbInstance.deleteCampus(req.params.id, req.admin?.email || 'admin');
+    return res.json({
+      success: true,
+      message: 'Campus deleted successfully.'
+    });
+  } catch (err: any) {
+    return res.status(400).json({
+      error: 'CampusDeletionFailed',
+      message: err.message || 'Failed to delete campus.'
+    });
+  }
+});
+
 // Payment Management
 app.get('/api/admin/payments', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
   const payments = dbInstance.getPayments();
