@@ -37,6 +37,7 @@ interface AppContextType {
   fetchCampusBySlug: (slug: string) => Promise<University | undefined>;
   refreshCampuses: () => Promise<void>;
   addOrUpdateCampus: (campus: University) => void;
+  removeCampus: (idOrSlug: string) => void;
 
   // Authentication & Profile
   isAuthenticated: boolean;
@@ -176,6 +177,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return next;
     });
+  }, []);
+
+  // Remove campus (used when deleted by Admin)
+  const removeCampus = useCallback((idOrSlug: string) => {
+    if (!idOrSlug) return;
+    setUniversities(prev => {
+      const next = prev.filter(u => u.id !== idOrSlug && u.slug !== idOrSlug);
+      try {
+        localStorage.setItem('campusconnect_campuses', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+    setSelectedUniversity(prev => (prev?.id === idOrSlug || prev?.slug === idOrSlug ? null : prev));
+    setEntryUniversityContext(prev => (prev?.id === idOrSlug || prev?.slug === idOrSlug ? null : prev));
   }, []);
 
   // Dynamic resolver for universities / campuses
@@ -1049,6 +1066,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetchCampusBySlug,
     refreshCampuses,
     addOrUpdateCampus,
+    removeCampus,
 
     isAuthenticated,
     currentUser,
@@ -1116,6 +1134,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetchCampusBySlug,
     refreshCampuses,
     addOrUpdateCampus,
+    removeCampus,
     isAuthenticated,
     currentUser,
     isAdmin,

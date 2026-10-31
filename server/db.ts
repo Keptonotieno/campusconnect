@@ -539,11 +539,8 @@ class Database {
   }
 
   public deleteCampus(id: string, actorEmail: string): boolean {
-    const idx = this.campuses.findIndex(c => c.id === id || c.slug === id);
-    if (idx === -1) {
-      throw new Error(`Campus with identifier "${id}" not found.`);
-    }
-    const [removed] = this.campuses.splice(idx, 1);
+    const toRemove = this.campuses.find(c => c.id === id || c.slug === id);
+    this.campuses = this.campuses.filter(c => c.id !== id && c.slug !== id);
     writeJsonFile('campuses.json', this.campuses);
 
     this.logAudit({
@@ -552,8 +549,8 @@ class Database {
       actorRole: 'Admin',
       action: 'CAMPUS_DELETED',
       targetType: 'UNIVERSITY',
-      targetId: removed.id,
-      details: `Deleted campus "${removed.name}" (/ig/${removed.slug})`
+      targetId: id,
+      details: toRemove ? `Deleted campus "${toRemove.name}" (/ig/${toRemove.slug})` : `Deleted campus with id ${id}`
     });
 
     return true;

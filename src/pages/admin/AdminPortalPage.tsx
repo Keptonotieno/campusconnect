@@ -79,6 +79,7 @@ export const AdminPortalPage: React.FC = () => {
     refreshCampuses,
     universities,
     addOrUpdateCampus,
+    removeCampus,
     navigateTo 
   } = useApp();
 
@@ -149,6 +150,8 @@ export const AdminPortalPage: React.FC = () => {
   const [campusSearch, setCampusSearch] = useState('');
   const [campusStatusFilter, setCampusStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [editingCampus, setEditingCampus] = useState<University | null>(null);
+  const [campusPendingDelete, setCampusPendingDelete] = useState<University | null>(null);
+  const [isDeletingCampus, setIsDeletingCampus] = useState<boolean>(false);
 
   const [newCampusName, setNewCampusName] = useState('');
   const [newCampusSlug, setNewCampusSlug] = useState('');
@@ -623,19 +626,40 @@ export const AdminPortalPage: React.FC = () => {
     }
   };
 
-  // Delete Campus
-  const handleDeleteCampus = async (c: University) => {
-    if (!window.confirm(`Are you sure you want to delete "${c.name}"? This action removes the campus website and canonical route.`)) {
-      return;
-    }
+  // Open in-app Delete Confirmation Modal (Reliable across mobile, desktop, and iframe)
+  const handleDeleteCampus = (c: University) => {
+    setCampusPendingDelete(c);
+  };
+
+  // Perform Delete execution
+  const handleConfirmDeleteCampus = async () => {
+    if (!campusPendingDelete) return;
+    const c = campusPendingDelete;
+    setIsDeletingCampus(true);
     try {
       await deleteAdminCampus(c.id);
-      setCampuses(prev => prev.filter(item => item.id !== c.id));
-      addToast('Campus Deleted', `Removed ${c.name} from directory.`, 'success');
+      setCampuses(prev => prev.filter(item => item.id !== c.id && item.slug !== c.slug));
+      removeCampus(c.id);
+      if (c.slug) removeCampus(c.slug);
+
+      // Clean local storage cache immediately
+      try {
+        const stored = localStorage.getItem('campusconnect_campuses');
+        if (stored) {
+          const parsed: University[] = JSON.parse(stored);
+          const next = parsed.filter(item => item.id !== c.id && item.slug !== c.slug);
+          localStorage.setItem('campusconnect_campuses', JSON.stringify(next));
+        }
+      } catch {}
+
+      addToast('Campus Deleted', `Successfully removed ${c.name}.`, 'success');
+      setCampusPendingDelete(null);
       refreshCampuses();
-      loadAllAdminData();
+      await loadAllAdminData();
     } catch (err: any) {
       addToast('Error', err.message || 'Failed to delete campus.', 'error');
+    } finally {
+      setIsDeletingCampus(false);
     }
   };
 
@@ -1515,13 +1539,22 @@ export const AdminPortalPage: React.FC = () => {
                             <span className={isDarkMode ? 'text-slate-500' : 'text-slate-400'}>
                               {campus.location || 'Global Campus'}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(campus)}
-                              className="text-blue-500 hover:underline font-semibold cursor-pointer"
-                            >
-                              Edit Settings
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCampus(campus)}
+                                className="text-rose-500 hover:text-rose-600 hover:underline font-semibold cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(campus)}
+                                className="text-blue-500 hover:underline font-semibold cursor-pointer"
+                              >
+                                Edit Settings
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1849,10 +1882,11 @@ export const AdminPortalPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleDeleteCampus(c)}
-                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        aria-label={`Delete ${c.name}`}
+                        className="p-2 rounded-xl text-rose-600 hover:text-rose-700 bg-rose-500/10 hover:bg-rose-500/20 active:scale-95 transition-all cursor-pointer flex items-center justify-center shrink-0"
                         title={`Delete ${c.name}`}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4 text-rose-600" />
                       </button>
 
                       <button
@@ -3262,6 +3296,75 @@ export const AdminPortalPage: React.FC = () => {
 
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CAMPUS DELETION CONFIRMATION (Reliable on mobile Chrome & iframe) */}
+      {campusPendingDelete && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className={`w-full max-w-md rounded-3xl p-6 sm:p-7 border shadow-2xl space-y-5 animate-in zoom-in-95 ${
+            isDarkMode ? 'bg-[#0F1626] border-slate-700/80 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center shrink-0 border border-rose-500/20">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-extrabold tracking-tight">Delete Campus Website?</h3>
+                <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Are you sure you want to delete <strong>{campusPendingDelete.name}</strong>?
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
+              isDarkMode ? 'bg-[#0A0E1A] border-slate-800 text-slate-300' : 'bg-rose-50/60 border-rose-100 text-slate-700'
+            }`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold text-slate-400">Canonical Bio Route:</span>
+                <span className="font-mono font-bold text-rose-600 truncate">/ig/{campusPendingDelete.slug}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold text-slate-400">Instagram Handle:</span>
+                <span className="font-mono text-slate-700 dark:text-slate-300 truncate">{campusPendingDelete.instagramHandle}</span>
+              </div>
+              <p className="text-[11px] text-rose-500/90 leading-normal pt-1 border-t border-rose-200/50 dark:border-slate-800">
+                This action immediately deletes the campus website and canonical link. This cannot be undone.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-1">
+              <button
+                type="button"
+                disabled={isDeletingCampus}
+                onClick={() => setCampusPendingDelete(null)}
+                className={`px-4 py-2.5 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
+                  isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeletingCampus}
+                onClick={handleConfirmDeleteCampus}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50 transition-colors"
+              >
+                {isDeletingCampus ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting Campus...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Delete Campus</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

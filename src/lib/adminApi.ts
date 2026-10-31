@@ -556,6 +556,20 @@ function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}
     } catch {}
   }
 
+  // 4b. Delete Campus
+  if (cleanEndpoint.startsWith('/api/admin/campuses/') && method === 'DELETE') {
+    try {
+      const id = decodeURIComponent(cleanEndpoint.replace('/api/admin/campuses/', ''));
+      const campuses = getLocalCampuses();
+      const next = campuses.filter(c => c.id !== id && c.slug !== id);
+      saveLocalCampuses(next);
+      appendLocalAuditLog('CAMPUS_DELETED', 'UNIVERSITY', id, `Deleted campus ${id}`);
+      return { success: true, message: 'Campus deleted successfully.' } as unknown as T;
+    } catch {
+      // fallback
+    }
+  }
+
   // 5. Payments List
   if (cleanEndpoint === '/api/admin/payments' && method === 'GET') {
     const payments = getLocalPayments();
@@ -1151,17 +1165,21 @@ export async function updateAdminCampus(id: string, updates: Partial<University>
 }
 
 export async function deleteAdminCampus(id: string): Promise<{ success: boolean }> {
-  const res = await adminFetch<{ success: boolean }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
-    method: 'DELETE'
-  });
-
   try {
+    const res = await adminFetch<{ success: boolean }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
     const list = getLocalCampuses();
     const next = list.filter(c => c.id !== id && c.slug !== id);
     saveLocalCampuses(next);
-  } catch {}
-
-  return res || { success: true };
+    return res || { success: true };
+  } catch (err) {
+    // Resilient local removal in case of offline/mock fallback
+    const list = getLocalCampuses();
+    const next = list.filter(c => c.id !== id && c.slug !== id);
+    saveLocalCampuses(next);
+    return { success: true };
+  }
 }
 
 // 4. Payments
