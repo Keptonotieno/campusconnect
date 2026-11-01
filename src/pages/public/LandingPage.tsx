@@ -60,35 +60,29 @@ export const LandingPage: React.FC = () => {
             {/* Pill */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200/80 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>For Students, Creators & Global Universities</span>
+              <span>For Instagram Business and Creator accounts</span>
             </div>
 
             {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-extrabold tracking-tight text-slate-950 leading-[1.12]">
-              Run your<br />
-              <span className="text-[#1D64EC]">Instagram from one place.</span>
+            <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-black tracking-tight text-slate-950 leading-[1.12]">
+              Run your Instagram <br />
+              <span className="text-[#1D64EC]">business from one</span> <br />
+              <span className="text-[#1D64EC]">place.</span>
             </h1>
 
             {/* Subtitle */}
             <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-xl font-normal">
-              Unite student communities, creators, and businesses with unified Instagram management, direct messaging, comments, and engagement in one place.
+              Connect your business accounts and handle posts, comments, direct messages, insights and publishing in a single dashboard.
             </p>
 
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
-              <button
-                onClick={() => navigateTo(isAuthenticated ? '/app/dashboard' : '/register')}
-                className="px-6 py-3.5 rounded-xl bg-[#1D64EC] hover:bg-blue-600 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-600/25 transition-all text-center flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>Create business account</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-
+            {/* CTA Buttons - Matching Image 3 */}
+            <div className="pt-2">
               <button
                 onClick={() => navigateTo(isAuthenticated ? '/app/dashboard' : '/login')}
-                className="px-6 py-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm transition-colors text-center cursor-pointer shadow-2xs"
+                className="px-7 py-3.5 rounded-xl bg-[#1D64EC] hover:bg-blue-600 text-white font-bold text-sm shadow-md shadow-blue-600/25 transition-all text-center flex items-center justify-center gap-2 cursor-pointer"
               >
-                Log in to your business
+                <span>Open my dashboard</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
 

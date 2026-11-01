@@ -72,12 +72,12 @@ export const AppSidebar: React.FC = () => {
           <div className="w-8 h-8 rounded-xl bg-[#1D64EC] flex items-center justify-center text-white shadow-xs group-hover:scale-105 transition-transform">
             <Instagram className="w-5 h-5" />
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <span className="text-base font-extrabold tracking-tight text-slate-900">
-              campus<span className="text-[#1D64EC]">connect</span>
+              igpost<span className="text-[#1D64EC]">hub</span>
             </span>
             <span className="bg-blue-50 text-[#1D64EC] border border-blue-200/60 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full">
-              GLOBAL
+              BUSINESS
             </span>
           </div>
         </button>

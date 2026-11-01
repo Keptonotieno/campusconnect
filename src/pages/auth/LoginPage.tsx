@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Grid, 
@@ -20,7 +20,10 @@ import {
   RefreshCw, 
   Activity, 
   Database,
-  Key
+  Key,
+  Instagram,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 import { 
@@ -133,12 +136,44 @@ function analyzeFirebaseError(code: string | null, message: string | null): Fire
 }
 
 export const LoginPage: React.FC = () => {
-  const { login, navigateTo, addToast } = useApp();
+  const { 
+    login, 
+    navigateTo, 
+    addToast,
+    entryUniversityContext,
+    selectedUniversity,
+    getUniversityBySlug,
+    universities 
+  } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [keepLoggedIn, setKeepLoggedIn] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [isStudentMode, setIsStudentMode] = useState(false);
+
+  // Target university resolution (dynamic from URL / context, defaulting to spaldinguniversity2031class as in Image 1)
+  const targetUniversity = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const uniParam = sp.get('uni') || sp.get('university') || sp.get('slug');
+      if (uniParam) {
+        const found = getUniversityBySlug(uniParam);
+        if (found) return found;
+      }
+    }
+    if (entryUniversityContext) return entryUniversityContext;
+    if (selectedUniversity) return selectedUniversity;
+    const spalding = getUniversityBySlug('spaldinguniversity2031class');
+    if (spalding) return spalding;
+    if (universities.length > 0) return universities[0];
+    return {
+      id: 'uni_spaldinguniversity2031class',
+      name: 'Spalding University',
+      slug: 'spaldinguniversity2031class',
+      instagramHandle: '@spaldinguniversity2031class',
+      classYear: '2031'
+    } as any;
+  }, [entryUniversityContext, selectedUniversity, getUniversityBySlug, universities]);
 
   // Authentication Debugging Utility State
   const [isDebuggerOpen, setIsDebuggerOpen] = useState(false);
@@ -259,7 +294,6 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
       addToast('Firebase User Created', `User registered with UID: ${res.user.uid}`, 'success');
-      // Re-run diagnostics
       await executeDiagnostics(cleanEmail, cleanPass);
     } catch (err: any) {
       const code = err.code || 'unknown-error';
@@ -291,8 +325,8 @@ export const LoginPage: React.FC = () => {
 
     try {
       await login(email.trim(), password);
+      // login redirects automatically to /app/dashboard (Image 2)
     } catch (err: any) {
-      // On login failure, automatically run auth diagnostics to capture Firebase and gateway error codes
       executeDiagnostics(email.trim(), password);
     } finally {
       setLoading(false);
@@ -300,498 +334,235 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-slate-900 flex flex-col justify-between p-4 sm:p-6 lg:p-12 font-sans selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen bg-[#F4F6FB] flex flex-col font-sans selection:bg-blue-600 selection:text-white relative">
       
-      <div className="flex-1 flex items-center justify-center max-w-5xl mx-auto w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center w-full">
+      {/* 2-Column Split Screen Matching Image 1 Exactly */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 min-h-screen">
+        
+        {/* ================================================================= */}
+        {/* LEFT PANEL: igposthub brand, university target card & fee note   */}
+        {/* ================================================================= */}
+        <div className="p-8 sm:p-12 lg:p-16 flex flex-col justify-between space-y-12 bg-[#F3F5FA] border-b lg:border-b-0 lg:border-r border-slate-200/70">
           
-          {/* Left Column: Realistic iPhone Frame Mockup (Desktop - matching screenshots 00:24, 00:35, 00:53) */}
-          <div className="hidden lg:flex lg:col-span-6 justify-center relative">
+          {/* Top Logo */}
+          <div 
+            onClick={() => navigateTo('/')}
+            className="flex items-center gap-2.5 cursor-pointer select-none"
+          >
+            <div className="w-9 h-9 rounded-xl bg-[#3B52A0] text-white flex items-center justify-center shadow-xs">
+              <Instagram className="w-5 h-5" />
+            </div>
+            <span className="text-xl font-black tracking-tight text-slate-900">
+              igpost<span className="text-[#3B52A0]">hub</span>
+            </span>
+          </div>
+
+          {/* Center Content */}
+          <div className="max-w-md space-y-8">
             
-            {/* Ambient colorful glow behind the phone */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-amber-400/20 via-rose-500/25 to-blue-600/25 blur-3xl rounded-full transform -rotate-6" />
-
-            {/* Phone Chassis */}
-            <div className="relative w-[300px] h-[610px] bg-slate-950 rounded-[48px] p-3 shadow-2xl ring-1 ring-slate-800 border-[3px] border-slate-700/60 flex flex-col">
-              
-              {/* Dynamic Island / Notch */}
-              <div className="absolute top-6 left-1/2 transform -translate-x-1/2 w-24 h-5 bg-black rounded-full z-20 flex items-center justify-end pr-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#18181b] border border-slate-800" />
+            {/* Submitting to Campus Card */}
+            <div className="flex items-center gap-3.5">
+              <div className="relative w-12 h-12 rounded-xl bg-white border border-slate-200/90 shadow-2xs flex flex-col items-center justify-center p-1 shrink-0">
+                <span className="text-[11px] leading-none">⚡</span>
+                <span className="text-[7px] font-bold text-slate-700 leading-none">igpostHub</span>
+                <span className="text-[10px] font-black text-[#1E3A8A] leading-none mt-0.5">
+                  {targetUniversity.classYear || '2031'}
+                </span>
+                <div className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-[#1E293B] border-2 border-white" />
               </div>
 
-              {/* Inner Screen */}
-              <div className="w-full h-full bg-white rounded-[38px] overflow-hidden flex flex-col p-4 pt-10 text-slate-800 select-none shadow-inner">
-                
-                {/* Brand in phone */}
-                <div className="flex items-center justify-center pt-1 pb-3">
-                  <span className="text-sm font-extrabold tracking-tight">
-                    <span className="text-slate-900">campus</span>
-                    <span className="text-[#1D64EC]">connect</span>
-                  </span>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#1E3A8A]">
+                  SUBMITTING TO
                 </div>
-
-                {/* Profile Header */}
-                <div className="flex items-center gap-3 pt-2">
-                  <div className="w-12 h-12 rounded-full border-2 border-fuchsia-500 p-0.5 shrink-0 flex items-center justify-center">
-                    <div className="w-full h-full rounded-full bg-gradient-to-tr from-purple-600 via-pink-500 to-amber-400 flex items-center justify-center text-white font-extrabold text-sm">
-                      Y
-                    </div>
-                  </div>
-
-                  <div className="flex-1 grid grid-cols-3 text-center">
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">248</div>
-                      <div className="text-[9px] text-slate-400">posts</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">12.4K</div>
-                      <div className="text-[9px] text-slate-400">followers</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">310</div>
-                      <div className="text-[9px] text-slate-400">following</div>
-                    </div>
-                  </div>
+                <div className="text-sm font-extrabold text-slate-900 leading-tight">
+                  {targetUniversity.instagramHandle}
                 </div>
-
-                <div className="pt-2 text-left">
-                  <div className="text-xs font-extrabold text-slate-900">Your Brand</div>
-                  <div className="text-[10px] text-slate-500">Handmade goods · Ships worldwide</div>
+                <div className="text-xs text-slate-500 mt-0.5">
+                  {targetUniversity.name}
                 </div>
-
-                {/* 4 Feature Tabs */}
-                <div className="grid grid-cols-4 gap-1.5 pt-4 text-center">
-                  <div className="p-2 rounded-xl bg-slate-50 flex flex-col items-center gap-1">
-                    <Grid className="w-3.5 h-3.5 text-slate-600" />
-                    <span className="text-[9px] font-medium text-slate-500">Posts</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-slate-50 flex flex-col items-center gap-1">
-                    <MessageCircle className="w-3.5 h-3.5 text-slate-600" />
-                    <span className="text-[9px] font-medium text-slate-500">Comments</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-slate-50 flex flex-col items-center gap-1">
-                    <MessageSquare className="w-3.5 h-3.5 text-slate-600" />
-                    <span className="text-[9px] font-medium text-slate-500">DMs</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-slate-50 flex flex-col items-center gap-1">
-                    <BarChart3 className="w-3.5 h-3.5 text-slate-600" />
-                    <span className="text-[9px] font-medium text-slate-500">Insights</span>
-                  </div>
-                </div>
-
-                {/* Post Grid */}
-                <div className="grid grid-cols-3 gap-1.5 pt-4 flex-1">
-                  <div className="rounded-xl bg-[#BFDBFE]" />
-                  <div className="rounded-xl bg-gradient-to-br from-[#FEF08A] to-[#FBCFE8]" />
-                  <div className="rounded-xl bg-[#DDD6FE]" />
-                  <div className="rounded-xl bg-[#BBF7D0]" />
-                  <div className="rounded-xl bg-[#FED7AA]" />
-                  <div className="rounded-xl bg-[#FDE047]" />
-                </div>
-
               </div>
+            </div>
 
+            {/* Headline */}
+            <h1 className="text-4xl sm:text-5xl font-black text-slate-950 tracking-tight leading-[1.12]">
+              One step away <br />
+              from being <span className="text-[#3B52A0]">featured</span>.
+            </h1>
+
+            {/* Subtext */}
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm">
+              Sign in to continue your submission to <strong className="text-slate-900">{targetUniversity.instagramHandle}</strong>. You'll be taken straight back after login.
+            </p>
+
+            {/* Fee Badge Card */}
+            <div className="inline-flex items-center gap-3 px-4 py-3 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
+              <div className="w-8 h-8 rounded-full bg-blue-50 text-[#1E3A8A] flex items-center justify-center font-bold text-sm">
+                $
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-900">$6.00 feature fee</div>
+                <div className="text-[11px] text-slate-500">Secure Stripe checkout</div>
+              </div>
             </div>
 
           </div>
 
-          {/* Right Column: Exact Login Card from Screenshots */}
-          <div className="lg:col-span-6 flex flex-col items-center">
+          {/* Bottom Copyright */}
+          <div className="text-xs text-slate-400 font-medium">
+            © 2026 igposthub · All rights reserved
+          </div>
+
+        </div>
+
+        {/* ================================================================= */}
+        {/* RIGHT PANEL: Welcome back form matching Image 1 exactly           */}
+        {/* ================================================================= */}
+        <div className="bg-white p-8 sm:p-12 lg:p-16 flex flex-col justify-center items-center">
+          
+          <div className="w-full max-w-[420px] space-y-6">
             
-            <div className="w-full max-w-md bg-white rounded-3xl p-8 sm:p-10 border border-slate-200/90 shadow-xl space-y-6">
+            {/* Header */}
+            <div className="space-y-1.5">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-950 tracking-tight">
+                Welcome back
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600">
+                Sign in to continue your submission to <strong className="text-slate-900">{targetUniversity.instagramHandle}</strong>.
+              </p>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-4 pt-2">
               
-              {/* Logo with Colorful Gradient */}
-              <div className="text-center space-y-1">
-                <div 
-                  onClick={() => navigateTo('/')}
-                  className="inline-block cursor-pointer"
-                >
-                  <span className="text-3xl font-extrabold tracking-tight">
-                    <span className="text-slate-900">campus</span>
-                    <span className="text-[#1D64EC]">connect</span>
-                  </span>
-                </div>
-                <div className="text-[11px] font-extrabold tracking-widest text-slate-400 uppercase">
-                  GLOBAL CAMPUS & CREATOR NETWORK
-                </div>
+              {/* Email Input */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  EMAIL ADDRESS
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#3B52A0] focus:ring-1 focus:ring-[#3B52A0] transition-colors shadow-2xs"
+                />
               </div>
 
-              {/* Title & Description */}
-              <div className="text-center space-y-1">
-                <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-                  {isStudentMode ? 'Log in to Campus Connect Student Hub' : 'Log in to your CampusConnect dashboard'}
-                </h1>
-                <p className="text-xs text-slate-500 leading-relaxed font-normal">
-                  {isStudentMode 
-                    ? 'Track your featured submission, view university community, and get updates.'
-                    : 'Posts, comments, messages, university communities and insights in one place.'}
-                </p>
-              </div>
-
-              {/* Form */}
-              <form onSubmit={handleSubmit} className="space-y-4 pt-1">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Email address
+              {/* Password Input */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    PASSWORD
                   </label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="campusconnect@gmail.com"
-                    autoComplete="email"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1D64EC] focus:ring-1 focus:ring-blue-500 shadow-2xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    autoComplete="current-password"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1D64EC] focus:ring-1 focus:ring-blue-500 shadow-2xs"
-                  />
-                </div>
-
-                {/* Info Note */}
-                <div className="flex items-start gap-1.5 text-[11px] text-slate-500">
-                  <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                  <span>
-                    Use your <strong className="text-slate-700">CampusConnect</strong> email and password, not your Instagram login.
-                  </span>
-                </div>
-
-                {/* Keep logged in */}
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-slate-700 select-none">
-                    <input
-                      type="checkbox"
-                      checked={keepLoggedIn}
-                      onChange={(e) => setKeepLoggedIn(e.target.checked)}
-                      className="rounded text-[#1D64EC] focus:ring-blue-500 w-4 h-4"
-                    />
-                    <span>Keep me logged in</span>
-                  </label>
-
-                  {/* Authentication Diagnostics Trigger Link */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isDebuggerOpen && email) {
-                        executeDiagnostics(email, password);
-                      } else {
-                        setIsDebuggerOpen(!isDebuggerOpen);
-                      }
-                    }}
-                    className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Terminal className="w-3 h-3" />
-                    <span>{isDebuggerOpen ? 'Hide Diagnostics' : 'Auth Diagnostics'}</span>
-                  </button>
-                </div>
-
-                {/* Blue Login Button */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 rounded-xl bg-[#1D64EC] hover:bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                  <span>{loading ? 'Logging in...' : 'Log in'}</span>
-                </button>
-
-                {/* OR & Forgot password */}
-                <div className="text-center pt-2 space-y-2">
-                  <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">
-                    OR
-                  </div>
                   <button
                     type="button"
                     onClick={() => navigateTo('/forgot-password')}
-                    className="text-xs text-slate-600 hover:text-slate-900 cursor-pointer font-medium"
+                    className="text-xs font-semibold text-[#1E3A8A] hover:underline cursor-pointer"
                   >
                     Forgot password?
                   </button>
-
-                  {/* Stealth Admin Portal Link */}
-                  <div className="pt-1 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => navigateTo('/admin')}
-                      className="text-[11px] text-slate-400/90 hover:text-slate-700 cursor-pointer transition-colors flex items-center gap-1 select-none font-medium hover:underline"
-                      title="Admin Portal Access"
-                    >
-                      <Lock className="w-3 h-3 text-slate-400" />
-                      <span>Admin Portal Gateway</span>
-                    </button>
-                  </div>
                 </div>
-              </form>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#3B52A0] focus:ring-1 focus:ring-[#3B52A0] transition-colors shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
 
-              {/* Bottom Card Area */}
-              <div className="pt-4 border-t border-slate-100 text-center text-xs">
-                <span className="text-slate-500">New here? </span>
+              {/* Remember me for 30 days */}
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center gap-2.5 cursor-pointer text-xs text-slate-700 select-none">
+                  <input
+                    type="checkbox"
+                    checked={keepLoggedIn}
+                    onChange={(e) => setKeepLoggedIn(e.target.checked)}
+                    className="w-4 h-4 rounded-full border-slate-300 text-[#3B52A0] focus:ring-[#3B52A0] cursor-pointer"
+                  />
+                  <span>Remember me for 30 days</span>
+                </label>
+
+                {/* Secret admin portal link */}
                 <button
-                  onClick={() => navigateTo('/register')}
-                  className="font-bold text-[#1D64EC] hover:underline cursor-pointer"
+                  type="button"
+                  onClick={() => navigateTo('/admin')}
+                  className="text-[10px] text-slate-400 hover:text-slate-600 flex items-center gap-1 cursor-pointer"
+                  title="Admin Portal"
                 >
-                  Create a business account
+                  <Lock className="w-3 h-3" />
+                  <span>Admin</span>
                 </button>
               </div>
 
-            </div>
-
-            {/* ----------------------------------------------------------------- */}
-            {/* AUTHENTICATION DEBUGGING UTILITY COMPONENT                         */}
-            {/* ----------------------------------------------------------------- */}
-            {isDebuggerOpen && (
-              <div className="w-full max-w-md mt-4 bg-slate-900 text-slate-100 rounded-3xl p-6 border border-slate-800 shadow-2xl space-y-4 animate-in fade-in">
-                
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
-                      <Terminal className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span>Firebase Authentication Debugger</span>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-blue-900/60 text-blue-300 border border-blue-700/50">
-                          Live Inspector
-                        </span>
-                      </h4>
-                      <p className="text-[10px] text-slate-400">
-                        Error code & identity toolkit diagnostic analyzer
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    {diagnosticReport && (
-                      <button
-                        type="button"
-                        onClick={copyDiagnosticPayload}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                        title="Copy diagnostic JSON"
-                      >
-                        {copiedReport ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setIsDebuggerOpen(false)}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer text-xs"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-
-                {/* Actions & Diagnostic Controls */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => executeDiagnostics(email, password)}
-                    disabled={isDiagnosticsRunning}
-                    className="flex-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-blue-600/20 cursor-pointer disabled:opacity-50"
-                  >
-                    {isDiagnosticsRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
-                    <span>{isDiagnosticsRunning ? 'Probing Auth API...' : 'Run Auth Diagnostics'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSyncToFirebase}
-                    disabled={isSyncingFirebase || isDiagnosticsRunning}
-                    className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                    title="Attempt to create this account in Firebase Auth user pool"
-                  >
-                    {isSyncingFirebase ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Key className="w-3.5 h-3.5" />}
-                    <span>Sync to Firebase Auth</span>
-                  </button>
-                </div>
-
-                {/* Diagnostics Output */}
-                {diagnosticReport ? (
-                  <div className="space-y-3 pt-1">
-                    
-                    {/* Status Badges Row */}
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      
-                      {/* Firebase SDK Status */}
-                      <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${
-                        diagnosticReport.firebaseStatus === 'SUCCESS'
-                          ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                          : 'bg-rose-950/40 border-rose-800/60 text-rose-300'
-                      }`}>
-                        <div className="font-semibold text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                          {diagnosticReport.firebaseStatus === 'SUCCESS' ? <ShieldCheck className="w-3 h-3 text-emerald-400" /> : <ShieldAlert className="w-3 h-3 text-rose-400" />}
-                          <span>Firebase Auth</span>
-                        </div>
-                        <div className="font-mono font-bold text-xs mt-1">
-                          {diagnosticReport.firebaseErrorCode ? diagnosticReport.firebaseErrorCode : diagnosticReport.firebaseStatus}
-                        </div>
-                      </div>
-
-                      {/* Backend Gateway Status */}
-                      <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${
-                        diagnosticReport.backendStatus === 'SUCCESS'
-                          ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                          : 'bg-amber-950/40 border-amber-800/60 text-amber-300'
-                      }`}>
-                        <div className="font-semibold text-[10px] text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                          <Database className="w-3 h-3 text-blue-400" />
-                          <span>Admin Gateway</span>
-                        </div>
-                        <div className="font-mono font-bold text-xs mt-1">
-                          {diagnosticReport.backendStatus === 'SUCCESS' ? 'VALIDATED (200 OK)' : diagnosticReport.backendStatus}
-                        </div>
-                      </div>
-
-                    </div>
-
-                    {/* Detailed Diagnosis Banner */}
-                    <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-                      
-                      <div className="flex items-center gap-2 text-amber-400 font-bold">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <span>{diagnosticReport.diagnosis.title}</span>
-                      </div>
-
-                      <p className="text-slate-300 text-[11px] leading-relaxed">
-                        {diagnosticReport.diagnosis.cause}
-                      </p>
-
-                      <div className="pt-2 border-t border-slate-800/80">
-                        <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">
-                          Recommended Action:
-                        </div>
-                        <pre className="text-[11px] font-mono text-emerald-400 whitespace-pre-wrap leading-relaxed bg-black/40 p-2.5 rounded-xl border border-slate-800/80">
-                          {diagnosticReport.diagnosis.resolution}
-                        </pre>
-                      </div>
-
-                      {diagnosticReport.diagnosis.isFirebaseConsoleActionRequired && diagnosticReport.diagnosis.firebaseConsoleUrl && (
-                        <div className="pt-1">
-                          <a
-                            href={diagnosticReport.diagnosis.firebaseConsoleUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2"
-                          >
-                            <span>Open Firebase Console Authentication Providers</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Backend Gateway Bypass Notice if Backend is Authenticated */}
-                    {diagnosticReport.backendStatus === 'SUCCESS' && (
-                      <div className="p-3 rounded-2xl bg-blue-950/50 border border-blue-800/60 text-xs text-blue-200 flex items-center justify-between gap-3">
-                        <div>
-                          <div className="font-bold text-white flex items-center gap-1.5">
-                            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                            <span>Administrator Credentials Validated</span>
-                          </div>
-                          <div className="text-[11px] text-blue-300">
-                            You can enter the Admin Dashboard directly using master session token.
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await loginAdmin(email.trim() || 'campusconnect@gmail.com', password || 'kepton@12Romez');
-                            } catch {
-                              if (diagnosticReport.backendToken) {
-                                try {
-                                  localStorage.setItem('campusconnect_admin_token', diagnosticReport.backendToken);
-                                  localStorage.setItem('campusconnect_auth', 'true');
-                                } catch {}
-                              }
-                            }
-                            navigateTo('/admin');
-                          }}
-                          className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shrink-0 cursor-pointer shadow-md transition-all"
-                        >
-                          Open Admin →
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Firebase Config Snapshot */}
-                    <div className="p-2.5 rounded-xl bg-black/30 border border-slate-800 text-[10px] font-mono text-slate-400 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span>Project ID:</span>
-                        <strong className="text-slate-300">{diagnosticReport.configSnapshot.projectId}</strong>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Firestore Database:</span>
-                        <strong className="text-slate-300 truncate max-w-[200px]">{diagnosticReport.configSnapshot.firestoreDatabaseId}</strong>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Tested Target:</span>
-                        <strong className="text-blue-400">{diagnosticReport.emailTested}</strong>
-                      </div>
-                    </div>
-
-                  </div>
-                ) : (
-                  <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-center text-xs text-slate-400 space-y-1">
-                    <div>Click "Run Auth Diagnostics" to probe Firebase Authentication.</div>
-                    <div className="text-[11px] text-slate-500">
-                      Captures real-time error codes (e.g., auth/operation-not-allowed, auth/invalid-credential) and provides resolution steps.
-                    </div>
-                  </div>
-                )}
-
-              </div>
-            )}
-
-            {/* Sub-link below card */}
-            <div className="mt-4 text-center text-xs text-slate-500">
-              <span>Submitting to a student page? </span>
+              {/* Sign In Button */}
               <button
-                onClick={() => setIsStudentMode(!isStudentMode)}
-                className="font-bold text-slate-800 hover:underline cursor-pointer"
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 rounded-xl bg-[#4A5568] hover:bg-[#3B4657] active:scale-98 text-white font-bold text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {isStudentMode ? 'Switch to business login' : 'Use the student login'}
+                {loading && <RefreshCw className="w-4 h-4 animate-spin" />}
+                <span>Sign In</span>
               </button>
-            </div>
+
+              {/* New here? Divider */}
+              <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white px-3 text-slate-400 font-medium">New here?</span>
+                </div>
+              </div>
+
+              {/* Create a free account Button (Navigates to main public website as requested) */}
+              <button
+                type="button"
+                onClick={() => navigateTo('/')}
+                className="w-full py-3.5 rounded-xl bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 font-bold text-sm shadow-2xs transition-colors cursor-pointer text-center"
+              >
+                Create a free account
+              </button>
+
+            </form>
 
           </div>
 
         </div>
+
       </div>
 
-      {/* Footer */}
-      <footer className="text-center pt-8 text-[11px] text-slate-400 space-y-1">
-        <div className="flex items-center justify-center gap-4 text-slate-500 font-medium">
-          <button onClick={() => navigateTo('/')} className="hover:text-slate-900 cursor-pointer">Home</button>
-          <button onClick={() => navigateTo('/#features')} className="hover:text-slate-900 cursor-pointer">Features</button>
-          <button onClick={() => navigateTo('/terms')} className="hover:text-slate-900 cursor-pointer">Terms</button>
-          <button onClick={() => navigateTo('/privacy')} className="hover:text-slate-900 cursor-pointer">Privacy</button>
-          <button onClick={() => navigateTo('/register')} className="hover:text-slate-900 cursor-pointer">Sign up</button>
+      {/* Floating "We Are Here! 1" support badge from Image 1 */}
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 select-none pointer-events-auto">
+        <div className="relative flex items-center justify-center">
+          <button 
+            type="button"
+            onClick={() => addToast('CampusConnect Support', 'Our live team is standing by to help with any submission inquiries.', 'info')}
+            className="w-12 h-12 rounded-full bg-[#854D0E] text-white flex items-center justify-center shadow-lg border-2 border-white cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+            aria-label="Contact live support"
+          >
+            <MessageCircle className="w-6 h-6 fill-white text-[#854D0E]" />
+          </button>
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
+            1
+          </span>
         </div>
-        <div>
-          © 2026 CampusConnect. Not affiliated with or endorsed by Instagram or Meta.
-        </div>
-      </footer>
+      </div>
 
     </div>
   );

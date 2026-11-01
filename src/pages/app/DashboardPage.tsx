@@ -307,164 +307,92 @@ export const DashboardPage: React.FC = () => {
 
         </div>
 
-        {/* Right Column: Get set up checklist & Recent activity (lg:col-span-4 - Matching Screenshot 00:08) */}
-        <div className="lg:col-span-4 space-y-5 sm:space-y-6">
+        {/* Right Column: Get set up checklist (Matching Image 2 exactly) */}
+        <div className="lg:col-span-4 space-y-5">
           
-          {/* Get set up Card - Exact 3 Steps */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-2xs space-y-6">
+            
+            {/* Header with Circular Progress Ring & Title */}
+            <div className="flex items-center gap-4">
+              <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+                <svg className="w-12 h-12 -rotate-90">
+                  <circle
+                    cx="24"
+                    cy="24"
+                    r="20"
+                    className="text-slate-100"
+                    strokeWidth="4"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="24"
+                    cy="24"
+                    r="20"
+                    className="text-blue-600"
+                    strokeWidth="4"
+                    strokeDasharray={125.6}
+                    strokeDashoffset={125.6 * (1 - 1 / 4)}
+                    strokeLinecap="round"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                </svg>
+              </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Get set up</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">Complete your profile setup to get featured</p>
-              </div>
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#1D64EC] border border-blue-100">
-                {completedStepsCount} of 3
-              </span>
-            </div>
-
-            {/* Progress bar */}
-            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-              <div 
-                className="bg-[#1D64EC] h-full rounded-full transition-all duration-300"
-                style={{ width: `${(completedStepsCount / 3) * 100}%` }}
-              />
-            </div>
-
-            <div className="space-y-3 pt-1">
-              {/* Step 1: Connect your Instagram account */}
-              <div className="flex items-center justify-between gap-3 text-xs p-2.5 rounded-2xl bg-slate-50/70 border border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                    isInstagramConnected ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300 bg-white'
-                  }`}>
-                    {isInstagramConnected ? <Check className="w-3.5 h-3.5" /> : <span className="text-[10px] text-slate-400 font-bold">1</span>}
-                  </div>
-                  <div>
-                    <span className={isInstagramConnected ? 'line-through text-slate-400 font-medium' : 'font-semibold text-slate-800'}>
-                      Connect your Instagram account
-                    </span>
-                    <p className="text-[10px] text-slate-400">
-                      {isInstagramConnected && accounts[0] ? `@${accounts[0].username} connected` : 'Link account to verify ownership'}
-                    </p>
-                  </div>
-                </div>
-                {!isInstagramConnected ? (
-                  <button
-                    onClick={() => setOAuthModalOpen(true)}
-                    className="px-2.5 py-1 rounded-lg bg-[#1D64EC] text-white text-[11px] font-semibold hover:bg-blue-600 transition-colors shrink-0 shadow-2xs"
-                  >
-                    Connect
-                  </button>
-                ) : (
-                  <span className="text-[10px] font-bold text-emerald-600 shrink-0">Done</span>
-                )}
-              </div>
-
-              {/* Step 2: Publish your first post */}
-              <div className="flex items-center justify-between gap-3 text-xs p-2.5 rounded-2xl bg-slate-50/70 border border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                    isFirstPostPublished ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300 bg-white'
-                  }`}>
-                    {isFirstPostPublished ? <Check className="w-3.5 h-3.5" /> : <span className="text-[10px] text-slate-400 font-bold">2</span>}
-                  </div>
-                  <div>
-                    <span className={isFirstPostPublished ? 'line-through text-slate-400 font-medium' : 'font-semibold text-slate-800'}>
-                      Publish your first post
-                    </span>
-                    <p className="text-[10px] text-slate-400">
-                      {isFirstPostPublished ? 'Profile submission registered' : 'Submit photo for university spotlight'}
-                    </p>
-                  </div>
-                </div>
-                {!isFirstPostPublished ? (
-                  <button
-                    onClick={() => navigateTo(userUni?.slug ? `/submit/${userUni.slug}` : '/app/submit')}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] font-semibold hover:bg-slate-50 transition-colors shrink-0"
-                  >
-                    Post ($6)
-                  </button>
-                ) : (
-                  <span className="text-[10px] font-bold text-emerald-600 shrink-0">Done</span>
-                )}
-              </div>
-
-              {/* Step 3: Choose your email alerts */}
-              <div className="flex items-center justify-between gap-3 text-xs p-2.5 rounded-2xl bg-slate-50/70 border border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                    isEmailAlertsChosen ? 'bg-emerald-100 text-emerald-600' : 'border border-slate-300 bg-white'
-                  }`}>
-                    {isEmailAlertsChosen ? <Check className="w-3.5 h-3.5" /> : <span className="text-[10px] text-slate-400 font-bold">3</span>}
-                  </div>
-                  <div>
-                    <span className={isEmailAlertsChosen ? 'line-through text-slate-400 font-medium' : 'font-semibold text-slate-800'}>
-                      Choose your email alerts
-                    </span>
-                    <p className="text-[10px] text-slate-400">
-                      {isEmailAlertsChosen ? 'Alert preferences active' : 'Get notified when your post goes live'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowEmailAlertsModal(true)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors shrink-0 ${
-                    isEmailAlertsChosen 
-                      ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' 
-                      : 'bg-[#1D64EC] text-white hover:bg-blue-600 shadow-2xs'
-                  }`}
-                >
-                  {isEmailAlertsChosen ? 'Edit' : 'Choose'}
-                </button>
+                <h3 className="text-base font-bold text-slate-900 leading-tight">Get set up</h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">1 of 4 done</p>
               </div>
             </div>
-          </div>
 
-          {/* Recent activity Card */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-2xs space-y-3">
-            <h3 className="text-sm font-bold text-slate-900">Recent activity</h3>
-            <div className="space-y-3 text-xs">
-              {accounts.length > 0 ? (
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                  <div className="font-semibold text-slate-800">
-                    Connected @{accounts[0].username}
-                  </div>
-                  <div className="text-[10px] text-slate-400">
-                    Active
-                  </div>
+            {/* 4 Checklist Items from Image 2 */}
+            <div className="space-y-4 pt-1">
+              
+              {/* 1. Create your business account (Checked) */}
+              <div className="flex items-center gap-3 text-xs sm:text-sm">
+                <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
                 </div>
-              ) : (
-                <div className="p-4 rounded-2xl bg-slate-50/60 border border-slate-100 text-center space-y-1">
-                  <p className="text-xs text-slate-500 font-medium">No activity yet</p>
-                  <p className="text-[11px] text-slate-400">Your recent posts, comments, and messages will appear here once active.</p>
-                </div>
-              )}
-            </div>
-          </div>
+                <span className="text-slate-500 font-medium">
+                  Create your business account
+                </span>
+              </div>
 
-          {/* Campus Connect Quick Tile */}
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50/60 rounded-3xl p-5 border border-blue-100 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#1D64EC]">
-              <GraduationCap className="w-4 h-4" />
-              <span>Campus Connect Student Network</span>
-            </div>
-            <p className="text-xs text-slate-600 font-normal leading-relaxed">
-              Explore university hubs, submit student profile photos ($6), and check community submissions.
-            </p>
-            <div className="pt-1 flex items-center gap-2">
-              <button
-                onClick={() => navigateTo('/app/student')}
-                className="px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-xs font-semibold text-[#1D64EC] hover:bg-blue-50 transition-colors"
+              {/* 2. Connect an Instagram account */}
+              <button 
+                type="button"
+                onClick={() => setOAuthModalOpen(true)}
+                className="w-full flex items-center gap-3 text-xs sm:text-sm text-slate-800 font-medium hover:text-blue-600 cursor-pointer transition-colors text-left"
               >
-                Student Hub
+                <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0" />
+                <span>Connect an Instagram account</span>
               </button>
-              <button
-                onClick={() => navigateTo('/app/submit')}
-                className="px-3 py-1.5 rounded-lg bg-[#1D64EC] text-white text-xs font-semibold hover:bg-blue-600 transition-colors"
+
+              {/* 3. Publish your first post */}
+              <button 
+                type="button"
+                onClick={() => navigateTo(userUni?.slug ? `/submit/${userUni.slug}` : '/app/submit')}
+                className="w-full flex items-center gap-3 text-xs sm:text-sm text-slate-800 font-medium hover:text-blue-600 cursor-pointer transition-colors text-left"
               >
-                Submit Photo ($6)
+                <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0" />
+                <span>Publish your first post</span>
               </button>
+
+              {/* 4. Choose your email alerts -> */}
+              <button 
+                type="button"
+                onClick={() => setShowEmailAlertsModal(true)}
+                className="w-full flex items-center justify-between text-xs sm:text-sm text-slate-800 font-medium hover:text-blue-600 cursor-pointer transition-colors group text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0" />
+                  <span>Choose your email alerts</span>
+                </div>
+                <span className="text-slate-400 group-hover:text-blue-600 transition-colors">→</span>
+              </button>
+
             </div>
+
           </div>
 
         </div>
