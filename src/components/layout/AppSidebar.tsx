@@ -99,7 +99,7 @@ export const AppSidebar: React.FC = () => {
         <div className="space-y-0.5">
           {mainNavItems.map((item) => {
             const Icon = item.icon;
-            const isActive = currentRoute === item.route;
+            const isActive = currentRoute === item.route || currentRoute.startsWith(item.route + '?');
 
             return (
               <button

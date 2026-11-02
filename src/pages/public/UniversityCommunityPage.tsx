@@ -418,6 +418,20 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     }
   };
 
+  const scrollToWhatYouShare = () => {
+    const el = document.getElementById('what-you-share-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const scrollToFaq = () => {
+    const el = document.getElementById('faq-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   const faqs = [
     {
       q: "How long until I'm posted?",
@@ -1677,222 +1691,381 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       )}
 
       {/* ------------------------------------------------------------------- */}
-      {/* 1. TOP NAVBAR / BRAND BAR                                           */}
+      {/* 1. TOP NAVBAR / BRAND BAR (EXACT MATCH TO IGPOSTHUB.COM)             */}
       {/* ------------------------------------------------------------------- */}
-      <header className="border-b border-slate-100 bg-white/95 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <header className="border-b border-slate-100 bg-white/95 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-18 flex items-center justify-between">
           
-          {/* Left: Crest + Name + Handle link */}
-          <div className="flex items-center gap-3">
-            <img 
-              src={university.logoUrl} 
-              alt={university.name}
-              referrerPolicy="no-referrer"
-              className="w-10 h-10 rounded-xl object-cover border border-slate-200/80 shadow-2xs shrink-0 bg-white p-0.5"
-            />
-            <div className="leading-tight">
-              <div className="font-extrabold text-sm sm:text-base text-slate-950 tracking-tight">
-                {university.name}
+          {/* Left: igposthub brand + Slash + Campus Badge + Instagram Handle */}
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
+            {/* igposthub Logo */}
+            <button
+              type="button"
+              onClick={() => navigateTo('/')}
+              className="flex items-center gap-2 cursor-pointer group focus:outline-none"
+              title="CampusConnect Public Platform"
+            >
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+                <Instagram className="w-4.5 h-4.5 text-white" />
               </div>
-              <a 
-                href={university.instagramProfileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1 font-mono"
-              >
-                <span>{university.instagramHandle}</span>
-                <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
-              </a>
-            </div>
+              <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">
+                igpost<span className="text-[#3B52A0]">hub</span>
+              </span>
+            </button>
+
+            {/* Divider Slash */}
+            <span className="text-slate-300 font-light text-base select-none">/</span>
+
+            {/* University Crest & Handle Pill */}
+            <a
+              href={university.instagramProfileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 p-1 pr-2.5 rounded-full hover:bg-slate-50 transition-colors group"
+              title={`Visit @${university.instagramHandle.replace(/^@/, '')} on Instagram`}
+            >
+              <div className="w-6 h-6 rounded-full border border-slate-200 bg-white flex flex-col items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                {university.logoUrl ? (
+                  <img src={university.logoUrl} alt="" className="w-3.5 h-3.5 object-contain" />
+                ) : (
+                  <span className="text-[7px] font-bold">⚡</span>
+                )}
+                <span className="text-[5px] font-bold text-slate-900 leading-none">{classYear}</span>
+              </div>
+              <span className="text-xs font-semibold text-slate-700 group-hover:text-slate-950 font-mono truncate max-w-[130px] sm:max-w-[200px]">
+                {university.instagramHandle}
+              </span>
+            </a>
           </div>
 
-          {/* Right: Sign in link + Get featured button */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button 
-              type="button"
-              onClick={() => {
-                if (!isAuthenticated) {
-                  navigateTo(`/login?uni=${university.slug}`);
-                } else {
-                  navigateTo(`/app/dashboard?uni=${university.slug}`);
-                }
-              }}
-              className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-950 transition-colors cursor-pointer px-2.5 sm:px-3 py-1.5 rounded-xl hover:bg-slate-100"
-            >
-              {isAuthenticated ? 'Dashboard' : 'Sign in'}
-            </button>
+          {/* Right: Navigation Links & Action Buttons */}
+          <div className="flex items-center gap-4 sm:gap-7">
+            
+            {/* Nav links (Desktop) */}
+            <nav className="hidden lg:flex items-center gap-6 text-xs sm:text-sm font-medium text-slate-600">
+              <button 
+                type="button"
+                onClick={() => navigateTo('/')}
+                className="hover:text-slate-950 transition-colors cursor-pointer"
+              >
+                All schools
+              </button>
+              <button 
+                type="button"
+                onClick={scrollToHowItWorks}
+                className="hover:text-slate-950 transition-colors cursor-pointer"
+              >
+                How it works
+              </button>
+              <button 
+                type="button"
+                onClick={scrollToWhatYouShare}
+                className="hover:text-slate-950 transition-colors cursor-pointer"
+              >
+                What you share
+              </button>
+              <button 
+                type="button"
+                onClick={scrollToFaq}
+                className="hover:text-slate-950 transition-colors cursor-pointer"
+              >
+                FAQ
+              </button>
+            </nav>
 
-            <button
-              onClick={startBuilder}
-              style={{
-                background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)`
-              }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-white font-bold text-xs sm:text-sm shadow-xs hover:opacity-95 active:scale-98 transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <span>Get featured</span>
-            </button>
+            {/* Sign in Button & Get Featured CTA */}
+            <div className="flex items-center gap-2.5 sm:gap-3.5">
+              <button 
+                type="button"
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    navigateTo(`/login?uni=${university.slug}`);
+                  } else {
+                    navigateTo(`/app/dashboard?uni=${university.slug}`);
+                  }
+                }}
+                className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-950 transition-colors cursor-pointer px-2.5 sm:px-3 py-1.5 rounded-xl hover:bg-slate-100"
+              >
+                {isAuthenticated ? 'Dashboard' : 'Sign in'}
+              </button>
+
+              <button
+                type="button"
+                onClick={startBuilder}
+                className="px-4 sm:px-6 py-2.5 rounded-full text-white font-bold text-xs sm:text-sm shadow-md hover:bg-slate-800 active:scale-98 transition-all cursor-pointer bg-[#2E3748]"
+                style={{
+                  backgroundColor: '#2E3748'
+                }}
+              >
+                <span>Get featured</span>
+              </button>
+            </div>
+
           </div>
 
         </div>
       </header>
 
       {/* ------------------------------------------------------------------- */}
-      {/* 2. HERO SECTION (EXACT LAYOUT FROM VIDEO)                           */}
+      {/* 2. HERO SECTION (EXACT LAYOUT FROM IGPOSTHUB SPALDING SAMPLE)       */}
       {/* ------------------------------------------------------------------- */}
-      <section className="relative overflow-hidden pt-10 sm:pt-16 pb-14 bg-gradient-to-b from-slate-50/50 via-white to-white">
+      <section className="relative overflow-hidden pt-8 sm:pt-14 pb-16 bg-gradient-to-b from-slate-50/70 via-white to-white">
         
-        {/* Subtle decorative brand color glow */}
+        {/* Subtle decorative brand color glow based on Admin's chosen primary color */}
         <div 
-          className="absolute -top-32 right-1/4 w-96 h-96 rounded-full blur-3xl pointer-events-none opacity-10"
+          className="absolute -top-32 right-1/4 w-[500px] h-[500px] rounded-full blur-3xl pointer-events-none opacity-10"
           style={{ backgroundColor: primaryColor }}
         />
 
-        <div className="max-w-6xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
             
-            {/* Left Column: Headlines & CTA */}
-            <div className="lg:col-span-7 space-y-6">
+            {/* Left Column: Headlines & University Spotlight Card */}
+            <div className="lg:col-span-7 space-y-7">
               
-              {/* Accepting profiles pill */}
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200/90 shadow-2xs text-xs font-semibold text-slate-700">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Accepting profiles now</span>
-                <span className="text-slate-300">•</span>
-                <span className="text-[11px] font-mono text-slate-500">UNIVERSITY</span>
-              </div>
-
               {/* Big bold headline */}
-              <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-black tracking-tight text-slate-950 leading-[1.07]">
+              <h1 className="text-4xl sm:text-5xl lg:text-[58px] font-black tracking-tight text-slate-950 leading-[1.08]">
                 You're not just <br />
                 joining college. <br />
-                <span 
-                  className="bg-clip-text text-transparent"
-                  style={{ backgroundImage: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)` }}
-                >
-                  You're joining the spotlight.
+                <span style={{ color: primaryColor }}>
+                  You're joining the
+                </span> <br />
+                <span className="text-slate-800">
+                  spotlight.
                 </span>
               </h1>
 
-              {/* Subheadline */}
-              <div className="space-y-1 text-slate-600 text-sm sm:text-base leading-relaxed">
-                <div>
-                  Get featured on <strong className="text-slate-950 font-bold">{university.instagramHandle}</strong>
+              {/* University Spotlight Card Container (Matching image_fca94304.png exactly) */}
+              <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-sm max-w-lg space-y-5">
+                
+                {/* Top Row: Circular Badge with colored ring + 3 Stats */}
+                <div className="flex items-center gap-5 sm:gap-7">
+                  {/* University Avatar with gradient / primary color ring */}
+                  <div 
+                    className="w-16 h-16 rounded-full p-1 shrink-0 flex items-center justify-center shadow-md relative"
+                    style={{
+                      background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 50%, #EC4899 100%)`
+                    }}
+                  >
+                    <div className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center overflow-hidden border border-white p-1">
+                      {university.logoUrl ? (
+                        <img src={university.logoUrl} alt={university.name} className="w-7 h-7 object-contain" />
+                      ) : (
+                        <span className="text-xs font-bold text-amber-500">⚡</span>
+                      )}
+                      <span className="text-[9px] font-black leading-none mt-0.5 text-slate-900 font-mono">
+                        {classYear}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3 Stats: New / $6 / 24-48h */}
+                  <div className="flex-1 grid grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-lg sm:text-xl font-black text-slate-950">New</div>
+                      <div className="text-[11px] text-slate-400 font-medium">be the first</div>
+                    </div>
+                    <div>
+                      <div className="text-lg sm:text-xl font-black text-slate-950">$6</div>
+                      <div className="text-[11px] text-slate-400 font-medium">one-time</div>
+                    </div>
+                    <div>
+                      <div className="text-lg sm:text-xl font-black text-slate-950">24–48h</div>
+                      <div className="text-[11px] text-slate-400 font-medium">to go live</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-slate-500 text-xs sm:text-sm">
-                  {tagline}
+
+                {/* Campus Name, Instagram Handle & Tagline */}
+                <div className="space-y-1">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-950">
+                    {university.name}
+                  </h2>
+                  <a 
+                    href={university.instagramProfileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-semibold flex items-center gap-1 hover:underline font-mono"
+                    style={{ color: primaryColor }}
+                  >
+                    <span>{university.instagramHandle}</span>
+                    <ExternalLink className="w-3 h-3 text-slate-400" />
+                  </a>
+                  <p className="text-xs text-slate-500 pt-0.5 leading-relaxed">
+                    {tagline}
+                  </p>
                 </div>
-              </div>
 
-              {/* Buttons */}
-              <div className="pt-2 flex items-center gap-3.5 flex-wrap">
-                <button
-                  onClick={startBuilder}
-                  style={{
-                    background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)`
-                  }}
-                  className="px-6 sm:px-7 py-3.5 rounded-xl text-white font-bold text-sm sm:text-base shadow-md hover:opacity-95 active:scale-98 transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <span>Build my profile</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                {/* Action Buttons inside Spotlight Card */}
+                <div className="pt-2 flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={startBuilder}
+                    style={{ backgroundColor: '#2C3545' }}
+                    className="px-6 py-3 rounded-2xl text-white font-bold text-xs sm:text-sm shadow-md hover:bg-slate-900 active:scale-98 transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>Get featured · $6</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
 
-                <button
-                  onClick={scrollToHowItWorks}
-                  className="px-5 py-3.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-slate-950 hover:bg-slate-50 font-semibold text-sm transition-all cursor-pointer"
-                >
-                  How it works
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={scrollToHowItWorks}
+                    className="px-5 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+                  >
+                    How it works
+                  </button>
+                </div>
 
-              {/* Security / trust badge */}
-              <div className="flex items-center gap-2 text-xs text-slate-400 font-medium pt-1">
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>One-time payment, secured by Stripe</span>
               </div>
 
             </div>
 
-            {/* Right Column: Instagram Post Card Mockup */}
+            {/* Right Column: Authentic iPhone Frame Mockup Matching Sample */}
             <div className="lg:col-span-5 flex justify-center lg:justify-end">
-              <div className="w-full max-w-[340px] sm:max-w-[360px] bg-white rounded-3xl border border-slate-200/90 shadow-2xl p-3.5 space-y-3 relative select-none">
+              <div className="relative w-[330px] sm:w-[370px] bg-black rounded-[52px] p-3 shadow-2xl border-[3px] border-slate-900 select-none">
                 
-                {/* IG Post Header */}
-                <div className="flex items-center justify-between px-1 pt-0.5">
-                  <div className="flex items-center gap-2">
-                    <img 
-                      src={university.logoUrl} 
-                      alt="" 
-                      className="w-7 h-7 rounded-full object-cover border border-slate-200 bg-white" 
+                {/* Dynamic Island Notch */}
+                <div className="absolute top-5 left-1/2 -translate-x-1/2 w-28 h-6 bg-black rounded-full z-30 flex items-center justify-end pr-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#18181b] border border-slate-800" />
+                </div>
+
+                {/* Phone screen */}
+                <div className="w-full bg-white rounded-[42px] overflow-hidden flex flex-col pt-3 pb-3 text-slate-900">
+                  
+                  {/* Status Bar: 9:41, Signal, Wifi, Battery */}
+                  <div className="flex items-center justify-between px-6 pt-1 pb-2 text-xs font-semibold text-slate-950">
+                    <span>9:41</span>
+                    <div className="flex items-center gap-1.5 text-slate-900">
+                      <div className="flex items-end gap-0.5 h-2.5">
+                        <div className="w-0.5 h-1 bg-current rounded-xs" />
+                        <div className="w-0.5 h-1.5 bg-current rounded-xs" />
+                        <div className="w-0.5 h-2 bg-current rounded-xs" />
+                        <div className="w-0.5 h-2.5 bg-current rounded-xs" />
+                      </div>
+                      <div className="w-5 h-2.5 rounded-sm border border-current p-0.5 flex items-center">
+                        <div className="w-full h-full bg-current rounded-2xs" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Instagram Header */}
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div 
+                        className="w-7 h-7 rounded-full p-0.5 flex items-center justify-center shrink-0"
+                        style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)` }}
+                      >
+                        <div className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center p-0.5">
+                          {university.logoUrl ? (
+                            <img src={university.logoUrl} alt="" className="w-3.5 h-3.5 object-contain" />
+                          ) : (
+                            <span className="text-[6px] font-bold">⚡</span>
+                          )}
+                          <span className="text-[5px] font-bold leading-none text-slate-900">{classYear}</span>
+                        </div>
+                      </div>
+                      <div className="leading-tight text-left">
+                        <div className="text-xs font-bold text-slate-950 truncate max-w-[170px]">
+                          {university.instagramHandle.replace(/^@/, '')}
+                        </div>
+                        <div className="text-[10px] text-slate-400">Featured</div>
+                      </div>
+                    </div>
+                    <MoreHorizontal className="w-4 h-4 text-slate-400" />
+                  </div>
+
+                  {/* Post Canvas with university primaryColor */}
+                  <div 
+                    className="relative aspect-[4/5] overflow-hidden flex flex-col justify-between p-4 text-center text-white"
+                    style={{
+                      background: `radial-gradient(circle at 50% 35%, ${primaryColor} 0%, #0F172A 100%)`
+                    }}
+                  >
+                    {/* Dot matrix pattern */}
+                    <div 
+                      className="absolute inset-0 opacity-15 pointer-events-none"
+                      style={{
+                        backgroundImage: 'radial-gradient(rgba(255,255,255,0.7) 1px, transparent 1px)',
+                        backgroundSize: '16px 16px'
+                      }}
                     />
-                    <div className="leading-tight">
-                      <span className="font-bold text-xs text-slate-900 tracking-tight">
-                        {university.instagramHandle.replace('@', '')}
+
+                    {/* Top text: IGPOSTHUB · FEATURED and 1/8 */}
+                    <div className="relative z-10 flex items-center justify-between text-[9px] font-extrabold tracking-widest uppercase text-white/80 px-2 pt-1">
+                      <span className="mx-auto pl-6">IGPOSTHUB · FEATURED</span>
+                      <span className="font-mono text-white/70">1/8</span>
+                    </div>
+
+                    {/* Center: Silhouette Portrait in glossy circle */}
+                    <div className="relative z-10 flex flex-col items-center justify-center my-auto space-y-2">
+                      <div className="w-36 h-36 rounded-full p-1 bg-white/20 backdrop-blur-xs border-2 border-white/40 shadow-xl flex items-center justify-center">
+                        <div className="w-full h-full rounded-full bg-gradient-to-b from-blue-300 to-indigo-700 flex items-center justify-center overflow-hidden relative">
+                          <div className="w-14 h-14 rounded-full bg-white/90 absolute top-5" />
+                          <div className="w-28 h-20 rounded-t-full bg-white/90 absolute bottom-0" />
+                        </div>
+                      </div>
+                      <div className="pt-1">
+                        <div className="text-sm font-black uppercase tracking-wider text-white drop-shadow-sm">
+                          YOUR NAME
+                        </div>
+                        <div className="text-[11px] text-blue-200 font-semibold font-mono">
+                          @you
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom strip with campus handle */}
+                    <div className="relative z-10 py-1 px-3 rounded-lg bg-black/40 backdrop-blur-xs text-[10px] font-mono text-white/90 truncate">
+                      @{university.instagramHandle.replace(/^@/, '')}
+                    </div>
+
+                    {/* Floating Pill Left: Live in 24-48h */}
+                    <div className="absolute top-1/2 -left-3 -translate-y-6 z-20 bg-white text-slate-900 px-3.5 py-1.5 rounded-full shadow-xl border border-slate-100 flex items-center gap-1.5 text-xs font-bold">
+                      <span className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px]">
+                        ✓
                       </span>
-                      <div className="text-[10px] text-slate-400">Featured</div>
+                      <span className="text-[11px]">Live in 24–48h</span>
                     </div>
-                  </div>
-                  <MoreHorizontal className="w-4 h-4 text-slate-400" />
-                </div>
 
-                {/* IG Image Box */}
-                <div 
-                  className="aspect-[4/5] rounded-2xl relative overflow-hidden flex flex-col items-center justify-center p-6 text-center text-white shadow-inner"
-                  style={{
-                    background: `linear-gradient(145deg, ${primaryColor} 0%, ${accentColor} 100%)`
-                  }}
-                >
-                  {/* Floating Live Badge */}
-                  <div className="absolute top-3 left-3 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-white flex items-center gap-1.5 shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                    <span>Live in 24-48h</span>
-                  </div>
-
-                  {/* 1/8 Spot badge */}
-                  <div className="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full text-[10px] font-mono text-white/90">
-                    1/8
-                  </div>
-
-                  {/* Centered Graphic / Headline */}
-                  <div className="space-y-1 z-10">
-                    <div className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center mx-auto mb-2 text-white">
-                      <Users className="w-6 h-6" />
-                    </div>
-                    <div className="text-3xl sm:text-4xl font-extrabold tracking-tight drop-shadow-sm">
-                      Meet you.
-                    </div>
-                    <div className="text-xs text-white/90 font-medium">
-                      Your pictures go here.
+                    {/* Floating Pill Right: Tagged @you */}
+                    <div className="absolute top-2/3 -right-3 z-20 bg-[#2D3748] text-white px-3 py-1.5 rounded-full shadow-xl flex items-center gap-1.5 text-xs font-bold">
+                      <span className="text-slate-300">🏷</span>
+                      <span className="text-[11px]">Tagged @you</span>
                     </div>
                   </div>
 
-                  {/* Floating + New followers Sticker */}
-                  <div className="absolute bottom-3 right-3 bg-white text-slate-900 text-[11px] font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1 border border-slate-100 animate-in fade-in">
-                    <span className="text-emerald-600 font-extrabold">+</span>
-                    <span>New followers</span>
+                  {/* Actions Bar */}
+                  <div className="px-4 py-2 flex items-center justify-between text-slate-900 border-b border-slate-50">
+                    <div className="flex items-center gap-3">
+                      <Heart className="w-5 h-5 text-rose-500 fill-rose-500" />
+                      <MessageCircle className="w-5 h-5" />
+                      <Send className="w-4 h-4" />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                      <span className="w-1 h-1 rounded-full bg-slate-300" />
+                      <span className="w-1 h-1 rounded-full bg-slate-300" />
+                      <span className="w-1 h-1 rounded-full bg-slate-300" />
+                      <span className="w-1 h-1 rounded-full bg-slate-300" />
+                    </div>
+                    <Bookmark className="w-4 h-4 text-slate-800" />
                   </div>
-                </div>
 
-                {/* IG Post Actions Bar */}
-                <div className="flex items-center justify-between px-1 pt-1">
-                  <div className="flex items-center gap-3 text-slate-800">
-                    <Heart className="w-5 h-5 text-rose-500 fill-rose-500 hover:scale-110 transition-transform cursor-pointer" />
-                    <MessageCircle className="w-5 h-5 hover:text-slate-600 cursor-pointer" />
-                    <Send className="w-4 h-4 hover:text-slate-600 cursor-pointer" />
+                  {/* Caption info */}
+                  <div className="px-4 py-2 text-left space-y-0.5 text-xs">
+                    <div className="font-bold text-slate-900 text-[11px]">
+                      Liked by your future classmates
+                    </div>
+                    <div className="text-slate-700 text-[11px] leading-snug">
+                      <strong className="text-slate-950">{university.instagramHandle.replace(/^@/, '')}</strong> Meet @you 🎓 Say hi to your newest classmate 👋
+                    </div>
+                    <div className="text-[9px] text-slate-400 font-bold uppercase tracking-wider pt-0.5">
+                      JUST NOW
+                    </div>
                   </div>
-                  <Bookmark className="w-4 h-4 text-slate-800 hover:text-slate-600 cursor-pointer" />
-                </div>
 
-                {/* IG Post Caption info */}
-                <div className="px-1 text-xs space-y-1">
-                  <div className="font-bold text-slate-900 text-[11px]">
-                    Liked by your future classmates
-                  </div>
-                  <div className="text-slate-700 text-[11px] leading-snug">
-                    <strong className="text-slate-900">{university.instagramHandle.replace('@', '')}</strong>{' '}
-                    Say hi to @you 👇
-                  </div>
                 </div>
-
               </div>
             </div>
 
@@ -2001,7 +2174,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       {/* ------------------------------------------------------------------- */}
       {/* 5. WHAT GOES IN YOUR PROFILE SECTION                                */}
       {/* ------------------------------------------------------------------- */}
-      <section className="max-w-6xl mx-auto px-6 pb-16">
+      <section id="what-you-share-section" className="max-w-6xl mx-auto px-6 pb-16">
         <div className="rounded-3xl border border-slate-200/90 bg-white p-7 sm:p-9 shadow-2xs space-y-6">
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
@@ -2058,7 +2231,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       {/* ------------------------------------------------------------------- */}
       {/* 6. FAQ ACCORDION SECTION                                            */}
       {/* ------------------------------------------------------------------- */}
-      <section className="max-w-6xl mx-auto px-6 py-14 sm:py-20 border-t border-slate-100">
+      <section id="faq-section" className="max-w-6xl mx-auto px-6 py-14 sm:py-20 border-t border-slate-100">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* FAQ Left Column */}
@@ -2214,6 +2387,27 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
 
       {/* Global Image 1 Footer */}
       <Footer />
+
+      {/* Floating "We Are Here! 1" support badge from Image 1 and sample */}
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 select-none pointer-events-auto">
+        <div className="flex items-center gap-1 text-[#854D0E] font-bold text-xs select-none bg-white/80 backdrop-blur-xs px-2.5 py-1 rounded-full shadow-xs border border-amber-200/60">
+          <span className="text-sm">👋</span>
+          <span className="font-extrabold tracking-tight">We Are Here!</span>
+        </div>
+        <div className="relative flex items-center justify-center">
+          <button 
+            type="button"
+            onClick={() => addToast('Live Support', 'Our campus support team is online and ready to assist with your submission.', 'info')}
+            className="w-12 h-12 rounded-full bg-[#854D0E] text-white flex items-center justify-center shadow-xl border-2 border-white cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+            aria-label="Contact live support"
+          >
+            <MessageCircle className="w-6 h-6 fill-white text-[#854D0E]" />
+          </button>
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
+            1
+          </span>
+        </div>
+      </div>
 
     </div>
   );

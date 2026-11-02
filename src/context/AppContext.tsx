@@ -560,10 +560,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
     
-    const displayName = cleanEmail.split('@')[0]
-      .split(/[._-]/)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ') || 'Campus Student';
+    const displayName = cleanEmail === 'keptonotieno@gmail.com'
+      ? 'software developer'
+      : cleanEmail.split('@')[0]
+          .split(/[._-]/)
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(' ') || 'Campus Student';
 
     // University association: use entry university, selected university, or default Harvard
     const associatedUni = entryUniversityContext || selectedUniversity || VERIFIED_UNIVERSITIES[0];

@@ -334,13 +334,13 @@ const AppContent: React.FC = () => {
   if (isAppRoute && isAuthenticated) {
     let PageComponent = DashboardPage;
 
-    if (currentRoute === '/app/inbox') PageComponent = InboxPage as any;
-    else if (currentRoute === '/app/comments') PageComponent = CommentsPage as any;
-    else if (currentRoute === '/app/insights') PageComponent = InsightsPage as any;
-    else if (currentRoute === '/app/accounts') PageComponent = AccountsPage as any;
-    else if (currentRoute === '/app/notifications') PageComponent = NotificationsPage as any;
-    else if (currentRoute === '/app/settings') PageComponent = SettingsPage as any;
-    else if (currentRoute === '/app/student' || currentRoute === '/student') PageComponent = StudentDashboardPage as any;
+    if (currentRoute.startsWith('/app/inbox')) PageComponent = InboxPage as any;
+    else if (currentRoute.startsWith('/app/comments')) PageComponent = CommentsPage as any;
+    else if (currentRoute.startsWith('/app/insights')) PageComponent = InsightsPage as any;
+    else if (currentRoute.startsWith('/app/accounts')) PageComponent = AccountsPage as any;
+    else if (currentRoute.startsWith('/app/notifications')) PageComponent = NotificationsPage as any;
+    else if (currentRoute.startsWith('/app/settings')) PageComponent = SettingsPage as any;
+    else if (currentRoute.startsWith('/app/student') || currentRoute.startsWith('/student')) PageComponent = StudentDashboardPage as any;
     else PageComponent = DashboardPage;
 
     return (
