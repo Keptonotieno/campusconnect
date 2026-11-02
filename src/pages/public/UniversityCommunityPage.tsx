@@ -1778,6 +1778,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
               <button 
                 type="button"
                 onClick={() => {
+                  setEntryUniversityContext(university);
                   if (!isAuthenticated) {
                     navigateTo(`/login?uni=${university.slug}`);
                   } else {

@@ -54,8 +54,14 @@ const AppContent: React.FC = () => {
 
   // 1. Identify if the current URL explicitly requests a specific campus portal
   const requestedCampusSlug = (() => {
-    const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-    const rawParam = sp?.get('uni') || sp?.get('university') || sp?.get('campus') || sp?.get('slug') || sp?.get('url');
+    const pathOnly = (currentRoute || (typeof window !== 'undefined' ? window.location.pathname : '/')).split('?')[0];
+    const firstSegment = pathOnly.replace(/^\//, '').split('/')[0];
+    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'app', 'business', 'student'];
+
+    // Dedicated auth, admin, and app routes take precedence - never render community landing page over them
+    if (reservedRoutes.includes(firstSegment)) {
+      return null;
+    }
 
     const sanitizeSlug = (val: string | null | undefined): string | null => {
       if (!val) return null;
@@ -72,14 +78,6 @@ const AppContent: React.FC = () => {
       return s.split('/')[0].split('?')[0].split('#')[0].replace(/^@/, '').trim() || null;
     };
 
-    if (rawParam) {
-      const extracted = sanitizeSlug(rawParam);
-      if (extracted) return extracted;
-    }
-
-    if (currentRoute === '/' || currentRoute === '') {
-      return null;
-    }
     if (currentRoute.startsWith('/ig/')) {
       return sanitizeSlug(currentRoute.replace('/ig/', ''));
     }
@@ -92,10 +90,19 @@ const AppContent: React.FC = () => {
     if (currentRoute.startsWith('/submit/')) {
       return sanitizeSlug(currentRoute.replace('/submit/', ''));
     }
-    const cleanPath = currentRoute.replace(/^\//, '').split('/')[0].split('?')[0];
-    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'app', 'ig', 'u', 'university', 'submit'];
-    if (reservedRoutes.includes(cleanPath)) return null;
-    return sanitizeSlug(cleanPath);
+
+    const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const rawParam = sp?.get('uni') || sp?.get('university') || sp?.get('campus') || sp?.get('slug') || sp?.get('url');
+    if (rawParam) {
+      const extracted = sanitizeSlug(rawParam);
+      if (extracted) return extracted;
+    }
+
+    if (pathOnly === '/' || pathOnly === '') {
+      return null;
+    }
+
+    return sanitizeSlug(firstSegment);
   })();
 
   // Asynchronous remote resolution state for direct university links
@@ -362,18 +369,21 @@ const AppContent: React.FC = () => {
   }
 
   // 6. Public Pages Router
+  const pathOnly = currentRoute.split('?')[0];
   let PublicComponent = LandingPage;
 
-  if (currentRoute === '/terms') PublicComponent = TermsPage;
-  else if (currentRoute === '/privacy') PublicComponent = PrivacyPage;
-  else if (currentRoute === '/data-deletion') PublicComponent = DataDeletionPage;
-  else if (currentRoute === '/login' || currentRoute === '/business/login') PublicComponent = LoginPage;
-  else if (currentRoute === '/register' || currentRoute === '/business/register') PublicComponent = RegisterPage;
-  else if (currentRoute === '/forgot-password') PublicComponent = ForgotPasswordPage;
+  if (pathOnly === '/terms') PublicComponent = TermsPage;
+  else if (pathOnly === '/privacy') PublicComponent = PrivacyPage;
+  else if (pathOnly === '/data-deletion') PublicComponent = DataDeletionPage;
+  else if (pathOnly === '/login' || pathOnly === '/business/login') PublicComponent = LoginPage;
+  else if (pathOnly === '/register' || pathOnly === '/business/register') PublicComponent = RegisterPage;
+  else if (pathOnly === '/forgot-password') PublicComponent = ForgotPasswordPage;
+
+  const isAuthOrStaticPage = pathOnly === '/login' || pathOnly === '/register' || pathOnly === '/forgot-password';
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
-      {currentRoute !== '/login' && currentRoute !== '/register' && currentRoute !== '/forgot-password' && (
+      {!isAuthOrStaticPage && (
         <Navbar />
       )}
 
@@ -381,7 +391,7 @@ const AppContent: React.FC = () => {
         <PublicComponent />
       </main>
 
-      {currentRoute !== '/login' && currentRoute !== '/register' && currentRoute !== '/forgot-password' && (
+      {!isAuthOrStaticPage && (
         <Footer />
       )}
 
