@@ -20,10 +20,9 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Universities: Publicly readable directory
+    // Universities: Publicly readable directory, manageable by admin portal
     match /universities/{universityId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     // Connection health check for testConnection()

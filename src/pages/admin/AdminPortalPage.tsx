@@ -37,37 +37,48 @@ import {
   Sliders,
   Trash2
 } from 'lucide-react';
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  deleteDoc, 
+  setDoc, 
+  onSnapshot, 
+  query, 
+  where 
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { FeaturedSubmission, University, PaymentRecord, InstagramAccount, AuditLogItem } from '../../types';
 import { 
   getAdminStatus, 
   bootstrapAdmin, 
   loginAdmin, 
   logoutAdmin, 
-  checkAdminSession,
-  isMasterAdminEmail,
-  isMasterPassword,
-  fetchAdminOverview,
-  fetchAdminCampuses,
-  createAdminCampus,
-  updateAdminCampus,
-  deleteAdminCampus,
-  fetchAdminPayments,
-  simulateWebhookTest,
-  fetchAdminInstagram,
-  disconnectAdminInstagram,
-  fetchAdminEmail,
-  sendAdminTestEmail,
-  fetchAdminAuditLogs,
-  fetchAdminIntegrations,
-  updateAdminIntegration,
-  testAdminIntegration,
-  fetchAdminSubmissions,
-  reviewAdminSubmission,
-  publishSubmissionToUniversityInstagram,
-  IntegrationItem,
-  AdminOverviewData,
-  EmailConfigData,
-  getStoredAdminToken
+  checkAdminSession, 
+  isMasterAdminEmail, 
+  isMasterPassword, 
+  fetchAdminOverview, 
+  fetchAdminCampuses, 
+  createAdminCampus, 
+  updateAdminCampus, 
+  deleteAdminCampus, 
+  fetchAdminPayments, 
+  simulateWebhookTest, 
+  fetchAdminInstagram, 
+  disconnectAdminInstagram, 
+  fetchAdminEmail, 
+  sendAdminTestEmail, 
+  fetchAdminAuditLogs, 
+  fetchAdminIntegrations, 
+  updateAdminIntegration, 
+  testAdminIntegration, 
+  fetchAdminSubmissions, 
+  reviewAdminSubmission, 
+  publishSubmissionToUniversityInstagram, 
+  IntegrationItem, 
+  AdminOverviewData, 
+  EmailConfigData, 
+  getStoredAdminToken 
 } from '../../lib/adminApi';
 
 export const AdminPortalPage: React.FC = () => {
@@ -118,25 +129,89 @@ export const AdminPortalPage: React.FC = () => {
 
   // Backend Live Data
   const [overviewData, setOverviewData] = useState<AdminOverviewData | null>(null);
+
   const [campuses, setCampuses] = useState<University[]>(() => {
     try {
       const stored = localStorage.getItem('campusconnect_campuses');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
     return universities || [];
   });
+  const [loadingCampuses, setLoadingCampuses] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('campusconnect_campuses');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return false;
+      }
+    } catch {}
+    return (universities || []).length === 0;
+  });
 
-  // Keep campuses synchronized with AppContext (live database/admin created only)
+  // Real-time Firestore sync & direct dynamic fetching for universities
   useEffect(() => {
-    if (universities) {
-      setCampuses(universities);
-    }
-  }, [universities]);
+    const universitiesRef = collection(db, 'universities');
+
+    const unsubscribe = onSnapshot(
+      universitiesRef,
+      (snapshot) => {
+        const firestoreCampuses: University[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as University;
+          firestoreCampuses.push({
+            ...data,
+            id: docSnap.id,
+            slug: data.slug || docSnap.id
+          });
+        });
+
+        if (firestoreCampuses.length > 0) {
+          setCampuses(firestoreCampuses);
+          try {
+            localStorage.setItem('campusconnect_campuses', JSON.stringify(firestoreCampuses));
+          } catch {}
+          firestoreCampuses.forEach((item) => addOrUpdateCampus(item));
+        } else {
+          // If Firestore returns 0 documents, preserve any local or in-memory campuses and sync them up
+          setCampuses(prev => {
+            if (prev && prev.length > 0) {
+              prev.forEach(async (c) => {
+                try {
+                  await setDoc(doc(db, 'universities', c.id), c, { merge: true });
+                } catch {}
+              });
+              return prev;
+            }
+            try {
+              const stored = localStorage.getItem('campusconnect_campuses');
+              if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  parsed.forEach(async (c) => {
+                    try {
+                      await setDoc(doc(db, 'universities', c.id), c, { merge: true });
+                    } catch {}
+                  });
+                  return parsed;
+                }
+              }
+            } catch {}
+            return [];
+          });
+        }
+        setLoadingCampuses(false);
+      },
+      (error) => {
+        console.warn('Firestore universities fetch/sync notice:', error);
+        setLoadingCampuses(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [addOrUpdateCampus]);
 
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [paymentTotals, setPaymentTotals] = useState<{ usd: number }>({ usd: 0 });
@@ -263,10 +338,7 @@ export const AdminPortalPage: React.FC = () => {
       if (ov) {
         setOverviewData(ov);
       }
-      if (Array.isArray(cp?.campuses)) {
-        setCampuses(cp.campuses);
-        cp.campuses.forEach(c => addOrUpdateCampus(c));
-      }
+      // Campuses are maintained as a dynamic live list fetched directly from Firestore
       if (Array.isArray(py?.payments)) {
         setPayments(py.payments);
       }
@@ -524,49 +596,78 @@ export const AdminPortalPage: React.FC = () => {
           communityEnabled: newCampusEnabled,
           updatedAt: new Date().toISOString()
         };
-        await updateAdminCampus(editingCampus.id, updatedCampus);
+
+        // 1. Direct database-level update in Firestore
+        try {
+          await setDoc(doc(db, 'universities', editingCampus.id), updatedCampus, { merge: true });
+        } catch (fsErr) {
+          console.warn('Firestore campus update notice:', fsErr);
+        }
+
+        // 2. Synchronize server backend
+        try {
+          await updateAdminCampus(editingCampus.id, updatedCampus);
+        } catch {}
+
+        // 3. Update UI state immediately
         setCampuses(prev => prev.map(c => c.id === editingCampus.id ? updatedCampus : c));
         addOrUpdateCampus(updatedCampus);
         addToast('Campus Updated', `Saved settings for ${newCampusName}.`, 'success');
       } else {
         // Create new
-        const newPayload = {
+        const docId = 'uni_' + newCampusSlug.trim().replace(/[^a-z0-9]/g, '');
+        const cleanHandle = newCampusHandle.trim().replace(/^@/, '');
+        const newPayload: University = {
+          id: docId,
           name: newCampusName.trim(),
           slug: newCampusSlug.trim(),
           instagramHandle: newCampusHandle.trim(),
+          instagramProfileUrl: `https://instagram.com/${cleanHandle}`,
+          officialWebsiteUrl: `https://${newCampusSlug.trim()}.edu`,
           location: newCampusLocation.trim(),
           description: newCampusDesc.trim(),
-          logoUrl: newCampusLogo.trim() || undefined,
-          coverUrl: newCampusCover.trim() || undefined,
+          logoUrl: newCampusLogo.trim() || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+          coverUrl: newCampusCover.trim() || 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
           primaryColor: newCampusPrimaryColor.trim() || '#004B87',
           accentColor: newCampusAccentColor.trim() || '#0284C7',
           classYear: newCampusClassYear.trim() || '2031',
           tagline: newCampusTagline.trim() || `${newCampusName.trim()} forever.`,
-          communityEnabled: newCampusEnabled
-        };
-        const res = await createAdminCampus(newPayload);
-        const saved = res.campus || {
-          id: 'uni_' + newCampusSlug.trim().replace(/[^a-z0-9]/g, ''),
-          ...newPayload,
+          communityEnabled: newCampusEnabled,
           studentCount: 0,
           featuredCount: 0,
           established: '2026',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
-        setCampuses(prev => {
-          const filtered = prev.filter(c => c.id !== saved.id && c.slug !== saved.slug);
-          return [saved, ...filtered];
-        });
-        addOrUpdateCampus(saved);
-        addToast('Campus Created', `Created ${saved.name}. Canonical route: /ig/${saved.slug}`, 'success');
-      }
 
-      setShowCreateCampusModal(false);
-      setEditingCampus(null);
-      resetCampusForm();
-      refreshCampuses();
-      await loadAllAdminData();
+        // 1. Update UI state immediately (instant rendering in Campus Management & Overview)
+        setCampuses(prev => {
+          const filtered = prev.filter(c => c.id !== newPayload.id && c.slug !== newPayload.slug);
+          const next = [newPayload, ...filtered];
+          try {
+            localStorage.setItem('campusconnect_campuses', JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+        addOrUpdateCampus(newPayload);
+        addToast('Campus Created', `Created ${newPayload.name}. Canonical route: /ig/${newPayload.slug}`, 'success');
+
+        setShowCreateCampusModal(false);
+        setEditingCampus(null);
+        resetCampusForm();
+
+        // 2. Direct database-level creation in Firestore (asynchronous background persistence)
+        try {
+          await setDoc(doc(db, 'universities', docId), newPayload);
+        } catch (fsErr) {
+          console.warn('Firestore campus create notice:', fsErr);
+        }
+
+        // 3. Synchronize server backend
+        try {
+          await createAdminCampus(newPayload);
+        } catch {}
+      }
     } catch (err: any) {
       setCampusError(err.message || 'Failed to save campus.');
     } finally {
@@ -614,6 +715,7 @@ export const AdminPortalPage: React.FC = () => {
     setCampuses(prev => prev.map(item => item.id === c.id ? updated : item));
     addOrUpdateCampus(updated);
     try {
+      await setDoc(doc(db, 'universities', c.id), { communityEnabled: nextStatus, updatedAt: updated.updatedAt }, { merge: true });
       await updateAdminCampus(c.id, { communityEnabled: nextStatus });
       addToast(
         nextStatus ? 'Campus Activated' : 'Campus Deactivated',
@@ -631,33 +733,66 @@ export const AdminPortalPage: React.FC = () => {
     setCampusPendingDelete(c);
   };
 
-  // Perform Delete execution
+  // Perform Delete execution: Triggers a database-level removal in Firestore and updates UI immediately
   const handleConfirmDeleteCampus = async () => {
     if (!campusPendingDelete) return;
     const c = campusPendingDelete;
+    const targetId = c.id;
+    const targetSlug = c.slug;
     setIsDeletingCampus(true);
+
     try {
-      await deleteAdminCampus(c.id);
-      setCampuses(prev => prev.filter(item => item.id !== c.id && item.slug !== c.slug));
-      removeCampus(c.id);
-      if (c.slug) removeCampus(c.slug);
+      // 1. Instantly update UI immediately (optimistic UI update)
+      setCampuses(prev => prev.filter(item => item.id !== targetId && item.slug !== targetSlug));
+      removeCampus(targetId);
+      if (targetSlug) removeCampus(targetSlug);
 
       // Clean local storage cache immediately
       try {
         const stored = localStorage.getItem('campusconnect_campuses');
         if (stored) {
           const parsed: University[] = JSON.parse(stored);
-          const next = parsed.filter(item => item.id !== c.id && item.slug !== c.slug);
+          const next = parsed.filter(item => item.id !== targetId && item.slug !== targetSlug);
           localStorage.setItem('campusconnect_campuses', JSON.stringify(next));
         }
       } catch {}
 
-      addToast('Campus Deleted', `Successfully removed ${c.name}.`, 'success');
+      // 2. Trigger actual database-level removal directly in Firestore
+      try {
+        await deleteDoc(doc(db, 'universities', targetId));
+      } catch (fsErr) {
+        console.warn('Direct doc delete by ID notice:', fsErr);
+      }
+
+      if (targetSlug && targetSlug !== targetId) {
+        try {
+          await deleteDoc(doc(db, 'universities', targetSlug));
+        } catch {}
+      }
+
+      try {
+        const q = query(collection(db, 'universities'), where('slug', '==', targetSlug));
+        const querySnap = await getDocs(q);
+        for (const docSnapshot of querySnap.docs) {
+          await deleteDoc(doc(db, 'universities', docSnapshot.id));
+        }
+      } catch (qErr) {
+        console.warn('Firestore slug query cleanup notice:', qErr);
+      }
+
+      // 3. Keep backend database in sync as well
+      try {
+        await deleteAdminCampus(targetId);
+      } catch (apiErr) {
+        console.warn('Backend campus delete notice:', apiErr);
+      }
+
+      addToast('Campus Deleted', `Successfully removed ${c.name} from the database.`, 'success');
       setCampusPendingDelete(null);
       refreshCampuses();
-      await loadAllAdminData();
     } catch (err: any) {
-      addToast('Error', err.message || 'Failed to delete campus.', 'error');
+      console.error('Error deleting campus from database:', err);
+      addToast('Error', err.message || 'Failed to delete campus from database.', 'error');
     } finally {
       setIsDeletingCampus(false);
     }
@@ -1095,14 +1230,19 @@ export const AdminPortalPage: React.FC = () => {
         isDarkMode ? 'border-slate-800 bg-[#101726]/90 text-white' : 'border-slate-200/80 bg-white/95 text-slate-900 shadow-2xs'
       }`}>
         
-        {/* Brand & Authorization Badge */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-extrabold shadow-md">
+        {/* Brand & Authorization Badge (Clickable to return to Overview) */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('OVERVIEW')}
+          className="flex items-center gap-3 text-left cursor-pointer group focus:outline-none"
+          title="CampusConnect Admin Dashboard Overview"
+        >
+          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-extrabold shadow-md group-hover:scale-105 transition-transform">
             CC
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className={`font-extrabold text-sm tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+              <span className={`font-extrabold text-sm tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'} group-hover:text-blue-500 transition-colors`}>
                 CampusConnect <span className="text-blue-500 font-black">Admin</span>
               </span>
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
@@ -1114,7 +1254,7 @@ export const AdminPortalPage: React.FC = () => {
               Live DB Synced • Role: Master Administrator
             </div>
           </div>
-        </div>
+        </button>
 
         {/* Admin User Info, Theme Toggle & Logout */}
         <div className="flex items-center gap-2 sm:gap-3">
@@ -1164,9 +1304,9 @@ export const AdminPortalPage: React.FC = () => {
       {/* 2. DASHBOARD BODY & TABS */}
       <div className="max-w-7xl mx-auto p-4 sm:p-8 space-y-6">
         
-        {/* Mobile Tab Dropdown for Phones & Tablets */}
-        <div className="md:hidden">
-          <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+        {/* Mobile Tab Dropdown & Tappable Touch Pills for Phones & Tablets */}
+        <div className="md:hidden space-y-2.5">
+          <label className={`block text-[11px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
             Select Dashboard Section:
           </label>
           <select
@@ -1185,6 +1325,40 @@ export const AdminPortalPage: React.FC = () => {
             <option value="SUBMISSIONS">✨ Photo Moderation ({(submissions || []).length})</option>
             <option value="AUDIT_LOGS">🛡️ Security & Audit Logs ({(auditLogs || []).length})</option>
           </select>
+
+          {/* Direct Tap Pills for Mobile Users */}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
+            {[
+              { id: 'OVERVIEW', label: 'Overview', icon: Layers },
+              { id: 'CAMPUSES', label: `Campuses (${(campuses || []).length})`, icon: Building2 },
+              { id: 'INSTAGRAM', label: 'Instagram', icon: Instagram },
+              { id: 'PAYMENTS', label: 'Payments', icon: CreditCard },
+              { id: 'INTEGRATIONS', label: 'Integrations', icon: Key },
+              { id: 'EMAIL', label: 'Email', icon: Mail },
+              { id: 'SUBMISSIONS', label: 'Submissions', icon: Sparkles },
+              { id: 'AUDIT_LOGS', label: 'Audit Logs', icon: ShieldCheck }
+            ].map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-all active:scale-95 ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : isDarkMode
+                        ? 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
+                        : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Navigation Tabs (Scrollable on Tablet & Desktop) */}
@@ -1206,6 +1380,7 @@ export const AdminPortalPage: React.FC = () => {
             return (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
                   isActive
@@ -1249,98 +1424,138 @@ export const AdminPortalPage: React.FC = () => {
               </p>
             </div>
 
-            {/* 5 Primary KPI Metric Cards (Loaded from real database) */}
+            {/* 5 Primary KPI Metric Cards (Clickable & Dynamic) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               
-              {/* 1. Total amount paid */}
-              <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
-                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
-              }`}>
+              {/* 1. Total amount paid - Clickable to Payments */}
+              <button 
+                type="button"
+                onClick={() => setActiveTab('PAYMENTS')}
+                className={`p-5 rounded-2xl border space-y-2 cursor-pointer transition-all active:scale-[0.98] group text-left w-full focus:outline-none ${
+                  isDarkMode 
+                    ? 'bg-[#131B2E] border-slate-800 hover:border-emerald-500/60 hover:bg-[#162036]' 
+                    : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md hover:border-emerald-400'
+                }`}
+                title="Click to inspect all verified payment transactions"
+              >
                 <div className={`flex items-center justify-between text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  <span>Total Amount Paid</span>
-                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <span className="group-hover:text-emerald-500 transition-colors">Total Amount Paid</span>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <DollarSign className="w-4 h-4" />
                   </div>
                 </div>
                 <div className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                   ${(paymentTotals?.usd ?? 0).toFixed(2)} USD
                 </div>
-                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                  {overviewData?.totalAmountPaid?.formattedUsd || `$${(paymentTotals?.usd ?? 0).toFixed(2)} USD`} • Stripe Gateway
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center justify-between">
+                  <span>Stripe Gateway</span>
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">View →</span>
                 </div>
-              </div>
+              </button>
 
-              {/* 2. Registered Universities & Hubs */}
-              <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
-                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
-              }`}>
+              {/* 2. Registered Universities & Hubs - Clickable to Campuses */}
+              <button 
+                type="button"
+                onClick={() => setActiveTab('CAMPUSES')}
+                className={`p-5 rounded-2xl border space-y-2 cursor-pointer transition-all active:scale-[0.98] group text-left w-full focus:outline-none ${
+                  isDarkMode 
+                    ? 'bg-[#131B2E] border-slate-800 hover:border-blue-500/60 hover:bg-[#162036]' 
+                    : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md hover:border-blue-400'
+                }`}
+                title="Click to manage all registered campus websites"
+              >
                 <div className={`flex items-center justify-between text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  <span>Registered Campuses</span>
-                  <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <span className="group-hover:text-blue-500 transition-colors">Registered Campuses</span>
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Building2 className="w-4 h-4" />
                   </div>
                 </div>
                 <div className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                   {(campuses || []).length}
                 </div>
-                <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold">
-                  {(campuses || []).filter(c => c?.communityEnabled).length} active community hubs
+                <div className="text-[11px] text-blue-600 dark:text-blue-400 font-semibold flex items-center justify-between">
+                  <span>{(campuses || []).filter(c => c?.communityEnabled).length} active community hubs</span>
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">Manage →</span>
                 </div>
-              </div>
+              </button>
 
-              {/* 3. Connected Instagram accounts */}
-              <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
-                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
-              }`}>
+              {/* 3. Connected Instagram accounts - Clickable to Instagram */}
+              <button 
+                type="button"
+                onClick={() => setActiveTab('INSTAGRAM')}
+                className={`p-5 rounded-2xl border space-y-2 cursor-pointer transition-all active:scale-[0.98] group text-left w-full focus:outline-none ${
+                  isDarkMode 
+                    ? 'bg-[#131B2E] border-slate-800 hover:border-pink-500/60 hover:bg-[#162036]' 
+                    : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md hover:border-pink-400'
+                }`}
+                title="Click to manage Instagram Business accounts"
+              >
                 <div className={`flex items-center justify-between text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  <span>Connected Instagram Accounts</span>
-                  <div className="w-8 h-8 rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center">
+                  <span className="group-hover:text-pink-500 transition-colors">Instagram Accounts</span>
+                  <div className="w-8 h-8 rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Instagram className="w-4 h-4" />
                   </div>
                 </div>
                 <div className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                   {overviewData?.connectedInstagramAccounts ?? (instagramAccounts || []).length}
                 </div>
-                <div className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {(instagramAccounts || []).filter(a => a?.status === 'CONNECTED').length} active sync · 0 disconnected
+                <div className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} flex items-center justify-between`}>
+                  <span>{(instagramAccounts || []).filter(a => a?.status === 'CONNECTED').length} active sync</span>
+                  <span className="text-pink-500 opacity-0 group-hover:opacity-100 transition-opacity font-semibold">Inspect →</span>
                 </div>
-              </div>
+              </button>
 
-              {/* 4. Registered users */}
-              <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
-                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
-              }`}>
+              {/* 4. Registered users - Clickable to Campuses */}
+              <button 
+                type="button"
+                onClick={() => setActiveTab('CAMPUSES')}
+                className={`p-5 rounded-2xl border space-y-2 cursor-pointer transition-all active:scale-[0.98] group text-left w-full focus:outline-none ${
+                  isDarkMode 
+                    ? 'bg-[#131B2E] border-slate-800 hover:border-indigo-500/60 hover:bg-[#162036]' 
+                    : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md hover:border-indigo-400'
+                }`}
+                title="Click to view campus registries"
+              >
                 <div className={`flex items-center justify-between text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  <span>Registered Users</span>
-                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <span className="group-hover:text-indigo-500 transition-colors">Registered Users</span>
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <User className="w-4 h-4" />
                   </div>
                 </div>
                 <div className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                   {overviewData?.registeredUsers ?? 0}
                 </div>
-                <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
-                  Across registered campus profiles
+                <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold flex items-center justify-between">
+                  <span>Across campus profiles</span>
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">View →</span>
                 </div>
-              </div>
+              </button>
 
-              {/* 5. Successful payments */}
-              <div className={`p-5 rounded-2xl border space-y-2 transition-all ${
-                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
-              }`}>
+              {/* 5. Successful payments - Clickable to Payments */}
+              <button 
+                type="button"
+                onClick={() => setActiveTab('PAYMENTS')}
+                className={`p-5 rounded-2xl border space-y-2 cursor-pointer transition-all active:scale-[0.98] group text-left w-full focus:outline-none ${
+                  isDarkMode 
+                    ? 'bg-[#131B2E] border-slate-800 hover:border-purple-500/60 hover:bg-[#162036]' 
+                    : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md hover:border-purple-400'
+                }`}
+                title="Click to review payment ledger & webhooks"
+              >
                 <div className={`flex items-center justify-between text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  <span>Successful Payments</span>
-                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                  <span className="group-hover:text-purple-500 transition-colors">Successful Payments</span>
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
                 </div>
                 <div className={`text-2xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                   {overviewData?.successfulPayments ?? (payments || []).filter(p => p?.status === 'CONFIRMED').length}
                 </div>
-                <div className="text-[11px] text-purple-600 dark:text-purple-400 font-semibold">
-                  Strict idempotency validation
+                <div className="text-[11px] text-purple-600 dark:text-purple-400 font-semibold flex items-center justify-between">
+                  <span>Verified receipts</span>
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">Audit →</span>
                 </div>
-              </div>
+              </button>
 
             </div>
 
@@ -1408,12 +1623,21 @@ export const AdminPortalPage: React.FC = () => {
               </div>
 
               {/* Grid of registered universities with accessible live links */}
-              {overviewCampuses.length === 0 ? (
+              {loadingCampuses && campuses.length === 0 ? (
+                <div className={`p-8 rounded-2xl border text-center space-y-2 ${
+                  isDarkMode ? 'bg-[#0A0E1A] border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
+                }`}>
+                  <RefreshCw className="w-5 h-5 mx-auto animate-spin text-blue-500" />
+                  <p className="text-xs font-semibold">Fetching universities dynamically from Firestore...</p>
+                </div>
+              ) : overviewCampuses.length === 0 ? (
                 <div className={`p-8 rounded-2xl border text-center space-y-3 ${
                   isDarkMode ? 'bg-[#0A0E1A] border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
                 }`}>
                   <Building2 className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
-                  <p className="text-xs font-medium">No registered universities match your search criteria.</p>
+                  <p className="text-xs font-medium">
+                    {overviewCampusSearch ? 'No registered universities match your search criteria.' : 'No universities registered in the database yet. Click "Register New University" above to add one.'}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1692,9 +1916,10 @@ export const AdminPortalPage: React.FC = () => {
 
             {/* Quick Navigation Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div 
+              <button 
+                type="button"
                 onClick={() => setActiveTab('CAMPUSES')}
-                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-2 ${
+                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-2 text-left w-full focus:outline-none active:scale-[0.98] ${
                   isDarkMode 
                     ? 'bg-[#131B2E] border-slate-800 hover:border-blue-500/50' 
                     : 'bg-white border-slate-200/90 hover:border-blue-500 shadow-2xs hover:shadow-md'
@@ -1705,11 +1930,12 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
                 <h4 className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Manage Campus Websites</h4>
                 <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Create new campus websites, edit branding, and manage canonical public routes.</p>
-              </div>
+              </button>
 
-              <div 
+              <button 
+                type="button"
                 onClick={() => setActiveTab('PAYMENTS')}
-                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-2 ${
+                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-2 text-left w-full focus:outline-none active:scale-[0.98] ${
                   isDarkMode 
                     ? 'bg-[#131B2E] border-slate-800 hover:border-emerald-500/50' 
                     : 'bg-white border-slate-200/90 hover:border-emerald-500 shadow-2xs hover:shadow-md'
@@ -1720,11 +1946,12 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
                 <h4 className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Payment Audit & Webhooks</h4>
                 <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Review verified student payments and test webhook idempotency handling.</p>
-              </div>
+              </button>
 
-              <div 
+              <button 
+                type="button"
                 onClick={() => setActiveTab('EMAIL')}
-                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-2 ${
+                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-2 text-left w-full focus:outline-none active:scale-[0.98] ${
                   isDarkMode 
                     ? 'bg-[#131B2E] border-slate-800 hover:border-purple-500/50' 
                     : 'bg-white border-slate-200/90 hover:border-purple-500 shadow-2xs hover:shadow-md'
@@ -1735,7 +1962,7 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
                 <h4 className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Delivery Logs & Email SMTP</h4>
                 <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>View real transactional delivery logs and test SMTP handshake.</p>
-              </div>
+              </button>
             </div>
 
           </div>
@@ -1916,13 +2143,44 @@ export const AdminPortalPage: React.FC = () => {
               ))}
             </div>
 
-            {filteredCampuses.length === 0 && (
+            {loadingCampuses && campuses.length === 0 ? (
               <div className={`p-12 text-center rounded-2xl border ${
                 isDarkMode ? 'bg-[#131B2E] border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
               }`}>
-                No campuses match your search.
+                <div className="flex items-center justify-center gap-2.5">
+                  <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
+                  <span className="text-xs font-semibold">Fetching universities dynamically from Firestore database...</span>
+                </div>
               </div>
-            )}
+            ) : filteredCampuses.length === 0 ? (
+              <div className={`p-12 text-center rounded-2xl border space-y-3 ${
+                isDarkMode ? 'bg-[#131B2E] border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-500'
+              }`}>
+                <Building2 className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
+                <div className="text-sm font-bold text-slate-900 dark:text-white">
+                  {campusSearch ? 'No campuses match your search' : 'No universities in database'}
+                </div>
+                <p className="text-xs max-w-sm mx-auto text-slate-500 dark:text-slate-400">
+                  {campusSearch 
+                    ? 'Try clearing the search query to see all universities.' 
+                    : 'The portal contains zero hardcoded universities. Create your first dynamic campus website below.'}
+                </p>
+                {!campusSearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCampus(null);
+                      resetCampusForm();
+                      setShowCreateCampusModal(true);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs inline-flex items-center gap-2 cursor-pointer shadow-md transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create First Campus</span>
+                  </button>
+                )}
+              </div>
+            ) : null}
 
           </div>
         )}

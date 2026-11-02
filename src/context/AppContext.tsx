@@ -15,6 +15,8 @@ import {
 import { VERIFIED_UNIVERSITIES, findUniversityBySlug, findUniversityById } from '../data/universities';
 import { processSubmissionPayment, FEATURED_POST_PRICE_USD } from '../lib/payment';
 import { loginAdmin, isMasterAdminEmail } from '../lib/adminApi';
+import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 export interface ToastMessage {
   id: string;
@@ -141,7 +143,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const res = await fetch('/api/campuses', { headers: { 'Cache-Control': 'no-cache' } });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.campuses)) {
+        if (Array.isArray(data.campuses) && data.campuses.length > 0) {
           setUniversities(data.campuses);
           try {
             localStorage.setItem('campusconnect_campuses', JSON.stringify(data.campuses));
@@ -157,6 +159,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     refreshCampuses();
+
+    // Synchronize dynamic campuses with Firestore
+    const unsub = onSnapshot(
+      collection(db, 'universities'),
+      (snap) => {
+        const firestoreList: University[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as University;
+          firestoreList.push({
+            ...data,
+            id: docSnap.id,
+            slug: data.slug || docSnap.id
+          });
+        });
+        if (firestoreList.length > 0) {
+          setUniversities(firestoreList);
+          try {
+            localStorage.setItem('campusconnect_campuses', JSON.stringify(firestoreList));
+          } catch {}
+        }
+      },
+      (err) => {
+        console.warn('AppContext Firestore sync notice:', err);
+      }
+    );
+
+    return () => unsub();
   }, [refreshCampuses]);
 
   // Synchronous upsert for campuses (used by Admin creation & updates)
@@ -251,8 +280,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existing = getUniversityBySlug(slug);
     if (existing) return existing;
 
+    const clean = slug.replace(/^@/, '').replace(/^\/ig\//, '').replace(/^\/u\//, '').replace(/^\/university\//, '');
+
+    // 1. Check Firestore directly
     try {
-      const clean = slug.replace(/^@/, '').replace(/^\/ig\//, '').replace(/^\/u\//, '').replace(/^\/university\//, '');
+      const directSnap = await getDoc(doc(db, 'universities', clean));
+      if (directSnap.exists()) {
+        const uni = { ...directSnap.data(), id: directSnap.id, slug: (directSnap.data() as any).slug || directSnap.id } as University;
+        addOrUpdateCampus(uni);
+        return uni;
+      }
+      const directSnapPrefixed = await getDoc(doc(db, 'universities', 'uni_' + clean.replace(/[^a-z0-9]/g, '')));
+      if (directSnapPrefixed.exists()) {
+        const uni = { ...directSnapPrefixed.data(), id: directSnapPrefixed.id, slug: (directSnapPrefixed.data() as any).slug || directSnapPrefixed.id } as University;
+        addOrUpdateCampus(uni);
+        return uni;
+      }
+    } catch (fsErr) {
+      console.warn('Firestore direct fetch notice:', fsErr);
+    }
+
+    // 2. Fall back to backend route
+    try {
       const res = await fetch(`/api/campuses/${encodeURIComponent(clean)}`, {
         headers: { 'Cache-Control': 'no-cache' }
       });

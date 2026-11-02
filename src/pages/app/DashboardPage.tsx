@@ -131,80 +131,104 @@ export const DashboardPage: React.FC = () => {
         </button>
       </div>
 
-      {/* 2. 4 METRIC CARDS (2x2 on Mobile, 4 in a row on Desktop - Matching Screenshot 11:36) */}
+      {/* 2. 4 METRIC CARDS (Clickable & Interactive - Matching Screenshot 11:36) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
-        {/* Followers */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>Followers</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#1D64EC] flex items-center justify-center">
+        {/* Followers - Clickable */}
+        <button 
+          type="button"
+          onClick={() => isConnected ? navigateTo('/app/accounts') : setOAuthModalOpen(true)}
+          className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-blue-400 active:scale-[0.98] transition-all cursor-pointer text-left flex flex-col justify-between group focus:outline-none"
+          title={isConnected ? "View connected accounts" : "Connect an Instagram account"}
+        >
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium w-full">
+            <span className="group-hover:text-blue-600 transition-colors">Followers</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#1D64EC] flex items-center justify-center group-hover:scale-110 transition-transform">
               <Users className="w-3.5 h-3.5" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
+            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors">
               {isConnected ? totalFollowers.toLocaleString() : '0'}
             </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-              {isConnected ? `across ${accounts.length} account${accounts.length > 1 ? 's' : ''}` : 'across 0 accounts'}
+            <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>{isConnected ? `across ${accounts.length} account${accounts.length > 1 ? 's' : ''}` : 'across 0 accounts'}</span>
+              <span className="opacity-0 group-hover:opacity-100 text-blue-600 font-bold transition-opacity">→</span>
             </div>
           </div>
-        </div>
+        </button>
 
-        {/* Accounts reached */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>Accounts reached</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#1D64EC] flex items-center justify-center">
+        {/* Accounts reached - Clickable */}
+        <button 
+          type="button"
+          onClick={() => navigateTo('/app/insights')}
+          className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-blue-400 active:scale-[0.98] transition-all cursor-pointer text-left flex flex-col justify-between group focus:outline-none"
+          title="View Instagram reach and analytics"
+        >
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium w-full">
+            <span className="group-hover:text-blue-600 transition-colors">Accounts reached</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#1D64EC] flex items-center justify-center group-hover:scale-110 transition-transform">
               <Eye className="w-3.5 h-3.5" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
+            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors">
               {isConnected ? (totalReach > 0 ? `${(totalReach / 1000).toFixed(1)}K` : '0') : '—'}
             </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-              last 28 days
+            <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>last 28 days</span>
+              <span className="opacity-0 group-hover:opacity-100 text-blue-600 font-bold transition-opacity">→</span>
             </div>
           </div>
-        </div>
+        </button>
 
-        {/* Interactions */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>Interactions</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#1D64EC] flex items-center justify-center">
+        {/* Interactions - Clickable */}
+        <button 
+          type="button"
+          onClick={() => navigateTo('/app/comments')}
+          className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-blue-400 active:scale-[0.98] transition-all cursor-pointer text-left flex flex-col justify-between group focus:outline-none"
+          title="View audience interactions and comments"
+        >
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium w-full">
+            <span className="group-hover:text-blue-600 transition-colors">Interactions</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#1D64EC] flex items-center justify-center group-hover:scale-110 transition-transform">
               <Heart className="w-3.5 h-3.5" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
+            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors">
               {isConnected ? (totalInteractions > 0 ? `${(totalInteractions / 1000).toFixed(1)}K` : '0') : '—'}
             </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-              likes, comments, shares, saves
+            <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>likes, comments, shares, saves</span>
+              <span className="opacity-0 group-hover:opacity-100 text-blue-600 font-bold transition-opacity">→</span>
             </div>
           </div>
-        </div>
+        </button>
 
-        {/* Posts */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-            <span>Posts</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#1D64EC] flex items-center justify-center">
+        {/* Posts - Clickable */}
+        <button 
+          type="button"
+          onClick={() => navigateTo(userUni?.slug ? `/submit/${userUni.slug}` : '/app/submit')}
+          className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-blue-400 active:scale-[0.98] transition-all cursor-pointer text-left flex flex-col justify-between group focus:outline-none"
+          title="Create or submit a student feature post"
+        >
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium w-full">
+            <span className="group-hover:text-blue-600 transition-colors">Posts</span>
+            <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#1D64EC] flex items-center justify-center group-hover:scale-110 transition-transform">
               <Grid className="w-3.5 h-3.5" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
+            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 group-hover:text-blue-600 transition-colors">
               {isConnected ? totalPosts.toLocaleString() : '0'}
             </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-              published in total
+            <div className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>published in total</span>
+              <span className="opacity-0 group-hover:opacity-100 text-blue-600 font-bold transition-opacity">→</span>
             </div>
           </div>
-        </div>
+        </button>
 
       </div>
 
