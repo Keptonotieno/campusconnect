@@ -37,7 +37,7 @@ export const Navbar: React.FC = () => {
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-md font-sans">
       <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3.5">
         
-        {/* Brand Logo matching igposthub.com */}
+        {/* Brand Logo */}
         <button
           onClick={() => {
             setMobileMenuOpen(false);
@@ -50,7 +50,7 @@ export const Navbar: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xl font-extrabold tracking-tight text-slate-900">
-              igpost<span className="text-[#1D64EC]">hub</span>
+              Campus<span className="text-[#1D64EC]">Connect</span>
             </span>
             <span className="bg-blue-50 text-[#1D64EC] border border-blue-200 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
               BUSINESS

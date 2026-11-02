@@ -439,7 +439,7 @@ export const DashboardPage: React.FC = () => {
               </div>
               <div className="text-xs">
                 <div className="font-semibold text-slate-900 leading-snug">
-                  Welcome to igposthub for business
+                  Welcome to CampusConnect for business
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
                   17 Oct

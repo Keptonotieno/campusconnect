@@ -1691,14 +1691,14 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       )}
 
       {/* ------------------------------------------------------------------- */}
-      {/* 1. TOP NAVBAR / BRAND BAR (EXACT MATCH TO IGPOSTHUB.COM)             */}
+      {/* 1. TOP NAVBAR / BRAND BAR (CAMPUSCONNECT PLATFORM)                  */}
       {/* ------------------------------------------------------------------- */}
       <header className="border-b border-slate-100 bg-white/95 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-8 h-18 flex items-center justify-between">
           
-          {/* Left: igposthub brand + Slash + Campus Badge + Instagram Handle */}
+          {/* Left: CampusConnect brand + Slash + Campus Badge + Instagram Handle */}
           <div className="flex items-center gap-2.5 sm:gap-3.5">
-            {/* igposthub Logo */}
+            {/* CampusConnect Logo */}
             <button
               type="button"
               onClick={() => navigateTo('/')}
@@ -1709,7 +1709,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                 <Instagram className="w-4.5 h-4.5 text-white" />
               </div>
               <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">
-                igpost<span className="text-[#3B52A0]">hub</span>
+                Campus<span style={{ color: university.primaryColor || '#1D64EC' }}>Connect</span>
               </span>
             </button>
 
@@ -1807,7 +1807,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       </header>
 
       {/* ------------------------------------------------------------------- */}
-      {/* 2. HERO SECTION (EXACT LAYOUT FROM IGPOSTHUB SPALDING SAMPLE)       */}
+      {/* 2. HERO SECTION (CAMPUSCONNECT PLATFORM)                            */}
       {/* ------------------------------------------------------------------- */}
       <section className="relative overflow-hidden pt-8 sm:pt-14 pb-16 bg-gradient-to-b from-slate-50/70 via-white to-white">
         
@@ -1991,9 +1991,9 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                       }}
                     />
 
-                    {/* Top text: IGPOSTHUB · FEATURED and 1/8 */}
+                    {/* Top text: CAMPUSCONNECT · FEATURED and 1/8 */}
                     <div className="relative z-10 flex items-center justify-between text-[9px] font-extrabold tracking-widest uppercase text-white/80 px-2 pt-1">
-                      <span className="mx-auto pl-6">IGPOSTHUB · FEATURED</span>
+                      <span className="mx-auto pl-6">CAMPUSCONNECT · FEATURED</span>
                       <span className="font-mono text-white/70">1/8</span>
                     </div>
 

@@ -74,7 +74,7 @@ export const AppSidebar: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-base font-extrabold tracking-tight text-slate-900">
-              igpost<span className="text-[#1D64EC]">hub</span>
+              Campus<span className="text-[#1D64EC]">Connect</span>
             </span>
             <span className="bg-blue-50 text-[#1D64EC] border border-blue-200/60 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full">
               BUSINESS

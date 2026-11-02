@@ -204,7 +204,7 @@ export const LoginPage: React.FC = () => {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-screen">
         
         {/* ================================================================= */}
-        {/* LEFT PANEL: igposthub brand, university target card & 3 steps     */}
+        {/* LEFT PANEL: CampusConnect brand, university target card & 3 steps */}
         {/* Deep Royal Blue #3B4988 matching Image 1                          */}
         {/* ================================================================= */}
         <div className="lg:col-span-5 bg-[#3B4988] text-white p-8 sm:p-12 lg:p-14 flex flex-col justify-between relative overflow-hidden">
@@ -221,7 +221,7 @@ export const LoginPage: React.FC = () => {
               className="flex items-center gap-2 cursor-pointer select-none"
             >
               <span className="text-2xl font-black tracking-tight text-white">
-                igpost<span className="text-white">hub</span>
+                Campus<span className="text-white">Connect</span>
               </span>
             </div>
 
@@ -243,7 +243,7 @@ export const LoginPage: React.FC = () => {
               <div className="relative w-14 h-14 rounded-full bg-white p-1 shrink-0 flex items-center justify-center shadow-md">
                 <div className="w-full h-full rounded-full border-2 border-indigo-200 flex flex-col items-center justify-center text-center">
                   <span className="text-xs leading-none">⚡</span>
-                  <span className="text-[7px] font-bold text-slate-800 leading-none">igpostHub</span>
+                  <span className="text-[7px] font-bold text-slate-800 leading-none">CampusConnect</span>
                   <span className="text-[10px] font-black text-[#1E3A8A] leading-none mt-0.5">
                     {targetUniversity.classYear || '2031'}
                   </span>
@@ -325,7 +325,7 @@ export const LoginPage: React.FC = () => {
 
           {/* Bottom Copyright */}
           <div className="relative z-10 text-xs text-blue-200/70 font-normal">
-            © 2026 igposthub
+            © 2026 CampusConnect
           </div>
 
         </div>
