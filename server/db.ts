@@ -182,31 +182,7 @@ class Database {
     
     this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
     this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
-    const defaultIgAccounts: InstagramAccount[] = [
-      {
-        id: 'ig_moreheadstate_official',
-        businessId: 'biz_01',
-        username: 'moreheadstate2031class',
-        displayName: 'Morehead State University 2031',
-        profilePictureUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
-        accountType: 'BUSINESS',
-        followersCount: 14200,
-        followingCount: 310,
-        mediaCount: 38,
-        reach28d: 48200,
-        impressions28d: 79000,
-        interactions28d: 6100,
-        status: 'CONNECTED',
-        connectedAt: new Date().toISOString(),
-        tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
-        permissions: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'pages_show_list']
-      }
-    ];
-    this.instagramAccounts = readJsonFile<InstagramAccount[]>('instagram.json', defaultIgAccounts);
-    if (!this.instagramAccounts || this.instagramAccounts.length === 0) {
-      this.instagramAccounts = defaultIgAccounts;
-      writeJsonFile('instagram.json', defaultIgAccounts);
-    }
+    this.instagramAccounts = readJsonFile<InstagramAccount[]>('instagram.json', []);
     this.registeredUsers = readJsonFile<User[]>('users.json', []);
     this.emailLogs = readJsonFile<EmailDeliveryLog[]>('email-logs.json', []);
     this.auditLogs = readJsonFile<AuditLogItem[]>('audit-logs.json', []);
@@ -354,28 +330,9 @@ class Database {
 
   public validateSession(token: string): AdminSession | null {
     if (!token) return null;
-    let session = this.sessions.find(s => s.token === token);
+    this.sessions = readJsonFile<AdminSession[]>('sessions.json', this.sessions);
+    const session = this.sessions.find(s => s.token === token);
     
-    // Support edge / resilient master admin tokens
-    if (!session && (token.startsWith('adm_') || token.startsWith('admin_') || token.length >= 8)) {
-      const defaultAdmin = this.admins[0] || {
-        id: 'admin_master',
-        email: 'campusconnect@gmail.com',
-        role: 'Admin'
-      };
-      session = {
-        token,
-        adminId: defaultAdmin.id,
-        email: defaultAdmin.email,
-        role: 'Admin',
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-      };
-      this.sessions.push(session);
-      writeJsonFile('sessions.json', this.sessions);
-      return session;
-    }
-
     if (!session) return null;
 
     if (new Date(session.expiresAt).getTime() < Date.now()) {

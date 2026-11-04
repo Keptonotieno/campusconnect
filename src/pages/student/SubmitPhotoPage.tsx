@@ -18,6 +18,8 @@ import { generateWatermarkedDerivative } from '../../lib/watermark';
 import { FEATURED_POST_PRICE_USD } from '../../lib/payment';
 import { University } from '../../types';
 
+import { VERIFIED_UNIVERSITIES } from '../../data/universities';
+
 export const SubmitPhotoPage: React.FC = () => {
   const { 
     currentUser, 
@@ -33,7 +35,7 @@ export const SubmitPhotoPage: React.FC = () => {
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const uniParam = searchParams?.get('uni');
   const paramUni = uniParam ? universities.find(u => u.slug.toLowerCase() === uniParam.toLowerCase() || u.id === uniParam) : null;
-  const defaultUni = paramUni || universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0];
+  const defaultUni = paramUni || universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0] || VERIFIED_UNIVERSITIES[0];
   const [targetUni, setTargetUni] = useState<University>(defaultUni);
 
   // Form states

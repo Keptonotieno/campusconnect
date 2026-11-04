@@ -13,6 +13,8 @@ import {
   HelpCircle 
 } from 'lucide-react';
 
+import { VERIFIED_UNIVERSITIES } from '../../data/universities';
+
 export const OnboardingPage: React.FC = () => {
   const { currentUser, universities, completeOnboarding, navigateTo } = useApp();
 
@@ -25,7 +27,7 @@ export const OnboardingPage: React.FC = () => {
     (currentUser as any)?.housingPreference || 'Not Specified'
   );
 
-  const selectedUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0];
+  const selectedUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0] || VERIFIED_UNIVERSITIES[0];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
