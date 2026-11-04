@@ -175,6 +175,10 @@ class Database {
     this.admins = readJsonFile<AdminUser[]>('admins.json', []);
     this.sessions = readJsonFile<AdminSession[]>('sessions.json', []);
     this.campuses = readJsonFile<University[]>('campuses.json', []);
+    if (!this.campuses || this.campuses.length === 0) {
+      this.campuses = [...VERIFIED_UNIVERSITIES];
+      writeJsonFile('campuses.json', this.campuses);
+    }
     
     this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
     this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
@@ -400,7 +404,19 @@ class Database {
 
   // Campuses Management
   public getCampuses(): University[] {
-    return this.campuses;
+    const list = [...this.campuses];
+    const map = new Map<string, University>();
+    // First insert verified universities
+    for (const u of VERIFIED_UNIVERSITIES) {
+      map.set(u.slug.toLowerCase(), u);
+      map.set(u.id, u);
+    }
+    // Override/supplement with database entries
+    for (const u of list) {
+      map.set(u.slug.toLowerCase(), u);
+      map.set(u.id, u);
+    }
+    return Array.from(new Set(map.values()));
   }
 
   public getCampusBySlug(slug: string): University | undefined {

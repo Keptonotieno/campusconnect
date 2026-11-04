@@ -126,12 +126,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const stored = localStorage.getItem('campusconnect_campuses');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {
       // ignore
     }
-    return [];
+    return VERIFIED_UNIVERSITIES;
   });
 
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
@@ -607,7 +607,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (redirectUrl) {
         navigateTo(redirectUrl);
       } else {
-        navigateTo('/student');
+        let hasActivePhotos = false;
+        try {
+          const raw = localStorage.getItem('campusconnect_active_draft');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && ((parsed.photos && parsed.photos.length > 0) || parsed.photoUrl)) {
+              hasActivePhotos = true;
+            }
+          }
+        } catch {}
+        if (hasActivePhotos) {
+          navigateTo('/student');
+        } else {
+          navigateTo('/app/dashboard');
+        }
       }
     }
     return true;
@@ -689,7 +703,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (redirectUrl) {
         navigateTo(redirectUrl);
       } else {
-        navigateTo('/student');
+        let hasActivePhotos = false;
+        try {
+          const raw = localStorage.getItem('campusconnect_active_draft');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && ((parsed.photos && parsed.photos.length > 0) || parsed.photoUrl)) {
+              hasActivePhotos = true;
+            }
+          }
+        } catch {}
+        if (hasActivePhotos) {
+          navigateTo('/student');
+        } else {
+          navigateTo('/app/dashboard');
+        }
       }
     }
     return true;

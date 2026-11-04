@@ -1967,16 +1967,34 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                   )}
                 </button>
               ) : (
-                !isAuthenticated && (
+                !isAuthenticated ? (
                   <button 
                     type="button"
                     onClick={() => {
                       setEntryUniversityContext(university);
-                      navigateTo(`/login?uni=${university.slug}&redirect=/ig/${university.slug}`);
+                      if (photos.length > 0) {
+                        navigateTo(`/login?uni=${university.slug}&redirect=/student`);
+                      } else {
+                        navigateTo(`/login?uni=${university.slug}&redirect=/app/dashboard`);
+                      }
                     }}
                     className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-950 transition-colors cursor-pointer px-3 py-1.5 rounded-xl hover:bg-slate-100"
                   >
                     Sign in
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNavLoading(true);
+                      setTimeout(() => {
+                        setIsNavLoading(false);
+                        navigateTo('/app/dashboard');
+                      }, 250);
+                    }}
+                    className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-blue-600 transition-colors cursor-pointer px-3 py-1.5 rounded-xl hover:bg-slate-100 flex items-center gap-1.5"
+                  >
+                    <span>My dashboard</span>
                   </button>
                 )
               )}
