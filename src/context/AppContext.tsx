@@ -603,7 +603,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isAdminUser) {
       navigateTo('/admin');
     } else {
-      navigateTo('/app/dashboard');
+      const redirectUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null;
+      if (redirectUrl) {
+        navigateTo(redirectUrl);
+      } else {
+        navigateTo('/student');
+      }
     }
     return true;
   };
@@ -680,7 +685,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isAdminUser) {
       navigateTo('/admin');
     } else {
-      navigateTo('/app/dashboard');
+      const redirectUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null;
+      if (redirectUrl) {
+        navigateTo(redirectUrl);
+      } else {
+        navigateTo('/student');
+      }
     }
     return true;
   };

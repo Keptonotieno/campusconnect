@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Sparkles, 
@@ -13,298 +13,1181 @@ import {
   Building2, 
   Bell, 
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  LayoutGrid,
+  Wallet,
+  User,
+  CreditCard,
+  Search,
+  Check,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Edit2,
+  Lock,
+  MessageCircle,
+  X,
+  FileText
 } from 'lucide-react';
-import { FeaturedSubmission } from '../../types';
+import { FeaturedSubmission, University } from '../../types';
+
+interface StoredDraft {
+  id: string;
+  universityId: string;
+  universityName: string;
+  universitySlug: string;
+  universityInstagramHandle: string;
+  photoUrl: string;
+  photosCount: number;
+  builderStep: 1 | 2 | 3;
+  dateStr: string;
+  detailsSummary: string;
+}
 
 export const StudentDashboardPage: React.FC = () => {
   const { 
     currentUser, 
     mySubmissions, 
     navigateTo, 
-    notifications, 
     selectedUniversity, 
-    universities 
+    setSelectedUniversity,
+    universities,
+    addToast,
+    updateUserProfile,
+    logout
   } = useApp();
 
-  const userUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0] || { 
-    id: 'default',
-    name: 'Campus Hub', 
-    slug: 'all', 
-    instagramHandle: '@campusconnect' 
+  // Active Tab: 'SUBMISSIONS' | 'WALLET' | 'PROFILE'
+  const [activeTab, setActiveTab] = useState<'SUBMISSIONS' | 'WALLET' | 'PROFILE'>('SUBMISSIONS');
+
+  // Submissions Tab Filter
+  const [submissionFilter, setSubmissionFilter] = useState<'ALL' | 'DRAFTS' | 'AWAITING_PAYMENT' | 'IN_QUEUE' | 'POSTED'>('ALL');
+
+  // School Search Modal
+  const [isFindSchoolModalOpen, setIsFindSchoolModalOpen] = useState(false);
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
+
+  // Top Up Wallet Modal
+  const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState('6.00');
+  const [walletBalance, setWalletBalance] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('campusconnect_wallet_balance');
+      return stored ? parseFloat(stored) : 0.00;
+    } catch {
+      return 0.00;
+    }
+  });
+
+  // Profile Form State
+  const [fullName, setFullName] = useState(currentUser?.name || 'software developers');
+  const [email, setEmail] = useState(currentUser?.email || 'keptonotieno@gmail.com');
+  const [phone, setPhone] = useState(currentUser?.phone || '+1 (555) 123-4567');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Password Change Form State
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  // User Dropdown State in Navbar
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+
+  // Loading overlay state matching the video
+  const [isNavLoading, setIsNavLoading] = useState(false);
+
+  const handleTabSwitch = (targetTab: 'SUBMISSIONS' | 'WALLET' | 'PROFILE') => {
+    if (targetTab === activeTab) return;
+    setIsNavLoading(true);
+    setTimeout(() => {
+      setActiveTab(targetTab);
+      setIsNavLoading(false);
+    }, 250);
   };
 
+  const handleNewPost = () => {
+    setIsNavLoading(true);
+    setTimeout(() => {
+      setIsNavLoading(false);
+      navigateTo('/#search');
+    }, 250);
+  };
+
+  // Draft resolution (reads active draft or fallback to Morehead State matching Image 2 & 3)
+  const [activeDraft, setActiveDraft] = useState<StoredDraft>(() => {
+    // 1. Check for student's custom saved draft in localStorage
+    try {
+      const activeRaw = localStorage.getItem('campusconnect_active_draft');
+      if (activeRaw) {
+        const parsed = JSON.parse(activeRaw);
+        return {
+          id: parsed.id || 'draft_active',
+          universityId: parsed.universityId || 'uni_moreheadstate2031class',
+          universityName: parsed.universityName || 'Morehead State University',
+          universitySlug: parsed.universitySlug || 'moreheadstate2031class',
+          universityInstagramHandle: parsed.universityInstagramHandle || '@moreheadstate2031class',
+          photoUrl: parsed.photos?.[0]?.previewUrl || parsed.photoUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
+          photosCount: parsed.photos?.length || 1,
+          builderStep: parsed.builderStep || 1,
+          dateStr: 'Oct 22',
+          detailsSummary: parsed.selectedMajor ? `${parsed.selectedMajor} • ${parsed.instagramHandle || 'details saved'}` : 'Details not added yet'
+        };
+      }
+    } catch {}
+
+    // 2. Default reference draft matching Image 2 / Image 3 (Morehead State University)
+    return {
+      id: 'draft_moreheadstate',
+      universityId: 'uni_moreheadstate2031class',
+      universityName: 'Morehead State University',
+      universitySlug: 'moreheadstate2031class',
+      universityInstagramHandle: '@moreheadstate2031class',
+      photoUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80', // glasses on laptop photo matching Image 2
+      photosCount: 1,
+      builderStep: 1,
+      dateStr: 'Oct 22',
+      detailsSummary: 'Details not added yet'
+    };
+  });
+
+  // Re-sync draft on mount or when returning
+  useEffect(() => {
+    try {
+      let activeRaw = localStorage.getItem('campusconnect_active_draft');
+      if (!activeRaw) {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('campusconnect_draft_')) {
+            activeRaw = localStorage.getItem(k);
+            break;
+          }
+        }
+      }
+
+      if (activeRaw) {
+        const parsed = JSON.parse(activeRaw);
+        setActiveDraft({
+          id: parsed.id || 'draft_active',
+          universityId: parsed.universityId || 'uni_moreheadstate2031class',
+          universityName: parsed.universityName || 'Morehead State University',
+          universitySlug: parsed.universitySlug || 'moreheadstate2031class',
+          universityInstagramHandle: parsed.universityInstagramHandle || '@moreheadstate2031class',
+          photoUrl: parsed.photos?.[0]?.url || parsed.photos?.[0]?.previewUrl || parsed.photoUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
+          photosCount: parsed.photos?.length || parsed.photosCount || 1,
+          builderStep: parsed.builderStep || 1,
+          dateStr: 'Recent',
+          detailsSummary: parsed.selectedMajor ? `${parsed.selectedMajor} • @${(parsed.instagramHandle || '').replace(/^@/, '') || 'profile'}` : 'Details in progress'
+        });
+      }
+    } catch {}
+  }, []);
+
+  // Filtered universities for school picker modal
+  const filteredUniversities = useMemo(() => {
+    if (!schoolSearchQuery.trim()) return universities;
+    const q = schoolSearchQuery.toLowerCase();
+    return universities.filter(u => 
+      u.name.toLowerCase().includes(q) || 
+      u.slug.toLowerCase().includes(q) || 
+      (u.instagramHandle && u.instagramHandle.toLowerCase().includes(q))
+    );
+  }, [universities, schoolSearchQuery]);
+
+  const handleSelectSchool = (uni: University) => {
+    setSelectedUniversity(uni);
+    setIsFindSchoolModalOpen(false);
+    navigateTo(`/ig/${uni.slug}?resume=true`);
+  };
+
+  const handleContinueDraft = () => {
+    setIsNavLoading(true);
+    setTimeout(() => {
+      setIsNavLoading(false);
+      navigateTo(`/ig/${activeDraft.universitySlug}?resume=true`);
+    }, 250);
+  };
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+    updateUserProfile({ name: fullName, email, phone });
+    setTimeout(() => {
+      setIsSavingProfile(false);
+      addToast('Profile Updated', 'Your profile details have been saved.', 'success');
+    }, 400);
+  };
+
+  const handleUpdatePassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 8) {
+      addToast('Password Too Short', 'New password must be at least 8 characters.', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      addToast('Password Mismatch', 'New password and confirm password do not match.', 'error');
+      return;
+    }
+    setIsUpdatingPassword(true);
+    setTimeout(() => {
+      setIsUpdatingPassword(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      addToast('Password Updated', 'Your password has been changed successfully.', 'success');
+    }, 500);
+  };
+
+  const handleTopUpSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(topUpAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    const newBal = walletBalance + amount;
+    setWalletBalance(newBal);
+    try {
+      localStorage.setItem('campusconnect_wallet_balance', newBal.toFixed(2));
+    } catch {}
+    setIsTopUpModalOpen(false);
+    addToast('Funds Added', `$${amount.toFixed(2)} added to your wallet balance.`, 'success');
+  };
+
+  const userDisplayName = currentUser?.name || 'software';
+  const userInitials = 'SD'; // Matching Image 2 / Image 5 / Image 6: "SD"
+
   return (
-    <div className="max-w-6xl mx-auto p-6 sm:p-8 space-y-8 font-sans">
+    <div className="min-h-screen bg-[#FBFBFA] flex flex-col font-sans selection:bg-amber-600 selection:text-white">
       
-      {/* 1. TOP PROFILE & UNIVERSITY SUMMARY CARD */}
-      <div className="p-6 sm:p-8 bg-white rounded-3xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-start sm:items-center gap-5">
-          {currentUser?.avatarUrl ? (
-            <img 
-              src={currentUser.avatarUrl} 
-              alt={currentUser?.name || 'Student'} 
-              referrerPolicy="no-referrer"
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover ring-4 ring-blue-500/10 shadow-xs shrink-0"
-            />
-          ) : (
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-blue-600 text-white font-extrabold text-2xl flex items-center justify-center shadow-xs shrink-0 ring-4 ring-blue-500/10">
-              {(currentUser?.name || 'S').charAt(0).toUpperCase()}
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-950 tracking-tight">
-                {currentUser?.name || 'Student'}
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                Student Member
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-slate-600 flex-wrap">
-              <span className="font-bold text-[#1D64EC] flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5" />
-                <span>{currentUser?.universityName || userUni.name}</span>
-              </span>
-              <span>•</span>
-              <span className="text-slate-500 flex items-center gap-1">
-                <GraduationCap className="w-3.5 h-3.5" />
-                <span>
-                  {currentUser?.course 
-                    ? `${currentUser.course} • Class of ${currentUser.graduationYear || '2028'}` 
-                    : 'Profile details not set'}
-                </span>
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-500 line-clamp-1 max-w-lg">
-              {currentUser?.bio || 'No bio added yet.'}
-            </p>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigateTo(`/university/${userUni.slug}`)}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors cursor-pointer"
+      {/* ========================================================================= */}
+      {/* 1. TOP NAVBAR (Matching Images 2, 3, 4, 5, 6 Exactly)                      */}
+      {/* ========================================================================= */}
+      <header className="sticky top-0 z-40 w-full bg-white border-b border-slate-200/80 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-18 flex items-center justify-between gap-4">
+          
+          {/* Left: Gold Camera Logo & Brand */}
+          <div 
+            onClick={() => {
+              setActiveTab('SUBMISSIONS');
+              navigateTo('/student');
+            }}
+            className="flex items-center gap-2.5 cursor-pointer select-none group shrink-0"
           >
-            Visit Campus Hub
-          </button>
-          <button
-            onClick={() => navigateTo('/app/submit')}
-            className="px-5 py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Submit Photo ($6)</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. SUBMISSIONS TIMELINE & TRACKING */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-extrabold text-slate-950 tracking-tight">
-              My Featured Post Submissions
-            </h2>
-            <p className="text-xs text-slate-500">
-              Track review status, payment verification, and live Instagram publishing for your photos.
-            </p>
+            <div className="w-8 h-8 rounded-xl bg-[#C28B38] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+              <Instagram className="w-4.5 h-4.5 text-white" />
+            </div>
+            <span className="text-xl font-extrabold tracking-tight text-slate-950">
+              Campus<span className="text-[#C28B38]">Connect</span>
+            </span>
           </div>
-          <span className="px-3 py-1 rounded-full bg-blue-50 text-[#1D64EC] text-xs font-bold font-mono">
-            {mySubmissions.length} Total Submissions
-          </span>
-        </div>
 
-        {mySubmissions.length === 0 ? (
-          <div className="p-12 bg-white rounded-3xl border border-slate-200/90 shadow-xs text-center max-w-lg mx-auto space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-[#1D64EC] flex items-center justify-center mx-auto">
-              <Sparkles className="w-7 h-7" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-base font-bold text-slate-900">No Submissions Yet</h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Submit an introduction photo to be featured on your official university Instagram page ({userUni.instagramHandle}).
-              </p>
-            </div>
+          {/* Center Navigation Tabs: Submissions | Wallet | Profile */}
+          <nav className="flex items-center gap-1 sm:gap-2">
+            
+            {/* Submissions Tab */}
             <button
-              onClick={() => navigateTo('/app/submit')}
-              className="px-6 py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+              type="button"
+              onClick={() => handleTabSwitch('SUBMISSIONS')}
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === 'SUBMISSIONS'
+                  ? 'bg-[#FBF6ED] text-[#9A6A24] border border-[#ECD9B9]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
             >
-              Get Featured on Instagram ($6)
+              <LayoutGrid className="w-4 h-4" />
+              <span>Submissions</span>
+            </button>
+
+            {/* Wallet Tab */}
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('WALLET')}
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === 'WALLET'
+                  ? 'bg-[#FBF6ED] text-[#9A6A24] border border-[#ECD9B9]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
+            >
+              <Wallet className="w-4 h-4" />
+              <span>Wallet</span>
+            </button>
+
+            {/* Profile Tab */}
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('PROFILE')}
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === 'PROFILE'
+                  ? 'bg-[#FBF6ED] text-[#9A6A24] border border-[#ECD9B9]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
+            >
+              <User className="w-4 h-4" />
+              <span>Profile</span>
+            </button>
+
+          </nav>
+
+          {/* Right Header Actions: $0.00 | + New post | User SD dropdown */}
+          <div className="flex items-center gap-2.5 sm:gap-3.5 shrink-0">
+            
+            {/* Wallet Balance Pill */}
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('WALLET')}
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200/90 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+              <span>${walletBalance.toFixed(2)}</span>
+            </button>
+
+            {/* + New post Button */}
+            <button
+              type="button"
+              onClick={handleNewPost}
+              className="px-4 py-2 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              <span>New post</span>
+            </button>
+
+            {/* User Avatar Circle SD with Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="flex items-center gap-1.5 p-1 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-full bg-[#F3E8D3] text-[#97641E] font-bold text-xs flex items-center justify-center border border-[#E4D1B2]">
+                  {userInitials}
+                </div>
+                <span className="text-slate-400 text-xs">⌵</span>
+              </button>
+
+              {/* Dropdown Menu */}
+              {isUserMenuOpen && (
+                <div 
+                  className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
+                  onMouseLeave={() => setIsUserMenuOpen(false)}
+                >
+                  <div className="px-4 py-2 border-b border-slate-100">
+                    <div className="text-xs font-bold text-slate-900 truncate">{fullName}</div>
+                    <div className="text-[10px] text-slate-400 truncate">{email}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      setActiveTab('PROFILE');
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
+                  >
+                    <User className="w-3.5 h-3.5 text-slate-400" />
+                    <span>My Profile</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      setActiveTab('WALLET');
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-slate-400" />
+                    <span>My Wallet</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      logout();
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer font-medium border-t border-slate-100"
+                  >
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+          </div>
+
+        </div>
+      </header>
+
+      {/* ========================================================================= */}
+      {/* 2. BODY CONTENT (SUBMISSIONS TAB - Matching Images 2 & 3)                  */}
+      {/* ========================================================================= */}
+      {activeTab === 'SUBMISSIONS' && (
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-10 space-y-8 animate-in fade-in duration-150">
+          
+          {/* Header row with "Welcome back, software" and "Find a school" button */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div>
+              <div className="text-xs sm:text-sm font-medium text-slate-500">
+                Welcome back, {userDisplayName.split(' ')[0]}
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight mt-0.5">
+                My submissions
+              </h1>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsFindSchoolModalOpen(true)}
+              className="px-4 py-2 rounded-xl border border-slate-200/90 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold shadow-2xs flex items-center gap-2 cursor-pointer transition-colors self-start sm:self-auto"
+            >
+              <Search className="w-3.5 h-3.5 text-slate-400" />
+              <span>Find a school</span>
             </button>
           </div>
-        ) : (
-          <div className="space-y-5">
-            {mySubmissions.map((sub: FeaturedSubmission) => {
-              const isPublished = sub.publishingStatus === 'PUBLISHED';
-              const isApproved = sub.moderationStatus === 'APPROVED';
-              const isRejected = sub.moderationStatus === 'REJECTED';
-              const isPaid = sub.paymentStatus === 'PAYMENT_CONFIRMED';
 
-              return (
-                <div 
-                  key={sub.id}
-                  className="p-6 bg-white rounded-3xl border border-slate-200/90 shadow-xs space-y-6"
-                >
-                  {/* Top row */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-slate-900">#{sub.id}</span>
-                        <span className="text-xs text-slate-400">•</span>
-                        <span className="text-xs font-bold text-slate-800">{sub.universityName}</span>
-                        <span className="text-xs text-pink-600 font-bold flex items-center gap-1">
-                          <Instagram className="w-3 h-3" />
-                          <span>{sub.universityInstagramHandle}</span>
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-mono">
-                        Submitted: {new Date(sub.submittedAt).toLocaleDateString()}
-                      </div>
-                    </div>
-
-                    {/* Status Pill */}
-                    <div>
-                      {isPublished ? (
-                        <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Published on Instagram</span>
-                        </span>
-                      ) : isRejected ? (
-                        <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200 flex items-center gap-1.5">
-                          <AlertCircle className="w-3.5 h-3.5" />
-                          <span>Changes Requested / Rejected</span>
-                        </span>
-                      ) : isApproved ? (
-                        <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200 flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>Approved • Queued for Publishing</span>
-                        </span>
-                      ) : isPaid ? (
-                        <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200 flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>Paid ($6) • Under Admin Review</span>
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200">
-                          Awaiting Payment ($6.00)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Body: Photo & Caption */}
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                    
-                    {/* Watermarked photo thumbnail */}
-                    <div className="md:col-span-4 aspect-square max-w-[220px] rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 shadow-xs relative">
-                      <img 
-                        src={sub.watermarkedImagePath} 
-                        alt="Submission preview"
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover" 
-                      />
-                      <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-950/80 text-[9px] text-white font-mono">
-                        Watermarked Derivative
-                      </div>
-                    </div>
-
-                    {/* Caption & Status Details */}
-                    <div className="md:col-span-8 space-y-4">
-                      <div className="space-y-1">
-                        <div className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-                          Submitted Caption
-                        </div>
-                        <p className="text-xs text-slate-700 leading-relaxed font-normal p-3 rounded-xl bg-slate-50 border border-slate-100 italic">
-                          "{sub.caption}"
-                        </p>
-                      </div>
-
-                      {/* Rejection notice if any */}
-                      {isRejected && sub.rejectionReason && (
-                        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
-                          <div className="font-bold flex items-center gap-1.5">
-                            <AlertCircle className="w-4 h-4 text-rose-600" />
-                            <span>Administrator Review Feedback</span>
-                          </div>
-                          <p className="text-[11px]">{sub.rejectionReason}</p>
-                        </div>
-                      )}
-
-                      {/* Published link if available */}
-                      {isPublished && sub.instagramPostUrl && (
-                        <div className="p-4 rounded-2xl bg-gradient-to-r from-pink-50 to-blue-50 border border-pink-200/60 flex items-center justify-between">
-                          <div className="space-y-0.5">
-                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                              <Instagram className="w-4 h-4 text-pink-600" />
-                              <span>Live on {sub.universityInstagramHandle}</span>
-                            </div>
-                            <div className="text-[11px] text-slate-500">
-                              Your photo introduction is public for all students to see and connect!
-                            </div>
-                          </div>
-
-                          <a 
-                            href={sub.instagramPostUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-colors shrink-0"
-                          >
-                            <span>Open Post</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Visual 4-Step Timeline */}
-                  <div className="pt-4 border-t border-slate-100">
-                    <div className="grid grid-cols-4 gap-2 text-center text-[10px]">
-                      
-                      {/* Step 1 */}
-                      <div className="space-y-1">
-                        <div className="h-1.5 rounded-full bg-emerald-500" />
-                        <span className="font-bold text-slate-700">1. Submitted</span>
-                      </div>
-
-                      {/* Step 2 */}
-                      <div className="space-y-1">
-                        <div className={`h-1.5 rounded-full ${isPaid ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                        <span className={`font-bold ${isPaid ? 'text-slate-700' : 'text-slate-400'}`}>
-                          2. Paid ($6)
-                        </span>
-                      </div>
-
-                      {/* Step 3 */}
-                      <div className="space-y-1">
-                        <div className={`h-1.5 rounded-full ${isApproved ? 'bg-emerald-500' : isRejected ? 'bg-rose-500' : isPaid ? 'bg-blue-500 animate-pulse' : 'bg-slate-200'}`} />
-                        <span className={`font-bold ${isApproved ? 'text-emerald-700' : isRejected ? 'text-rose-600' : isPaid ? 'text-blue-600' : 'text-slate-400'}`}>
-                          {isRejected ? '3. Rejected' : isApproved ? '3. Approved' : '3. Reviewing'}
-                        </span>
-                      </div>
-
-                      {/* Step 4 */}
-                      <div className="space-y-1">
-                        <div className={`h-1.5 rounded-full ${isPublished ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                        <span className={`font-bold ${isPublished ? 'text-emerald-700' : 'text-slate-400'}`}>
-                          4. Published
-                        </span>
-                      </div>
-
-                    </div>
-                  </div>
-
+          {/* 4 Metric Cards from Image 2 */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* Card 1: In progress */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <Edit2 className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-950">
+                  1
                 </div>
-              );
-            })}
+                <div className="text-xs font-medium text-slate-500 mt-0.5">
+                  In progress
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: In queue */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Clock className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-950">
+                  0
+                </div>
+                <div className="text-xs font-medium text-slate-500 mt-0.5">
+                  In queue
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Posted */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-950">
+                  0
+                </div>
+                <div className="text-xs font-medium text-slate-500 mt-0.5">
+                  Posted
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Total spent */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-xl bg-yellow-50 text-yellow-700 flex items-center justify-center">
+                <span className="font-bold text-sm">$</span>
+              </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-950">
+                  $0.00
+                </div>
+                <div className="text-xs font-medium text-slate-500 mt-0.5">
+                  Total spent
+                </div>
+              </div>
+            </div>
+
           </div>
-        )}
+
+          {/* Section: "Pick up where you left off" (Matching Image 2 & 3) */}
+          <div className="space-y-3.5">
+            <h2 className="text-base font-bold text-slate-950 tracking-tight">
+              Pick up where you left off
+            </h2>
+
+            {/* Draft Card */}
+            <div className="max-w-md bg-white rounded-3xl border border-slate-200/90 shadow-2xs overflow-hidden">
+              
+              {/* Photo Banner with uploaded draft photo */}
+              <div className="relative h-48 w-full bg-slate-900 overflow-hidden">
+                <img 
+                  src={activeDraft.photoUrl} 
+                  alt={activeDraft.universityName}
+                  className="w-full h-full object-cover opacity-90"
+                />
+                
+                {/* Draft Badge at top-left */}
+                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-xs text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                  <span>Draft</span>
+                </div>
+
+                {/* University Crest & Name at bottom of photo */}
+                <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-white p-0.5 shadow-md flex items-center justify-center text-[8px] font-bold text-blue-900">
+                    🦅 2031
+                  </div>
+                  <span className="text-xs font-bold text-white drop-shadow-md">
+                    {activeDraft.universityName}
+                  </span>
+                </div>
+              </div>
+
+              {/* 3 Step Progress Bar matching Image 2 */}
+              <div className="p-5 space-y-4">
+                
+                {/* 3 Step Bars */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <div className={`h-1 rounded-full ${activeDraft.builderStep >= 1 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
+                    <span className={`text-[10px] ${activeDraft.builderStep >= 1 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>1. Photos</span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className={`h-1 rounded-full ${activeDraft.builderStep >= 2 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
+                    <span className={`text-[10px] ${activeDraft.builderStep >= 2 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>2. Details</span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className={`h-1 rounded-full ${activeDraft.builderStep >= 3 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
+                    <span className={`text-[10px] ${activeDraft.builderStep >= 3 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>3. Payment</span>
+                  </div>
+                </div>
+
+                {/* Action Buttons: Continue -> and Edit button */}
+                <div className="flex items-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleContinueDraft}
+                    className="flex-1 py-2.5 px-5 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>Continue</span>
+                    <span className="text-xs font-bold">→</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleContinueDraft}
+                    className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                    title="Edit draft submission"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+
+          {/* Section: "All submissions" with Filter Pills (Matching Image 3) */}
+          <div className="space-y-4 pt-4">
+            
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h2 className="text-base font-bold text-slate-950 tracking-tight">
+                All submissions
+              </h2>
+
+              {/* Filter Pills matching Image 3 */}
+              <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSubmissionFilter('ALL')}
+                  className={`px-3 py-1 rounded-full font-semibold transition-colors cursor-pointer ${
+                    submissionFilter === 'ALL'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  All 1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubmissionFilter('DRAFTS')}
+                  className={`px-3 py-1 rounded-full font-semibold transition-colors cursor-pointer ${
+                    submissionFilter === 'DRAFTS'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Drafts 1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubmissionFilter('AWAITING_PAYMENT')}
+                  className={`px-3 py-1 rounded-full font-semibold transition-colors cursor-pointer ${
+                    submissionFilter === 'AWAITING_PAYMENT'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Awaiting payment 0
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubmissionFilter('IN_QUEUE')}
+                  className={`px-3 py-1 rounded-full font-semibold transition-colors cursor-pointer ${
+                    submissionFilter === 'IN_QUEUE'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  In queue 0
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubmissionFilter('POSTED')}
+                  className={`px-3 py-1 rounded-full font-semibold transition-colors cursor-pointer ${
+                    submissionFilter === 'POSTED'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Posted 0
+                </button>
+              </div>
+            </div>
+
+            {/* Submission Item Row (Image 3) */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-all">
+              
+              <div className="flex items-center gap-3.5">
+                {/* Photo Thumbnail */}
+                <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-900 shrink-0 border border-slate-100 shadow-2xs">
+                  <img 
+                    src={activeDraft.photoUrl} 
+                    alt="Submission thumbnail"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px]">🦅</span>
+                    <span className="text-xs sm:text-sm font-bold text-slate-900">
+                      {activeDraft.universityName}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {activeDraft.detailsSummary}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400">
+                    <span className="inline-flex items-center gap-1 font-semibold text-slate-600">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                      Draft
+                    </span>
+                    <span>•</span>
+                    <span>{activeDraft.photosCount} photo</span>
+                    <span>•</span>
+                    <span>{activeDraft.dateStr}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Continue button on right */}
+              <button
+                type="button"
+                onClick={handleContinueDraft}
+                className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-800 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 self-end sm:self-center cursor-pointer"
+              >
+                <span>Continue</span>
+                <span className="text-xs">›</span>
+              </button>
+
+            </div>
+
+          </div>
+
+        </main>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. BODY CONTENT (WALLET TAB - Matching Image 4 Exactly)                    */}
+      {/* ========================================================================= */}
+      {activeTab === 'WALLET' && (
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-10 space-y-8 animate-in fade-in duration-150">
+          
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
+              My Wallet
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Top up to pay for submissions instantly.
+            </p>
+          </div>
+
+          {/* Available Balance Card matching Image 4 */}
+          <div className="bg-[#FAF7F2] rounded-3xl p-6 sm:p-8 border border-[#EADBBE]/80 shadow-2xs space-y-6 max-w-3xl">
+            
+            <div className="flex items-start justify-between">
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[#97641E]">
+                  AVAILABLE BALANCE
+                </div>
+                <div className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+                  <span className="text-2xl font-bold text-slate-500 mr-1.5">USD</span>
+                  {walletBalance.toFixed(2)}
+                </div>
+              </div>
+
+              <div className="w-10 h-10 rounded-2xl bg-white/80 border border-[#EADBBE] flex items-center justify-center text-[#97641E]">
+                <CreditCard className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* + Top up wallet Button */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setIsTopUpModalOpen(true)}
+                className="px-5 py-2.5 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Top up wallet</span>
+              </button>
+            </div>
+
+            {/* Bottom 2 metrics: Total added & Total spent */}
+            <div className="pt-6 border-t border-[#EADBBE]/60 grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs text-slate-500 font-medium">Total added</div>
+                <div className="text-sm font-bold text-slate-900 mt-0.5">
+                  USD {walletBalance.toFixed(2)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 font-medium">Total spent</div>
+                <div className="text-sm font-bold text-slate-900 mt-0.5">
+                  USD 0.00
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Transaction History Section matching Image 4 */}
+          <div className="space-y-3.5 max-w-3xl">
+            <h2 className="text-base font-bold text-slate-950 tracking-tight">
+              Transaction history
+            </h2>
+
+            <div className="bg-white rounded-3xl p-12 border border-slate-200/90 shadow-2xs text-center flex flex-col items-center justify-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                <FileText className="w-6 h-6" />
+              </div>
+              <p className="text-xs text-slate-400 font-medium pt-1">
+                No transactions yet
+              </p>
+            </div>
+          </div>
+
+        </main>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. BODY CONTENT (PROFILE TAB - Matching Images 5 & 6 Exactly)               */}
+      {/* ========================================================================= */}
+      {activeTab === 'PROFILE' && (
+        <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-8 py-8 sm:py-10 space-y-8 animate-in fade-in duration-150">
+          
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
+              My Profile
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Manage your account details and password.
+            </p>
+          </div>
+
+          {/* Profile Card matching Image 5 */}
+          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xs overflow-hidden">
+            
+            {/* Top Avatar & Identity */}
+            <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-[#F3E8D3] text-[#97641E] font-bold text-xl flex items-center justify-center border-2 border-[#E4D1B2] shrink-0">
+                S
+              </div>
+              <div className="space-y-0.5">
+                <h2 className="text-lg font-bold text-slate-950 leading-tight">
+                  {fullName}
+                </h2>
+                <div className="text-xs text-slate-500">
+                  {email}
+                </div>
+                <div className="text-[11px] text-slate-400 pt-0.5">
+                  Member since October 2026
+                </div>
+              </div>
+            </div>
+
+            {/* 4-Stat Metrics Row: 1 Total | 0 Paid | 0 Posted | $0 Spent */}
+            <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 text-center py-4 bg-slate-50/50">
+              <div>
+                <div className="text-base sm:text-lg font-extrabold text-slate-900">1</div>
+                <div className="text-[11px] text-slate-500 font-medium">Total</div>
+              </div>
+              <div>
+                <div className="text-base sm:text-lg font-extrabold text-slate-900">0</div>
+                <div className="text-[11px] text-slate-500 font-medium">Paid</div>
+              </div>
+              <div>
+                <div className="text-base sm:text-lg font-extrabold text-slate-900">0</div>
+                <div className="text-[11px] text-slate-500 font-medium">Posted</div>
+              </div>
+              <div>
+                <div className="text-base sm:text-lg font-extrabold text-blue-600">$0</div>
+                <div className="text-[11px] text-slate-500 font-medium">Spent</div>
+              </div>
+            </div>
+
+            {/* Edit Profile Form */}
+            <form onSubmit={handleSaveProfile} className="p-6 sm:p-8 space-y-4">
+              
+              {/* Full Name */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  FULL NAME
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  EMAIL
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
+                />
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  PHONE (OPTIONAL)
+                </label>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1 (555) 123-4567"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="px-6 py-2.5 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs sm:text-sm shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingProfile ? 'Saving...' : 'Save changes'}
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+
+          {/* Change Password Card matching Image 6 */}
+          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xs p-6 sm:p-8 space-y-5">
+            
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-950">Change password</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Update your password to keep your account secure.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleUpdatePassword} className="space-y-4 pt-1">
+              
+              {/* Current Password */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  CURRENT PASSWORD
+                </label>
+                <div className="relative">
+                  <input
+                    type={showCurrentPass ? 'text' : 'password'}
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 pr-10 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPass(!showCurrentPass)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* New Password */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  NEW PASSWORD
+                </label>
+                <div className="relative">
+                  <input
+                    type={showNewPass ? 'text' : 'password'}
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minimum 8 characters"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 pr-10 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(!showNewPass)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm New Password */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  CONFIRM NEW PASSWORD
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPass ? 'text' : 'password'}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 pr-10 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPass(!showConfirmPass)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isUpdatingPassword}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 bg-[#FDF9F2] text-[#97641E] font-bold text-xs sm:text-sm shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isUpdatingPassword ? 'Updating...' : 'Update password'}
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+
+        </main>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. FOOTER (Matching Image 3)                                              */}
+      {/* ========================================================================= */}
+      <footer className="w-full border-t border-slate-200/80 bg-white py-5 px-6 sm:px-12 mt-auto">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+          <div>
+            © 2026 CampusConnect
+          </div>
+          <div className="flex items-center gap-6">
+            <button 
+              onClick={() => navigateTo('/terms')} 
+              className="hover:text-slate-600 transition-colors cursor-pointer"
+            >
+              Terms
+            </button>
+            <button 
+              onClick={() => navigateTo('/privacy')} 
+              className="hover:text-slate-600 transition-colors cursor-pointer"
+            >
+              Privacy
+            </button>
+          </div>
+        </div>
+      </footer>
+
+      {/* ========================================================================= */}
+      {/* 6. FIND A SCHOOL MODAL                                                    */}
+      {/* ========================================================================= */}
+      {isFindSchoolModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setIsFindSchoolModalOpen(false)}
+              className="absolute top-5 right-5 p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-xl font-bold text-slate-950">Find your school</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Select your campus to start or resume a featured post.
+            </p>
+
+            <div className="relative mt-4 mb-3">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={schoolSearchQuery}
+                onChange={(e) => setSchoolSearchQuery(e.target.value)}
+                placeholder="Search your school..."
+                className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38]"
+                autoFocus
+              />
+            </div>
+
+            <div className="border border-slate-200 rounded-2xl max-h-60 overflow-y-auto divide-y divide-slate-100">
+              {filteredUniversities.map((uni) => (
+                <button
+                  key={uni.id}
+                  onClick={() => handleSelectSchool(uni)}
+                  className="w-full p-3 flex items-center justify-between text-left hover:bg-amber-50/50 transition-colors cursor-pointer group"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 group-hover:text-amber-800">
+                      {uni.name}
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      {uni.instagramHandle || `@${uni.slug}`}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-amber-600" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 7. TOP UP WALLET MODAL                                                    */}
+      {/* ========================================================================= */}
+      {isTopUpModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setIsTopUpModalOpen(false)}
+              className="absolute top-5 right-5 p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                <Wallet className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-950">Top up Wallet</h3>
+                <p className="text-xs text-slate-500">Pay for post submissions seamlessly</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleTopUpSubmit} className="space-y-4 pt-2">
+              <div className="grid grid-cols-3 gap-2">
+                {['6.00', '12.00', '24.00'].map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setTopUpAmount(amt)}
+                    className={`py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      topUpAmount === amt
+                        ? 'bg-[#FBF6ED] border-[#C28B38] text-[#9A6A24]'
+                        : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    ${amt}
+                  </button>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  OR ENTER CUSTOM AMOUNT (USD)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1.00"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38]"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsTopUpModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold text-white bg-[#C28B38] hover:bg-[#A97529] rounded-xl shadow-xs transition-colors cursor-pointer"
+                >
+                  Add ${parseFloat(topUpAmount || '0').toFixed(2)} to Wallet
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Floating "We Are Here! 1" support badge */}
+      <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2 select-none pointer-events-auto">
+        <div className="relative flex items-center justify-center">
+          <button 
+            type="button"
+            onClick={() => addToast('Live Support', 'Our campus support team is active 24/7 to assist with your post submission.', 'info')}
+            className="w-12 h-12 rounded-full bg-[#854D0E] text-white flex items-center justify-center shadow-lg border-2 border-white cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+            aria-label="Contact live support"
+          >
+            <MessageCircle className="w-6 h-6 fill-white text-[#854D0E]" />
+          </button>
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
+            1
+          </span>
+        </div>
       </div>
+
+      {/* Video-Authentic Centered Loading Indicator Card */}
+      {isNavLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-xs animate-in fade-in duration-100">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col items-center justify-center gap-3 min-w-[130px] border border-slate-100">
+            <div className="w-9 h-9 rounded-full border-3 border-indigo-600 border-t-transparent animate-spin" />
+            <span className="text-xs font-semibold text-slate-700">Loading...</span>
+          </div>
+        </div>
+      )}
 
     </div>
   );

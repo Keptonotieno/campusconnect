@@ -134,13 +134,21 @@ export const Navbar: React.FC = () => {
           </div>
         </nav>
 
-        {/* Right CTA / Auth (Desktop) - Matching Image 3 */}
+        {/* Right CTA / Auth (Desktop) - Matching Video */}
         <div className="hidden md:flex items-center gap-3">
           <button
-            onClick={() => navigateTo(isAuthenticated ? '/app/dashboard' : '/login')}
-            className="px-5 py-2.5 text-xs font-bold text-white bg-[#1D64EC] hover:bg-blue-600 rounded-xl shadow-xs shadow-blue-500/20 transition-all cursor-pointer"
+            onClick={() => {
+              if (!isAuthenticated) {
+                navigateTo('/login');
+              } else if (currentUser?.role === 'Admin') {
+                navigateTo('/admin');
+              } else {
+                navigateTo('/student');
+              }
+            }}
+            className="px-5 py-2.5 text-xs font-bold text-white bg-[#1D64EC] hover:bg-blue-600 rounded-full shadow-xs transition-all cursor-pointer"
           >
-            Open dashboard
+            {isAuthenticated ? 'My dashboard' : 'Sign in'}
           </button>
         </div>
 
@@ -148,17 +156,17 @@ export const Navbar: React.FC = () => {
         <div className="flex md:hidden items-center gap-2">
           {!isAuthenticated ? (
             <button
-              onClick={() => navigateTo('/register')}
-              className="px-3 py-1.5 text-xs font-bold text-white bg-[#1D64EC] hover:bg-blue-600 rounded-xl transition-all cursor-pointer"
+              onClick={() => navigateTo('/login')}
+              className="px-3.5 py-1.5 text-xs font-bold text-white bg-[#1D64EC] hover:bg-blue-600 rounded-full transition-all cursor-pointer"
             >
-              Sign up
+              Sign in
             </button>
           ) : (
             <button
-              onClick={() => navigateTo('/app/dashboard')}
-              className="px-3 py-1.5 text-xs font-bold text-[#1D64EC] bg-blue-50 rounded-xl"
+              onClick={() => navigateTo(currentUser?.role === 'Admin' ? '/admin' : '/student')}
+              className="px-3.5 py-1.5 text-xs font-bold text-[#1D64EC] bg-blue-50 rounded-full"
             >
-              Dashboard
+              My dashboard
             </button>
           )}
 

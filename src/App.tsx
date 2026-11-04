@@ -322,8 +322,19 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // 4b. Dedicated Student Dashboard & My Submissions Portal (Images 2, 3, 4, 5, 6)
+  if (currentRoute === '/student' || currentRoute.startsWith('/student') || currentRoute === '/my-submissions' || currentRoute === '/app/student') {
+    return (
+      <div className="min-h-screen bg-[#FBFBFA] text-slate-900 flex flex-col antialiased font-sans">
+        <StudentDashboardPage />
+        <SupportWidget />
+        <ToastContainer />
+      </div>
+    );
+  }
+
   // 5. Protected workspace routes: Retains the original AppSidebar + AppHeader dashboard layout
-  const isAppRoute = currentRoute.startsWith('/app') || currentRoute.startsWith('/business/dashboard') || currentRoute === '/student';
+  const isAppRoute = (currentRoute.startsWith('/app') && currentRoute !== '/app/student') || currentRoute.startsWith('/business/dashboard');
 
   if (isAppRoute && !isAuthenticated) {
     return (

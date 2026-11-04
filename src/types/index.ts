@@ -122,6 +122,15 @@ export interface FeaturedSubmission {
   // Timestamps
   submittedAt: string;
   updatedAt: string;
+
+  // In-progress builder draft fields
+  builderStep?: 1 | 2 | 3;
+  photos?: { id: string; previewUrl: string; isCover: boolean }[];
+  major?: string;
+  personalInstagramHandle?: string;
+  snapchatHandle?: string;
+  tiktokHandle?: string;
+  classYear?: string;
 }
 
 export type PaymentMethod = 'STRIPE_CARD' | 'STRIPE';

@@ -151,6 +151,159 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Draft initialization and persistence tracking
+  const [hasInitializedDraft, setHasInitializedDraft] = useState(false);
+
+  // Restore draft on initial mount
+  useEffect(() => {
+    try {
+      const draftKey = `campusconnect_draft_${university.slug}`;
+      const savedRaw = localStorage.getItem(draftKey) || localStorage.getItem('campusconnect_active_draft');
+      if (savedRaw) {
+        const saved = JSON.parse(savedRaw);
+        if (saved && (saved.universitySlug === university.slug || saved.universityId === university.id)) {
+          if (Array.isArray(saved.photos) && saved.photos.length > 0) {
+            setPhotos(saved.photos);
+          }
+          if (saved.instagramHandle) setInstagramHandle(saved.instagramHandle);
+          if (saved.snapchatHandle) setSnapchatHandle(saved.snapchatHandle);
+          if (saved.tiktokHandle) setTiktokHandle(saved.tiktokHandle);
+          if (saved.selectedMajor) setSelectedMajor(saved.selectedMajor);
+          if (saved.bioText) setBioText(saved.bioText);
+          if (saved.classYear) setClassYearInput(saved.classYear);
+          if (saved.semester) setSemesterInput(saved.semester);
+
+          const urlParams = new URLSearchParams(window.location.search);
+          const isResume = urlParams.get('resume') === 'true';
+          const explicitStep = urlParams.get('step');
+          if (isResume || explicitStep) {
+            setPageView('BUILDER');
+            const stepNum = explicitStep ? parseInt(explicitStep) : (saved.builderStep || 1);
+            if (stepNum === 2 || stepNum === 3) {
+              setBuilderStep(stepNum as 2 | 3);
+            } else {
+              setBuilderStep(1);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to restore draft:', e);
+    } finally {
+      setHasInitializedDraft(true);
+    }
+  }, [university.slug, university.id]);
+
+  // Auto-save draft whenever builder state changes
+  useEffect(() => {
+    if (!hasInitializedDraft) return;
+    if (builderStep === 'SUCCESS') return;
+
+    if (photos.length === 0 && !instagramHandle && !selectedMajor && !bioText) {
+      return;
+    }
+
+    try {
+      const cover = photos.find(p => p.isCover) || photos[0];
+      const draftObj = {
+        id: `draft_${university.slug}`,
+        universityId: university.id,
+        universityName: university.name,
+        universitySlug: university.slug,
+        universityInstagramHandle: university.instagramHandle,
+        photoUrl: cover ? cover.url : '',
+        photos: photos.map(p => ({ id: p.id, url: p.url, isCover: p.isCover })),
+        photosCount: photos.length,
+        builderStep,
+        instagramHandle,
+        snapchatHandle,
+        tiktokHandle,
+        selectedMajor,
+        classYear: classYearInput,
+        semester: semesterInput,
+        bioText,
+        updatedAt: new Date().toISOString(),
+        detailsSummary: selectedMajor 
+          ? `${selectedMajor} • @${instagramHandle.replace(/^@/, '') || 'profile'}` 
+          : (instagramHandle ? `@${instagramHandle.replace(/^@/, '')}` : `${photos.length} photo(s) uploaded`)
+      };
+
+      localStorage.setItem(`campusconnect_draft_${university.slug}`, JSON.stringify(draftObj));
+      localStorage.setItem('campusconnect_active_draft', JSON.stringify(draftObj));
+    } catch (err) {
+      console.warn('Auto-save draft warning:', err);
+    }
+  }, [
+    hasInitializedDraft,
+    photos, 
+    instagramHandle, 
+    snapchatHandle, 
+    tiktokHandle, 
+    selectedMajor, 
+    classYearInput, 
+    semesterInput, 
+    bioText, 
+    builderStep, 
+    university
+  ]);
+
+  // Loading overlay state matching the video
+  const [isNavLoading, setIsNavLoading] = useState(false);
+
+  // Check if student has signed in before
+  const hasSignedInBefore = useMemo(() => {
+    if (isAuthenticated) return true;
+    try {
+      return localStorage.getItem('campusconnect_auth') === 'true' || !!localStorage.getItem('campusconnect_user');
+    } catch {
+      return false;
+    }
+  }, [isAuthenticated]);
+
+  // Check if student has started the procedure of posting photos to this university
+  const hasStartedProcedure = useMemo(() => {
+    if (photos.length > 0) return true;
+    try {
+      const uniDraft = localStorage.getItem(`campusconnect_draft_${university.slug}`);
+      if (uniDraft) {
+        const parsed = JSON.parse(uniDraft);
+        if (parsed && ((parsed.photos && parsed.photos.length > 0) || parsed.photosCount > 0 || parsed.builderStep >= 1)) {
+          return true;
+        }
+      }
+      const activeRaw = localStorage.getItem('campusconnect_active_draft');
+      if (activeRaw) {
+        const parsed = JSON.parse(activeRaw);
+        if (parsed && (parsed.universitySlug === university.slug || parsed.universityId === university.id) && 
+            ((parsed.photos && parsed.photos.length > 0) || parsed.photosCount > 0)) {
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  }, [photos, university.slug, university.id]);
+
+  // Requirement: "this option of my submission is only shown when one had sign in before and start procedure of posting the photo to the university he/she wanted to be featured on..."
+  const showMySubmissions = Boolean(hasSignedInBefore && hasStartedProcedure);
+
+  // Discard draft function if the student wants to start fresh
+  const discardDraft = () => {
+    if (window.confirm('Discard your in-progress submission and start a fresh one?')) {
+      setPhotos([]);
+      setInstagramHandle('');
+      setSnapchatHandle('');
+      setTiktokHandle('');
+      setSelectedMajor('');
+      setBioText('');
+      setBuilderStep(1);
+      try {
+        localStorage.removeItem(`campusconnect_draft_${university.slug}`);
+        localStorage.removeItem('campusconnect_active_draft');
+      } catch {}
+      addToast('Draft Discarded', 'You can now start a fresh submission.', 'info');
+    }
+  };
+
   // Enter builder workflow
   const startBuilder = () => {
     if (!university.communityEnabled) {
@@ -159,24 +312,32 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     }
     setEntryUniversityContext(university);
     setPageView('BUILDER');
-    setBuilderStep(1);
+    // If photos already present, allow resuming at their active step
+    if (photos.length > 0 && (builderStep === 2 || builderStep === 3)) {
+      setBuilderStep(builderStep);
+    } else {
+      setBuilderStep(1);
+    }
     if (typeof window !== 'undefined' && window.history.pushState) {
       window.history.pushState({}, '', `/submit/${university.slug}`);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Exit builder back to landing
+  // Exit builder back to landing without discarding draft
   const exitBuilder = () => {
     setPageView('LANDING');
     if (typeof window !== 'undefined' && window.history.pushState) {
       window.history.pushState({}, '', `/ig/${university.slug}`);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (photos.length > 0) {
+      addToast('Draft Preserved', 'Your submission progress is saved. You can continue anytime.', 'info');
+    }
   };
 
-  // Handle Photo File selection (Supports multiple files up to 8)
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Photo File selection with permanent Base64 Data URL conversion (Supports up to 8 photos)
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -199,12 +360,19 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
         continue;
       }
 
-      const url = URL.createObjectURL(file);
+      // Convert image file to persistent base64 data URL so it never gets discarded or revoked
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(URL.createObjectURL(file));
+        reader.readAsDataURL(file);
+      });
+
       newItems.push({
         id: 'photo_' + Math.random().toString(36).substring(2, 9),
-        url,
+        url: dataUrl,
         file,
-        isCover: photos.length === 0 && newItems.length === 0 // First photo is default cover
+        isCover: photos.length === 0 && newItems.length === 0
       });
     }
 
@@ -403,6 +571,10 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       setCompletedPaymentRef(txnRef);
       setCompletedSubId(submissionId);
       setBuilderStep('SUCCESS');
+      try {
+        localStorage.removeItem(`campusconnect_draft_${university.slug}`);
+        localStorage.removeItem('campusconnect_active_draft');
+      } catch {}
       addToast('Payment Confirmed!', `Your payment ($6.00 USD) is verified. Post submitted for administrator review.`, 'success');
     } catch (err: any) {
       addToast('Payment Error', err.message || 'Payment could not be completed.', 'error');
@@ -1773,32 +1945,52 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
               </button>
             </nav>
 
-            {/* Sign in Button & Get Featured CTA */}
-            <div className="flex items-center gap-2.5 sm:gap-3.5">
-              <button 
-                type="button"
-                onClick={() => {
-                  setEntryUniversityContext(university);
-                  if (!isAuthenticated) {
-                    navigateTo(`/login?uni=${university.slug}`);
-                  } else {
-                    navigateTo(`/app/dashboard?uni=${university.slug}`);
-                  }
-                }}
-                className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-950 transition-colors cursor-pointer px-2.5 sm:px-3 py-1.5 rounded-xl hover:bg-slate-100"
-              >
-                {isAuthenticated ? 'Dashboard' : 'Sign in'}
-              </button>
+            {/* Navbar CTAs: My Submissions Pill & Get Featured */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Show My submissions ONLY when user had signed in before AND started procedure of posting photos to the university */}
+              {showMySubmissions ? (
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setIsNavLoading(true);
+                    setTimeout(() => {
+                      setIsNavLoading(false);
+                      setEntryUniversityContext(university);
+                      navigateTo('/student');
+                    }, 300);
+                  }}
+                  className="px-3.5 sm:px-4 py-2 rounded-full border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700 hover:text-slate-950 text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                >
+                  <span>My submissions</span>
+                  {photos.length > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Unfinished draft in progress" />
+                  )}
+                </button>
+              ) : (
+                !isAuthenticated && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setEntryUniversityContext(university);
+                      navigateTo(`/login?uni=${university.slug}&redirect=/ig/${university.slug}`);
+                    }}
+                    className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-950 transition-colors cursor-pointer px-3 py-1.5 rounded-xl hover:bg-slate-100"
+                  >
+                    Sign in
+                  </button>
+                )
+              )}
 
+              {/* "Get featured" / "Continue draft" Rounded Pill Button */}
               <button
                 type="button"
                 onClick={startBuilder}
-                className="px-4 sm:px-6 py-2.5 rounded-full text-white font-bold text-xs sm:text-sm shadow-md hover:bg-slate-800 active:scale-98 transition-all cursor-pointer bg-[#2E3748]"
+                className="px-4 sm:px-6 py-2 rounded-full text-white font-bold text-xs sm:text-sm shadow-md hover:bg-slate-800 active:scale-98 transition-all cursor-pointer bg-[#2E3748]"
                 style={{
                   backgroundColor: '#2E3748'
                 }}
               >
-                <span>Get featured</span>
+                <span>{photos.length > 0 ? 'Continue draft' : 'Get featured'}</span>
               </button>
             </div>
 
@@ -1835,6 +2027,62 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                   spotlight.
                 </span>
               </h1>
+
+              {/* Pick up where you left off: Preserves unfinished procedure so student continues without starting fresh */}
+              {photos.length > 0 && (
+                <div className="p-4 sm:p-5 rounded-3xl bg-amber-50/90 border border-amber-200/90 shadow-xs max-w-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-900 border border-amber-300/80 shadow-2xs shrink-0">
+                      <img 
+                        src={coverPhoto?.url || photos[0]?.url} 
+                        alt="Draft preview" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900 font-extrabold text-[10px] uppercase tracking-wider">
+                          In progress • Step {builderStep} of 3
+                        </span>
+                        <span className="text-[11px] text-amber-800 font-semibold">
+                          {photos.length} photo{photos.length > 1 ? 's' : ''} saved
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-extrabold text-slate-900 mt-1">
+                        Pick up where you left off
+                      </h4>
+                      <p className="text-[11px] text-slate-600 leading-tight">
+                        Your submission for {university.name} was saved. Continue anytime!
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsNavLoading(true);
+                        setTimeout(() => {
+                          setIsNavLoading(false);
+                          setPageView('BUILDER');
+                        }, 200);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Continue</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={discardDraft}
+                      className="px-2.5 py-2 text-xs text-slate-400 hover:text-rose-600 font-semibold cursor-pointer"
+                      title="Discard this draft and start a fresh submission"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* University Spotlight Card Container (Matching image_fca94304.png exactly) */}
               <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-sm max-w-lg space-y-5">
@@ -1905,7 +2153,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                     style={{ backgroundColor: '#2C3545' }}
                     className="px-6 py-3 rounded-2xl text-white font-bold text-xs sm:text-sm shadow-md hover:bg-slate-900 active:scale-98 transition-all flex items-center gap-2 cursor-pointer"
                   >
-                    <span>Get featured · $6</span>
+                    <span>{photos.length > 0 ? `Continue submission (${photos.length}) · $6` : 'Get featured · $6'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
@@ -2409,6 +2657,16 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
           </span>
         </div>
       </div>
+
+      {/* Video-Authentic Centered Loading Indicator Card */}
+      {isNavLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-xs animate-in fade-in duration-100">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-7 flex flex-col items-center justify-center gap-3 min-w-[130px] border border-slate-100">
+            <div className="w-9 h-9 rounded-full border-3 border-indigo-600 border-t-transparent animate-spin" />
+            <span className="text-xs font-semibold text-slate-700">Loading...</span>
+          </div>
+        </div>
+      )}
 
     </div>
   );
