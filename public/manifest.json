@@ -1,0 +1,17 @@
+{
+  "short_name": "CampusConnect",
+  "name": "CampusConnect - Instagram Management Platform",
+  "description": "Run your Instagram communication and engagement from one place with CampusConnect.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1D64EC",
+  "display": "standalone",
+  "orientation": "portrait"
+}

@@ -1,0 +1,20 @@
+# CampusConnect Production Robots Configuration
+User-agent: *
+Allow: /
+Allow: /ig/*
+Allow: /u/*
+Allow: /university/*
+Allow: /schools
+Allow: /terms
+Allow: /privacy
+
+# Disallow administrative operations and internal APIs from search engine crawlers
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /api/admin/*
+Disallow: /api/auth/*
+Disallow: /student
+Disallow: /my-submissions
+Disallow: /app/*
+
+Sitemap: https://campusconnect.app/sitemap.xml

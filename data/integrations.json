@@ -47,6 +47,21 @@
         "instagramBusinessAccountId": "",
         "webhookVerifyToken": ""
       }
+    },
+    {
+      "id": "firebase_firestore",
+      "name": "Firebase Firestore & Auth",
+      "category": "Persistent Database & Identity",
+      "status": "CONNECTED",
+      "configured": true,
+      "lastVerifiedAt": "2026-11-03T22:20:00.000Z",
+      "details": "Authoritative cloud database (ai-studio-igposthubinstagr-22c0a60e-1e43-4a3f-aaf1-0a4ff50b2374) with granular RBAC security rules.",
+      "keys": {
+        "projectId": "gen-lang-client-0414859306",
+        "databaseId": "ai-studio-igposthubinstagr-22c0a60e-1e43-4a3f-aaf1-0a4ff50b2374",
+        "authDomain": "gen-lang-client-0414859306.firebaseapp.com",
+        "storageBucket": "gen-lang-client-0414859306.firebasestorage.app"
+      }
     }
   ]
 }
