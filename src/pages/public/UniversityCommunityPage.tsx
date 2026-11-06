@@ -39,6 +39,7 @@ import { ACADEMIC_MAJORS } from '../../data/majors';
 import { generateWatermarkedDerivative } from '../../lib/watermark';
 import { FEATURED_POST_PRICE_USD } from '../../lib/payment';
 import { Footer } from '../../components/layout/Footer';
+import { CampusEmblemBadge } from '../../components/common/CampusEmblemBadge';
 
 interface UniversityCommunityPageProps {
   university: University;
@@ -1926,14 +1927,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
               className="flex items-center gap-2 p-1 pr-2.5 rounded-full hover:bg-slate-50 transition-colors group"
               title={`Visit @${university.instagramHandle.replace(/^@/, '')} on Instagram`}
             >
-              <div className="w-6 h-6 rounded-full border border-slate-200 bg-white flex flex-col items-center justify-center overflow-hidden shrink-0 shadow-2xs">
-                {university.logoUrl ? (
-                  <img src={university.logoUrl} alt="" className="w-3.5 h-3.5 object-contain" />
-                ) : (
-                  <span className="text-[7px] font-bold">⚡</span>
-                )}
-                <span className="text-[5px] font-bold text-slate-900 leading-none">{classYear}</span>
-              </div>
+              <CampusEmblemBadge university={university} size="sm" />
               <span className="text-xs font-semibold text-slate-700 group-hover:text-slate-950 font-mono truncate max-w-[130px] sm:max-w-[200px]">
                 {university.instagramHandle}
               </span>
@@ -2074,7 +2068,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                 <span style={{ color: primaryColor }}>
                   You're joining the
                 </span> <br />
-                <span className="text-slate-800">
+                <span style={{ color: primaryColor }}>
                   spotlight.
                 </span>
               </h1>
@@ -2140,24 +2134,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                 
                 {/* Top Row: Circular Badge with colored ring + 3 Stats */}
                 <div className="flex items-center gap-5 sm:gap-7">
-                  {/* University Avatar with gradient / primary color ring */}
-                  <div 
-                    className="w-16 h-16 rounded-full p-1 shrink-0 flex items-center justify-center shadow-md relative"
-                    style={{
-                      background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 50%, #EC4899 100%)`
-                    }}
-                  >
-                    <div className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center overflow-hidden border border-white p-1">
-                      {university.logoUrl ? (
-                        <img src={university.logoUrl} alt={university.name} className="w-7 h-7 object-contain" />
-                      ) : (
-                        <span className="text-xs font-bold text-amber-500">⚡</span>
-                      )}
-                      <span className="text-[9px] font-black leading-none mt-0.5 text-slate-900 font-mono">
-                        {classYear}
-                      </span>
-                    </div>
-                  </div>
+                  <CampusEmblemBadge university={university} size="lg" />
 
                   {/* 3 Stats: New / $6 / 24-48h */}
                   <div className="flex-1 grid grid-cols-3 gap-2">
@@ -2252,19 +2229,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                   {/* Instagram Header */}
                   <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100">
                     <div className="flex items-center gap-2.5">
-                      <div 
-                        className="w-7 h-7 rounded-full p-0.5 flex items-center justify-center shrink-0"
-                        style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)` }}
-                      >
-                        <div className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center p-0.5">
-                          {university.logoUrl ? (
-                            <img src={university.logoUrl} alt="" className="w-3.5 h-3.5 object-contain" />
-                          ) : (
-                            <span className="text-[6px] font-bold">⚡</span>
-                          )}
-                          <span className="text-[5px] font-bold leading-none text-slate-900">{classYear}</span>
-                        </div>
-                      </div>
+                      <CampusEmblemBadge university={university} size="sm" />
                       <div className="leading-tight text-left">
                         <div className="text-xs font-bold text-slate-950 truncate max-w-[170px]">
                           {university.instagramHandle.replace(/^@/, '')}

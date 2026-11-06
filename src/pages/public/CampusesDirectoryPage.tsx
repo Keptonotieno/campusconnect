@@ -14,6 +14,7 @@ import {
   Users
 } from 'lucide-react';
 import { University } from '../../types';
+import { CampusEmblemBadge } from '../../components/common/CampusEmblemBadge';
 
 export const CampusesDirectoryPage: React.FC = () => {
   const { universities, navigateTo, setEntryUniversityContext } = useApp();
@@ -186,28 +187,8 @@ export const CampusesDirectoryPage: React.FC = () => {
                     {/* Header Row: Circular Emblem + Class Year */}
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3.5">
-                        {/* Emblem with custom gradient ring */}
-                        <div 
-                          className="w-13 h-13 rounded-full p-0.5 shrink-0 flex items-center justify-center shadow-xs"
-                          style={{
-                            background: `linear-gradient(135deg, ${primaryColor} 0%, ${accentColor} 100%)`
-                          }}
-                        >
-                          <div className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center p-1 overflow-hidden">
-                            {campus.logoUrl ? (
-                              <img 
-                                src={campus.logoUrl} 
-                                alt={campus.name} 
-                                className="w-6 h-6 object-contain"
-                              />
-                            ) : (
-                              <span className="text-xs font-bold text-amber-500">⚡</span>
-                            )}
-                            <span className="text-[7px] font-black text-slate-900 leading-none font-mono">
-                              {classYear}
-                            </span>
-                          </div>
-                        </div>
+                        {/* Emblem with collegiate seal & class year */}
+                        <CampusEmblemBadge university={campus} size="md" />
 
                         <div>
                           <h2 className="text-sm font-bold text-slate-950 group-hover:text-blue-600 transition-colors leading-tight line-clamp-1">

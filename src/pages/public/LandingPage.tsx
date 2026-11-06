@@ -17,6 +17,7 @@ import {
   GraduationCap,
   Building2
 } from 'lucide-react';
+import { CampusEmblemBadge } from '../../components/common/CampusEmblemBadge';
 
 export const LandingPage: React.FC = () => {
   const { navigateTo, isAuthenticated, universities, setEntryUniversityContext } = useApp();
@@ -243,18 +244,7 @@ export const LandingPage: React.FC = () => {
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div
-                    className="w-11 h-11 rounded-full p-0.5 flex items-center justify-center shadow-xs"
-                    style={{
-                      background: `linear-gradient(135deg, ${uni.primaryColor || '#004B87'} 0%, ${uni.accentColor || '#0284C7'} 100%)`
-                    }}
-                  >
-                    <div className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center p-0.5">
-                      <span className="text-[7px] font-black text-slate-900 leading-none font-mono">
-                        '{uni.classYear?.slice(-2) || '31'}
-                      </span>
-                    </div>
-                  </div>
+                  <CampusEmblemBadge university={uni} size="sm" />
 
                   <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full font-bold">
                     {uni.instagramHandle}
