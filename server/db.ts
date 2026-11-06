@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { University, PaymentRecord, InstagramAccount, User, AuditLogItem, FeaturedSubmission } from '../src/types';
-import { VERIFIED_UNIVERSITIES } from '../src/data/universities';
+import { VERIFIED_UNIVERSITIES, findUniversityBySlug } from '../src/data/universities';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 
@@ -96,43 +96,22 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
   // Clean input string (remove hidden characters/whitespace)
   const clean = password.replace(/[\u200B-\u200D\uFEFF]/g, '');
   const trimmed = clean.trim();
+  if (!trimmed) return false;
 
-  // 1. Direct PBKDF2 hash match with raw password
-  try {
-    const rawResult = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-    if (rawResult === hash) return true;
-  } catch {
-    // continue
-  }
-
-  // 2. Direct PBKDF2 hash match with trimmed password
-  try {
-    const trimmedResult = crypto.pbkdf2Sync(trimmed, salt, 10000, 64, 'sha512').toString('hex');
-    if (trimmedResult === hash) return true;
-  } catch {
-    // continue
-  }
-
-  // 3. Check master password variants for kepton@12Romez (handles mobile auto-capitalize 'Kepton' or lowercase 'romez')
-  const lowerTrimmed = trimmed.toLowerCase();
-  if (lowerTrimmed === 'kepton@12romez') {
-    return true;
-  }
-
-  // 4. Test common capitalization permutations
-  const permutations = [
+  // Candidate variations strictly derived from the submitted password
+  const candidates = Array.from(new Set([
+    password,
+    trimmed,
     trimmed.charAt(0).toLowerCase() + trimmed.slice(1),
-    trimmed.charAt(0).toUpperCase() + trimmed.slice(1),
-    'kepton@12Romez',
-    'Kepton@12Romez',
-    'kepton@12romez',
-    'Kepton@12romez'
-  ];
+    trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+  ]));
 
-  for (const perm of permutations) {
+  for (const candidate of candidates) {
     try {
-      const permHash = crypto.pbkdf2Sync(perm, salt, 10000, 64, 'sha512').toString('hex');
-      if (permHash === hash) return true;
+      const candidateHash = crypto.pbkdf2Sync(candidate, salt, 10000, 64, 'sha512').toString('hex');
+      if (candidateHash === hash) {
+        return true;
+      }
     } catch {
       // continue
     }
@@ -175,8 +154,10 @@ class Database {
     this.admins = readJsonFile<AdminUser[]>('admins.json', []);
     this.sessions = readJsonFile<AdminSession[]>('sessions.json', []);
     this.campuses = readJsonFile<University[]>('campuses.json', []);
-    if (!this.campuses || this.campuses.length === 0) {
-      this.campuses = [...VERIFIED_UNIVERSITIES];
+    const existingIds = new Set((this.campuses || []).map(c => c.id));
+    const missingVerified = VERIFIED_UNIVERSITIES.filter(u => !existingIds.has(u.id));
+    if (missingVerified.length > 0 || !this.campuses || this.campuses.length === 0) {
+      this.campuses = [...(this.campuses || []), ...missingVerified];
       writeJsonFile('campuses.json', this.campuses);
     }
     
@@ -386,7 +367,11 @@ class Database {
       .replace(/^\/u\//, '')
       .replace(/^\/university\//, '');
 
-    // 1. Check custom database campuses created by admin
+    // 1. Check verified network with comprehensive slug aliases
+    const byHelper = findUniversityBySlug(normalized);
+    if (byHelper) return byHelper;
+
+    // 2. Check custom database campuses created by admin
     const inDb = this.campuses.find(c => 
       c.slug.toLowerCase() === normalized ||
       c.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||

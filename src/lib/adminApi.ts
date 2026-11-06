@@ -103,24 +103,18 @@ export function isMasterAdminEmail(email: string): boolean {
   return (
     AUTHORIZED_ADMIN_EMAILS.includes(norm) ||
     norm.startsWith('admin@') ||
-    norm.includes('campusconnect') ||
-    norm.includes('kepton') ||
     norm.endsWith('@campusconnect.internal')
   );
 }
 
 /**
- * Validates master password variants (handling iOS auto-capitalization, lowercase, and exact match).
- * Resilient against iOS auto-capitalization (e.g. Kepton vs kepton) and smart punctuation.
+ * Validates master password variants (handling iOS auto-capitalization and casing).
  */
 export function isMasterPassword(pass: string): boolean {
   const clean = (pass || '').trim().replace(/[\u200B-\u200D\uFEFF]/g, '');
   if (!clean) return false;
-  if (clean === 'kepton@12Romez' || clean === 'Kepton@12Romez') return true;
   const lower = clean.toLowerCase();
-  if (lower === 'kepton@12romez') return true;
-  if (lower.startsWith('kepton') && (lower.includes('12') || lower.includes('romez'))) return true;
-  return false;
+  return lower === 'kepton@12romez';
 }
 
 export function getStoredAdminToken(): string | null {
@@ -255,10 +249,10 @@ function getLocalCampuses(): University[] {
     const raw = localStorage.getItem('campusconnect_campuses');
     if (raw) {
       const list = JSON.parse(raw);
-      if (Array.isArray(list)) return list;
+      if (Array.isArray(list) && list.length > 0) return list;
     }
   } catch {}
-  return [];
+  return VERIFIED_UNIVERSITIES;
 }
 
 function saveLocalCampuses(campuses: University[]) {

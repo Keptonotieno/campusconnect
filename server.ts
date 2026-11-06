@@ -118,7 +118,8 @@ app.post('/api/auth/bootstrap-admin', (req: Request, res: Response) => {
 app.post('/api/auth/admin-login', (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const rawIp = ((req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '127.0.0.1').trim();
+    const clientIp = rawIp.replace(/^::ffff:/, '');
 
     const { admin, session } = dbInstance.loginAdmin(email, password, clientIp);
 

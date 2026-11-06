@@ -1,6 +1,7 @@
 import { University } from '../types';
 
 export const VERIFIED_UNIVERSITIES: University[] = [
+  // --- Original 11 Verified Universities ---
   {
     id: 'uni_eku2031class',
     name: 'Eastern Kentucky University (EKU)',
@@ -248,7 +249,7 @@ export const VERIFIED_UNIVERSITIES: University[] = [
     logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
     coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
     description: 'World-renowned Ivy League research university in Cambridge, Massachusetts.',
-    location: 'Cambridge, Massachusetts, United States',
+    location: 'Cambridge, Massachusetts, USA',
     officialWebsiteUrl: 'https://www.harvard.edu',
     instagramProfileUrl: 'https://instagram.com/harvard_campusconnect',
     instagramHandle: '@harvard_campusconnect',
@@ -264,10 +265,495 @@ export const VERIFIED_UNIVERSITIES: University[] = [
     tagline: 'Harvard University forever.',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-10-18T00:00:00Z'
+  },
+
+  // --- 10 Specifically Requested New Campuses ---
+  {
+    id: 'uni_miamiuniversity2031class',
+    name: 'Miami University',
+    slug: 'miamiuniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'Official student community and Instagram spotlight network for Miami University RedHawks in Oxford, Ohio.',
+    location: 'Oxford, Ohio, USA',
+    officialWebsiteUrl: 'https://www.miamioh.edu',
+    instagramProfileUrl: 'https://instagram.com/miamiuniversity2031class',
+    instagramHandle: '@miamiuniversity2031class',
+    communityEnabled: true,
+    studentCount: 19200,
+    featuredCount: 64,
+    established: '1809',
+    classYear: '2031',
+    primaryColor: '#C41230', // Miami Red
+    accentColor: '#000000',
+    gradientFrom: '#C41230',
+    gradientTo: '#73000A',
+    tagline: 'Love and Honor! RedHawks forever.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_virginiatech2031class',
+    name: 'Virginia Tech',
+    slug: 'virginiatech2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?auto=format&fit=crop&w=1200&q=80',
+    description: 'Official student community and collegiate spotlight network for Virginia Tech Hokies.',
+    location: 'Blacksburg, Virginia, USA',
+    officialWebsiteUrl: 'https://www.vt.edu',
+    instagramProfileUrl: 'https://instagram.com/virginiatech2031class',
+    instagramHandle: '@virginiatech2031class',
+    communityEnabled: true,
+    studentCount: 37000,
+    featuredCount: 78,
+    established: '1872',
+    classYear: '2031',
+    primaryColor: '#861F41', // Chicago Maroon
+    accentColor: '#E87722', // Burnt Orange
+    gradientFrom: '#861F41',
+    gradientTo: '#E87722',
+    tagline: 'Ut Prosim (That I May Serve) — Go Hokies!',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_westvirginiauniversity2031class',
+    name: 'West Virginia University',
+    slug: 'westvirginiauniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1607237138185-eedd9c632b0b?auto=format&fit=crop&w=1200&q=80',
+    description: 'Official Mountaineers student community and Instagram spotlight network in Morgantown.',
+    location: 'Morgantown, West Virginia, USA',
+    officialWebsiteUrl: 'https://www.wvu.edu',
+    instagramProfileUrl: 'https://instagram.com/wvu2031class',
+    instagramHandle: '@wvu2031class',
+    communityEnabled: true,
+    studentCount: 26000,
+    featuredCount: 58,
+    established: '1867',
+    classYear: '2031',
+    primaryColor: '#002855', // WVU Blue
+    accentColor: '#EAAA00', // Gold
+    gradientFrom: '#002855',
+    gradientTo: '#EAAA00',
+    tagline: "Let's Go Mountaineers! Country Roads take me home.",
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_michiganuniversity2031class',
+    name: 'University of Michigan',
+    slug: 'michiganuniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1592280771190-3e2e4d571952?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1525921429624-479b6a26d84d?auto=format&fit=crop&w=1200&q=80',
+    description: 'The Leaders and Best. Official student community and collegiate spotlight for Michigan Wolverines.',
+    location: 'Ann Arbor, Michigan, USA',
+    officialWebsiteUrl: 'https://umich.edu',
+    instagramProfileUrl: 'https://instagram.com/michiganuniversity2031class',
+    instagramHandle: '@michiganuniversity2031class',
+    communityEnabled: true,
+    studentCount: 51000,
+    featuredCount: 112,
+    established: '1817',
+    classYear: '2031',
+    primaryColor: '#00274C', // Michigan Blue
+    accentColor: '#FFCB05', // Maize
+    gradientFrom: '#00274C',
+    gradientTo: '#0A192F',
+    tagline: 'Go Blue! Hail to the Victors.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_purdueuniversity2031class',
+    name: 'Purdue University',
+    slug: 'purdueuniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1576495199011-eb94736d05d6?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80',
+    description: 'Official Boilermakers student network and Instagram spotlight directory in West Lafayette.',
+    location: 'West Lafayette, Indiana, USA',
+    officialWebsiteUrl: 'https://www.purdue.edu',
+    instagramProfileUrl: 'https://instagram.com/purdueuniversity2031class',
+    instagramHandle: '@purdueuniversity2031class',
+    communityEnabled: true,
+    studentCount: 50000,
+    featuredCount: 88,
+    established: '1869',
+    classYear: '2031',
+    primaryColor: '#CEB888', // Old Gold
+    accentColor: '#000000', // Black
+    gradientFrom: '#1A1715',
+    gradientTo: '#CEB888',
+    tagline: 'Boiler Up! Hammer Down.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_bostonuniversity2031class',
+    name: 'Boston University',
+    slug: 'bostonuniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'Dynamic urban campus along Commonwealth Avenue. Official student spotlight network for BU Terriers.',
+    location: 'Boston, Massachusetts, USA',
+    officialWebsiteUrl: 'https://www.bu.edu',
+    instagramProfileUrl: 'https://instagram.com/bostonuniversity2031class',
+    instagramHandle: '@bostonuniversity2031class',
+    communityEnabled: true,
+    studentCount: 36000,
+    featuredCount: 94,
+    established: '1839',
+    classYear: '2031',
+    primaryColor: '#CC0000', // BU Scarlet
+    accentColor: '#FFFFFF',
+    gradientFrom: '#CC0000',
+    gradientTo: '#660000',
+    tagline: 'Proud to be BU! Go Terriers.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_stonybrookuniversity2031class',
+    name: 'Stony Brook University',
+    slug: 'stonybrookuniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?auto=format&fit=crop&w=1200&q=80',
+    description: 'Premier flagship public research university on Long Island. Official student network for Seawolves.',
+    location: 'Stony Brook, New York, USA',
+    officialWebsiteUrl: 'https://www.stonybrook.edu',
+    instagramProfileUrl: 'https://instagram.com/stonybrookuniversity2031class',
+    instagramHandle: '@stonybrookuniversity2031class',
+    communityEnabled: true,
+    studentCount: 26000,
+    featuredCount: 51,
+    established: '1957',
+    classYear: '2031',
+    primaryColor: '#990000', // Stony Brook Red
+    accentColor: '#162B48', // Deep Navy
+    gradientFrom: '#990000',
+    gradientTo: '#162B48',
+    tagline: "What is a Seawolf? I'm a Seawolf! Go Seawolves.",
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_alabamauniversity2031class',
+    name: 'University of Alabama',
+    slug: 'alabamauniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'Where legends are made. Official collegiate network and Instagram spotlight for Crimson Tide.',
+    location: 'Tuscaloosa, Alabama, USA',
+    officialWebsiteUrl: 'https://www.ua.edu',
+    instagramProfileUrl: 'https://instagram.com/alabamauniversity2031class',
+    instagramHandle: '@alabamauniversity2031class',
+    communityEnabled: true,
+    studentCount: 38500,
+    featuredCount: 120,
+    established: '1831',
+    classYear: '2031',
+    primaryColor: '#9E1B32', // Crimson
+    accentColor: '#828A8F', // Cool Gray
+    gradientFrom: '#9E1B32',
+    gradientTo: '#4F0D19',
+    tagline: 'Roll Tide Roll! Crimson Tide pride.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_illinoisstateuniversity2031class',
+    name: 'Illinois State University',
+    slug: 'illinoisstateuniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1607237138185-eedd9c632b0b?auto=format&fit=crop&w=1200&q=80',
+    description: "Illinois' first public university. Official Redbird class network and Instagram spotlight.",
+    location: 'Normal, Illinois, USA',
+    officialWebsiteUrl: 'https://illinoisstate.edu',
+    instagramProfileUrl: 'https://instagram.com/illinoisstateuniversity2031class',
+    instagramHandle: '@illinoisstateuniversity2031class',
+    communityEnabled: true,
+    studentCount: 21000,
+    featuredCount: 47,
+    established: '1857',
+    classYear: '2031',
+    primaryColor: '#CE1126', // Redbird Red
+    accentColor: '#F8D147', // Reggie Yellow
+    gradientFrom: '#CE1126',
+    gradientTo: '#680913',
+    tagline: 'Redbird Pride! Gladly we learn and teach.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_universityofvirginia2031class',
+    name: 'University of Virginia',
+    slug: 'universityofvirginia2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1592280771190-3e2e4d571952?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1525921429624-479b6a26d84d?auto=format&fit=crop&w=1200&q=80',
+    description: 'Historic UNESCO world heritage grounds founded by Thomas Jefferson. Official Cavaliers spotlight.',
+    location: 'Charlottesville, Virginia, USA',
+    officialWebsiteUrl: 'https://www.virginia.edu',
+    instagramProfileUrl: 'https://instagram.com/universityofvirginia2031class',
+    instagramHandle: '@universityofvirginia2031class',
+    communityEnabled: true,
+    studentCount: 25000,
+    featuredCount: 82,
+    established: '1819',
+    classYear: '2031',
+    primaryColor: '#232D4B', // Jefferson Blue
+    accentColor: '#E57200', // Rotunda Orange
+    gradientFrom: '#232D4B',
+    gradientTo: '#E57200',
+    tagline: 'Wahoowa! Cavaliers excellence and honor.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+
+  // --- 10 Additional Prominent Universities ---
+  {
+    id: 'uni_ohiostateuniversity2031class',
+    name: 'The Ohio State University',
+    slug: 'ohiostateuniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: "One of America's premier flagship institutions. Official student spotlight for Buckeye Nation.",
+    location: 'Columbus, Ohio, USA',
+    officialWebsiteUrl: 'https://www.osu.edu',
+    instagramProfileUrl: 'https://instagram.com/ohiostateuniversity2031class',
+    instagramHandle: '@ohiostateuniversity2031class',
+    communityEnabled: true,
+    studentCount: 61000,
+    featuredCount: 135,
+    established: '1870',
+    classYear: '2031',
+    primaryColor: '#BB0000', // Scarlet
+    accentColor: '#666666', // Gray
+    gradientFrom: '#BB0000',
+    gradientTo: '#4D0000',
+    tagline: 'Go Bucks! Buckeye spirit and excellence.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_pennstateuniversity2031class',
+    name: 'Penn State University',
+    slug: 'pennstateuniversity2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?auto=format&fit=crop&w=1200&q=80',
+    description: 'World-class research institution in Happy Valley. Official Nittany Lions spotlight network.',
+    location: 'University Park, Pennsylvania, USA',
+    officialWebsiteUrl: 'https://www.psu.edu',
+    instagramProfileUrl: 'https://instagram.com/pennstateuniversity2031class',
+    instagramHandle: '@pennstateuniversity2031class',
+    communityEnabled: true,
+    studentCount: 48000,
+    featuredCount: 98,
+    established: '1855',
+    classYear: '2031',
+    primaryColor: '#001E44', // Penn State Navy
+    accentColor: '#009CDE',
+    gradientFrom: '#001E44',
+    gradientTo: '#000B1A',
+    tagline: 'We Are Penn State! Nittany Lions forever.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_universityofflorida2031class',
+    name: 'University of Florida',
+    slug: 'universityofflorida2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1607237138185-eedd9c632b0b?auto=format&fit=crop&w=1200&q=80',
+    description: 'Top-5 public research university in Gainesville. Official Florida Gators community.',
+    location: 'Gainesville, Florida, USA',
+    officialWebsiteUrl: 'https://www.ufl.edu',
+    instagramProfileUrl: 'https://instagram.com/universityofflorida2031class',
+    instagramHandle: '@universityofflorida2031class',
+    communityEnabled: true,
+    studentCount: 55000,
+    featuredCount: 105,
+    established: '1853',
+    classYear: '2031',
+    primaryColor: '#0021A5', // Gator Blue
+    accentColor: '#FA4616', // Gator Orange
+    gradientFrom: '#0021A5',
+    gradientTo: '#FA4616',
+    tagline: "It's great to be a Florida Gator! Go Gators.",
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_universityoftexas2031class',
+    name: 'University of Texas at Austin',
+    slug: 'universityoftexas2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1576495199011-eb94736d05d6?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80',
+    description: 'Flagship Texas institution in the heart of Austin. Official Longhorns spotlight.',
+    location: 'Austin, Texas, USA',
+    officialWebsiteUrl: 'https://www.utexas.edu',
+    instagramProfileUrl: 'https://instagram.com/universityoftexas2031class',
+    instagramHandle: '@universityoftexas2031class',
+    communityEnabled: true,
+    studentCount: 52000,
+    featuredCount: 115,
+    established: '1883',
+    classYear: '2031',
+    primaryColor: '#BF5700', // Burnt Orange
+    accentColor: '#333F48',
+    gradientFrom: '#BF5700',
+    gradientTo: '#592800',
+    tagline: "Hook 'em Horns! What starts here changes the world.",
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_universityofwisconsin2031class',
+    name: 'University of Wisconsin–Madison',
+    slug: 'universityofwisconsin2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'World-renowned Big Ten research institution between lakes Mendota and Monona.',
+    location: 'Madison, Wisconsin, USA',
+    officialWebsiteUrl: 'https://www.wisc.edu',
+    instagramProfileUrl: 'https://instagram.com/universityofwisconsin2031class',
+    instagramHandle: '@universityofwisconsin2031class',
+    communityEnabled: true,
+    studentCount: 47000,
+    featuredCount: 86,
+    established: '1848',
+    classYear: '2031',
+    primaryColor: '#C5050C', // Badger Red
+    accentColor: '#FFFFFF',
+    gradientFrom: '#C5050C',
+    gradientTo: '#5A0205',
+    tagline: 'On, Wisconsin! Jump Around with Badger pride.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_uncchapelhill2031class',
+    name: 'University of North Carolina at Chapel Hill',
+    slug: 'uncchapelhill2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?auto=format&fit=crop&w=1200&q=80',
+    description: "America's first public university. Official Tar Heels student community and spotlight.",
+    location: 'Chapel Hill, North Carolina, USA',
+    officialWebsiteUrl: 'https://www.unc.edu',
+    instagramProfileUrl: 'https://instagram.com/uncchapelhill2031class',
+    instagramHandle: '@uncchapelhill2031class',
+    communityEnabled: true,
+    studentCount: 31000,
+    featuredCount: 92,
+    established: '1789',
+    classYear: '2031',
+    primaryColor: '#7BAFD4', // Carolina Blue
+    accentColor: '#13294B', // Navy
+    gradientFrom: '#7BAFD4',
+    gradientTo: '#13294B',
+    tagline: 'Born and bred Tar Heel! Lux Libertas.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_universityofwashington2031class',
+    name: 'University of Washington',
+    slug: 'universityofwashington2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+    description: 'Pacific Northwest flagship campus with Cherry Blossoms and iconic Husky pride.',
+    location: 'Seattle, Washington, USA',
+    officialWebsiteUrl: 'https://www.washington.edu',
+    instagramProfileUrl: 'https://instagram.com/universityofwashington2031class',
+    instagramHandle: '@universityofwashington2031class',
+    communityEnabled: true,
+    studentCount: 49000,
+    featuredCount: 84,
+    established: '1861',
+    classYear: '2031',
+    primaryColor: '#4B2E83', // UW Purple
+    accentColor: '#B7A57A', // UW Gold
+    gradientFrom: '#4B2E83',
+    gradientTo: '#200E40',
+    tagline: 'Bow Down to Washington! Go Huskies.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_ucla2031class',
+    name: 'University of California, Los Angeles (UCLA)',
+    slug: 'ucla2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1607237138185-eedd9c632b0b?auto=format&fit=crop&w=1200&q=80',
+    description: 'Premier public research university in Westwood. Official UCLA Bruins class network.',
+    location: 'Los Angeles, California, USA',
+    officialWebsiteUrl: 'https://www.ucla.edu',
+    instagramProfileUrl: 'https://instagram.com/ucla2031class',
+    instagramHandle: '@ucla2031class',
+    communityEnabled: true,
+    studentCount: 46000,
+    featuredCount: 128,
+    established: '1919',
+    classYear: '2031',
+    primaryColor: '#2774AE', // UCLA Blue
+    accentColor: '#FFD100', // UCLA Gold
+    gradientFrom: '#2774AE',
+    gradientTo: '#0B3A60',
+    tagline: '4s Up! Go Bruins.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_universityofgeorgia2031class',
+    name: 'University of Georgia',
+    slug: 'universityofgeorgia2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1592280771190-3e2e4d571952?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1525921429624-479b6a26d84d?auto=format&fit=crop&w=1200&q=80',
+    description: 'Birthplace of public higher education in America. Official Georgia Bulldogs spotlight.',
+    location: 'Athens, Georgia, USA',
+    officialWebsiteUrl: 'https://www.uga.edu',
+    instagramProfileUrl: 'https://instagram.com/universityofgeorgia2031class',
+    instagramHandle: '@universityofgeorgia2031class',
+    communityEnabled: true,
+    studentCount: 40000,
+    featuredCount: 79,
+    established: '1785',
+    classYear: '2031',
+    primaryColor: '#BA0C2F', // Bulldog Red
+    accentColor: '#000000', // Arch Black
+    gradientFrom: '#BA0C2F',
+    gradientTo: '#590010',
+    tagline: "Go Dawgs! Sic 'em! Commitment to the Arch.",
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
+  },
+  {
+    id: 'uni_indianau2031class',
+    name: 'Indiana University Bloomington',
+    slug: 'indianau2031class',
+    logoUrl: 'https://images.unsplash.com/photo-1576495199011-eb94736d05d6?auto=format&fit=crop&w=200&q=80',
+    coverUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80',
+    description: 'Historic limestone campus and Little 500 tradition. Official Hoosiers community.',
+    location: 'Bloomington, Indiana, USA',
+    officialWebsiteUrl: 'https://www.indiana.edu',
+    instagramProfileUrl: 'https://instagram.com/indianau2031class',
+    instagramHandle: '@indianau2031class',
+    communityEnabled: true,
+    studentCount: 45000,
+    featuredCount: 81,
+    established: '1820',
+    classYear: '2031',
+    primaryColor: '#990000', // IU Crimson
+    accentColor: '#EDEBEB', // IU Cream
+    gradientFrom: '#990000',
+    gradientTo: '#400000',
+    tagline: 'Go Hoosiers! Cream and Crimson forever.',
+    createdAt: '2026-11-06T00:00:00Z',
+    updatedAt: '2026-11-06T00:00:00Z'
   }
 ];
 
-const SLUG_ALIASES: Record<string, string> = {
+export const SLUG_ALIASES: Record<string, string> = {
+  // Existing Kentucky & Harvard aliases
   'morehead': 'moreheadstate2031class',
   'moreheadstate': 'moreheadstate2031class',
   'moreheadstate2031': 'moreheadstate2031class',
@@ -310,7 +796,168 @@ const SLUG_ALIASES: Record<string, string> = {
   'eku': 'eku2031class',
   'eku2031': 'eku2031class',
   'eku2031class': 'eku2031class',
-  'easternkentuckyuniversity': 'eku2031class'
+  'easternkentuckyuniversity': 'eku2031class',
+
+  // Miami University
+  'miami': 'miamiuniversity2031class',
+  'miamioh': 'miamiuniversity2031class',
+  'miamiohio': 'miamiuniversity2031class',
+  'miamiu': 'miamiuniversity2031class',
+  'miamiuniversity': 'miamiuniversity2031class',
+  'miamiuniversity2031': 'miamiuniversity2031class',
+  'miamiuniversity2031class': 'miamiuniversity2031class',
+  'redhawks': 'miamiuniversity2031class',
+
+  // Virginia Tech
+  'virginiatech': 'virginiatech2031class',
+  'vt': 'virginiatech2031class',
+  'hokies': 'virginiatech2031class',
+  'virginiapolytechnic': 'virginiatech2031class',
+  'vt2031': 'virginiatech2031class',
+  'virginiatech2031': 'virginiatech2031class',
+  'virginiatech2031class': 'virginiatech2031class',
+
+  // West Virginia University
+  'westvirginia': 'westvirginiauniversity2031class',
+  'wvu': 'westvirginiauniversity2031class',
+  'mountaineers': 'westvirginiauniversity2031class',
+  'westvirginiauniversity': 'westvirginiauniversity2031class',
+  'wvu2031': 'westvirginiauniversity2031class',
+  'westvirginiauniversity2031': 'westvirginiauniversity2031class',
+  'westvirginiauniversity2031class': 'westvirginiauniversity2031class',
+
+  // University of Michigan / Michigan University
+  'michigan': 'michiganuniversity2031class',
+  'umich': 'michiganuniversity2031class',
+  'michiganuniversity': 'michiganuniversity2031class',
+  'universityofmichigan': 'michiganuniversity2031class',
+  'wolverines': 'michiganuniversity2031class',
+  'michigan2031': 'michiganuniversity2031class',
+  'michiganuniversity2031class': 'michiganuniversity2031class',
+
+  // Purdue University
+  'purdue': 'purdueuniversity2031class',
+  'purdueuniversity': 'purdueuniversity2031class',
+  'boilermakers': 'purdueuniversity2031class',
+  'purdue2031': 'purdueuniversity2031class',
+  'purdueuniversity2031class': 'purdueuniversity2031class',
+
+  // Boston University
+  'boston': 'bostonuniversity2031class',
+  'bu': 'bostonuniversity2031class',
+  'bostonu': 'bostonuniversity2031class',
+  'bostonuniversity': 'bostonuniversity2031class',
+  'terriers': 'bostonuniversity2031class',
+  'bu2031': 'bostonuniversity2031class',
+  'bostonuniversity2031class': 'bostonuniversity2031class',
+
+  // Stony Brook University
+  'stonybrook': 'stonybrookuniversity2031class',
+  'sbu': 'stonybrookuniversity2031class',
+  'stonybrookuniversity': 'stonybrookuniversity2031class',
+  'seawolves': 'stonybrookuniversity2031class',
+  'stonybrook2031': 'stonybrookuniversity2031class',
+  'stonybrookuniversity2031class': 'stonybrookuniversity2031class',
+
+  // Alabama University (University of Alabama)
+  'alabama': 'alabamauniversity2031class',
+  'bama': 'alabamauniversity2031class',
+  'rolltide': 'alabamauniversity2031class',
+  'alabamauniversity': 'alabamauniversity2031class',
+  'universityofalabama': 'alabamauniversity2031class',
+  'bama2031': 'alabamauniversity2031class',
+  'alabamauniversity2031class': 'alabamauniversity2031class',
+
+  // Illinois State University
+  'illinoisstate': 'illinoisstateuniversity2031class',
+  'isu': 'illinoisstateuniversity2031class',
+  'redbirds': 'illinoisstateuniversity2031class',
+  'illinoisstateuniversity': 'illinoisstateuniversity2031class',
+  'isu2031': 'illinoisstateuniversity2031class',
+  'illinoisstateuniversity2031class': 'illinoisstateuniversity2031class',
+
+  // University of Virginia
+  'uva': 'universityofvirginia2031class',
+  'virginia': 'universityofvirginia2031class',
+  'cavaliers': 'universityofvirginia2031class',
+  'wahoos': 'universityofvirginia2031class',
+  'universityofvirginia': 'universityofvirginia2031class',
+  'uva2031': 'universityofvirginia2031class',
+  'universityofvirginia2031class': 'universityofvirginia2031class',
+
+  // Ohio State University
+  'ohiostate': 'ohiostateuniversity2031class',
+  'osu': 'ohiostateuniversity2031class',
+  'theohiostateuniversity': 'ohiostateuniversity2031class',
+  'ohiostateuniversity': 'ohiostateuniversity2031class',
+  'buckeyes': 'ohiostateuniversity2031class',
+  'ohiostateuniversity2031class': 'ohiostateuniversity2031class',
+
+  // Penn State University
+  'pennstate': 'pennstateuniversity2031class',
+  'psu': 'pennstateuniversity2031class',
+  'nittanylions': 'pennstateuniversity2031class',
+  'pennstateuniversity': 'pennstateuniversity2031class',
+  'pennstateuniversity2031class': 'pennstateuniversity2031class',
+
+  // University of Florida
+  'florida': 'universityofflorida2031class',
+  'uf': 'universityofflorida2031class',
+  'gators': 'universityofflorida2031class',
+  'universityofflorida': 'universityofflorida2031class',
+  'universityofflorida2031class': 'universityofflorida2031class',
+
+  // University of Texas at Austin
+  'texas': 'universityoftexas2031class',
+  'ut': 'universityoftexas2031class',
+  'utaustin': 'universityoftexas2031class',
+  'longhorns': 'universityoftexas2031class',
+  'universityoftexas': 'universityoftexas2031class',
+  'universityoftexas2031class': 'universityoftexas2031class',
+
+  // University of Wisconsin–Madison
+  'wisconsin': 'universityofwisconsin2031class',
+  'uwmadison': 'universityofwisconsin2031class',
+  'badgers': 'universityofwisconsin2031class',
+  'universityofwisconsin': 'universityofwisconsin2031class',
+  'universityofwisconsin2031class': 'universityofwisconsin2031class',
+
+  // UNC Chapel Hill
+  'unc': 'uncchapelhill2031class',
+  'carolina': 'uncchapelhill2031class',
+  'tarheels': 'uncchapelhill2031class',
+  'uncchapelhill': 'uncchapelhill2031class',
+  'uncchapelhill2031class': 'uncchapelhill2031class',
+
+  // University of Washington
+  'washington': 'universityofwashington2031class',
+  'uw': 'universityofwashington2031class',
+  'udub': 'universityofwashington2031class',
+  'huskies': 'universityofwashington2031class',
+  'universityofwashington': 'universityofwashington2031class',
+  'universityofwashington2031class': 'universityofwashington2031class',
+
+  // UCLA
+  'ucla': 'ucla2031class',
+  'bruins': 'ucla2031class',
+  'uclabruins': 'ucla2031class',
+  'ucla2031class': 'ucla2031class',
+
+  // University of Georgia
+  'georgia': 'universityofgeorgia2031class',
+  'uga': 'universityofgeorgia2031class',
+  'bulldogs': 'universityofgeorgia2031class',
+  'universityofgeorgia': 'universityofgeorgia2031class',
+  'universityofgeorgia2031class': 'universityofgeorgia2031class',
+
+  // Indiana University Bloomington
+  'indiana': 'indianau2031class',
+  'iu': 'indianau2031class',
+  'iub': 'indianau2031class',
+  'hoosiers': 'indianau2031class',
+  'indianau': 'indianau2031class',
+  'indianauniversity': 'indianau2031class',
+  'indianau2031class': 'indianau2031class'
 };
 
 export const findUniversityBySlug = (slug: string): University | undefined => {
@@ -355,4 +1002,3 @@ export const findUniversityById = (id: string): University | undefined => {
   if (!id) return undefined;
   return VERIFIED_UNIVERSITIES.find(u => u.id === id);
 };
-

@@ -31,6 +31,7 @@ import {
   Star,
   Layers,
   Sparkle,
+  Zap,
   Image as ImageIcon
 } from 'lucide-react';
 import { University, FeaturedSubmission } from '../../types';
@@ -124,14 +125,43 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   const tagline = university.tagline || `${university.name} forever.`;
   const classYear = university.classYear || '2031';
 
-  // Filter approved & published submissions for this university
+  // Check if a post was promoted via Stripe payment integration ($6 feature)
+  const isStripePromoted = (s: FeaturedSubmission) => {
+    return s.paymentStatus === 'PAYMENT_CONFIRMED' || 
+           s.paymentAmount === 6 ||
+           (typeof s.paymentReference === 'string' && s.paymentReference.length > 0);
+  };
+
+  // Filter approved & published submissions (plus current student's confirmed submissions) for this university
   const universityFeaturedPosts = useMemo(() => {
-    return submissions.filter(
+    const list = submissions.filter(
       (s) => (s.universityId === university.id || s.universitySlug === university.slug) &&
-             s.moderationStatus === 'APPROVED' &&
-             s.publishingStatus === 'PUBLISHED'
+             ((s.moderationStatus === 'APPROVED' && s.publishingStatus === 'PUBLISHED') ||
+              (currentUser && s.studentUid === currentUser.id && s.paymentStatus === 'PAYMENT_CONFIRMED'))
     );
-  }, [submissions, university]);
+
+    // Prioritized sorting: Stripe promoted posts come FIRST, then sorted by most recent
+    return [...list].sort((a, b) => {
+      const aPromoted = isStripePromoted(a) ? 1 : 0;
+      const bPromoted = isStripePromoted(b) ? 1 : 0;
+      if (bPromoted !== aPromoted) return bPromoted - aPromoted;
+      return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime();
+    });
+  }, [submissions, university, currentUser]);
+
+  // Post filter state (All vs Featured Promoted only)
+  const [postFilter, setPostFilter] = useState<'ALL' | 'FEATURED_ONLY'>('ALL');
+
+  const stripePromotedCount = useMemo(() => {
+    return universityFeaturedPosts.filter(isStripePromoted).length;
+  }, [universityFeaturedPosts]);
+
+  const displayedPosts = useMemo(() => {
+    if (postFilter === 'FEATURED_ONLY') {
+      return universityFeaturedPosts.filter(isStripePromoted);
+    }
+    return universityFeaturedPosts;
+  }, [universityFeaturedPosts, postFilter]);
 
   // Filtered academic majors list based on user search input
   const filteredMajors = useMemo(() => {
@@ -1917,7 +1947,10 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
             <nav className="hidden lg:flex items-center gap-6 text-xs sm:text-sm font-medium text-slate-600">
               <button 
                 type="button"
-                onClick={() => navigateTo('/')}
+                onClick={() => {
+                  navigateTo('/campuses');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 className="hover:text-slate-950 transition-colors cursor-pointer"
               >
                 All schools
@@ -2597,84 +2630,412 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       </section>
 
       {/* ------------------------------------------------------------------- */}
-      {/* 8. FEATURED CLASSMATES DIRECTORY                                    */}
+      {/* 8. FEATURED CLASSMATES & STRIPE-PROMOTED SPOTLIGHT DIRECTORY        */}
       {/* ------------------------------------------------------------------- */}
-      {universityFeaturedPosts.length > 0 && (
-        <section className="max-w-6xl mx-auto px-6 py-10 border-t border-slate-100">
-          <div className="flex items-center justify-between pb-6">
-            <div>
-              <h3 className="text-xl font-bold text-slate-950">
-                Classmates on {university.instagramHandle}
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Real students already published to the official campus feed.
-              </p>
+      <section className="max-w-6xl mx-auto px-6 py-12 border-t border-slate-100">
+        
+        {/* Section Header with filter buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-8">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-bold mb-2 border border-amber-200/60 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-600" />
+              <span>Campus Spotlights & Priority Introductions</span>
             </div>
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 text-slate-700">
-              {universityFeaturedPosts.length} Published
-            </span>
+            <h3 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">
+              Classmates on {university.instagramHandle}
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl">
+              Meet future friends and classmates. Submissions promoted via the Stripe checkout receive top-tier prioritized placement and the official 'Featured' spotlight badge.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {universityFeaturedPosts.map(post => (
-              <div 
-                key={post.id}
-                className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs hover:shadow-md transition-shadow"
+          {/* Interactive Filter Pills */}
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => setPostFilter('ALL')}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                postFilter === 'ALL'
+                  ? 'bg-slate-950 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              All Classmates ({universityFeaturedPosts.length})
+            </button>
+
+            {stripePromotedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setPostFilter('FEATURED_ONLY')}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  postFilter === 'FEATURED_ONLY'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/60'
+                }`}
               >
-                <div className="aspect-square bg-slate-100 relative overflow-hidden">
-                  <img 
-                    src={post.watermarkedImagePath} 
-                    alt={post.studentDisplayName} 
-                    className="w-full h-full object-cover" 
-                  />
-                  <span className="absolute top-2 right-2 px-2.5 py-0.5 rounded-full bg-black/70 backdrop-blur-xs text-white text-[10px] font-bold">
-                    Verified
+                <Sparkles className="w-3 h-3 fill-amber-500 text-amber-600" />
+                <span>Featured Spotlights ({stripePromotedCount})</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Posts Content */}
+        {displayedPosts.length === 0 ? (
+          <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+              <Sparkles className="w-8 h-8 fill-amber-500 text-amber-600" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-lg font-bold text-slate-950">
+                Be the first Featured Spotlight on {university.instagramHandle}!
+              </h4>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+                Profiles promoted via the Stripe checkout receive the premier <strong>'Featured'</strong> badge and #1 priority feed positioning on the official campus network.
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={startBuilder}
+                className="px-6 py-3 rounded-xl bg-slate-950 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold inline-flex items-center gap-2 shadow-md hover:scale-102 active:scale-98 transition-all cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" />
+                <span>Claim #1 Featured Spotlight · $6</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {displayedPosts.map((post, idx) => {
+              const promoted = isStripePromoted(post);
+              const isFirstPromoted = idx === 0 && promoted;
+              const photoSrc = post.watermarkedImagePath || post.originalImagePath || (post.photos && post.photos[0]?.previewUrl) || '';
+
+              // PRIORITIZED LAYOUT STYLE 1: Flagship Priority Bento Card (1st Promoted Post)
+              if (isFirstPromoted) {
+                return (
+                  <div
+                    key={post.id}
+                    className="col-span-1 md:col-span-2 lg:col-span-2 rounded-3xl border-2 border-amber-300/90 bg-gradient-to-br from-amber-50/40 via-white to-white shadow-lg ring-4 ring-amber-400/10 overflow-hidden flex flex-col md:flex-row transition-all hover:shadow-xl group"
+                  >
+                    {/* Media Container with 'Featured' badge */}
+                    <div className="md:w-1/2 relative aspect-[4/3] md:aspect-auto overflow-hidden bg-slate-900 shrink-0">
+                      {photoSrc ? (
+                        <img
+                          src={photoSrc}
+                          alt={post.studentDisplayName}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 text-xs">
+                          <ImageIcon className="w-8 h-8 mb-1" />
+                          <span>Featured Portrait</span>
+                        </div>
+                      )}
+
+                      {/* Primary 'Featured' Visual Badge */}
+                      <div className="absolute top-3.5 left-3.5 z-20 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 text-slate-950 font-black text-xs shadow-lg border border-amber-200/90 tracking-wider uppercase select-none">
+                        <Sparkles className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                        <span>Featured</span>
+                      </div>
+
+                      {/* Stripe Promotion Tag */}
+                      <div className="absolute top-3.5 right-3.5 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/85 backdrop-blur-md text-white text-[10px] font-bold border border-white/20 shadow-xs select-none">
+                        <CreditCard className="w-3 h-3 text-emerald-400" />
+                        <span>Stripe Verified</span>
+                      </div>
+
+                      {/* Subtle scrim at bottom */}
+                      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+                      <div className="absolute bottom-3 left-3.5 text-white/90 text-[11px] font-mono flex items-center gap-1 z-10">
+                        <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
+                        <span>Priority Spotlight #1</span>
+                      </div>
+                    </div>
+
+                    {/* Spotlight Details Column */}
+                    <div className="p-6 sm:p-7 flex flex-col justify-between flex-1 space-y-4">
+                      <div className="space-y-3">
+                        {/* Kicker Tag */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider text-amber-800 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-200">
+                            <Star className="w-3 h-3 text-amber-600 fill-amber-600" />
+                            <span>Stripe Promoted Feature</span>
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            {new Date(post.submittedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+
+                        {/* Student Name & Handle */}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight">
+                              {post.studentDisplayName}
+                            </h4>
+                            <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold" title="Verified Campus Student">
+                              ✓
+                            </span>
+                          </div>
+                          <div className="text-xs font-bold text-blue-600 font-mono mt-0.5">
+                            @{post.personalInstagramHandle?.replace(/^@/, '') || post.studentDisplayName.toLowerCase().replace(/\s+/g, '')}
+                          </div>
+                        </div>
+
+                        {/* Major and Class */}
+                        <div className="text-xs font-semibold text-slate-600 flex items-center gap-2">
+                          <span className="text-slate-900">{post.major || 'Collegiate Scholar'}</span>
+                          <span>•</span>
+                          <span>Class of {post.classYear || classYear}</span>
+                        </div>
+
+                        {/* Bio quote */}
+                        <p className="text-xs sm:text-sm text-slate-700 leading-relaxed italic bg-slate-50/90 rounded-2xl p-4 border border-slate-100">
+                          "{post.caption || 'Excited to be joining campus and connecting with fellow classmates!'}"
+                        </p>
+                      </div>
+
+                      {/* Card Footer */}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                        <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                          <span>$6.00 Stripe Verified</span>
+                        </div>
+
+                        {post.instagramPostUrl ? (
+                          <a
+                            href={post.instagramPostUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Instagram className="w-3.5 h-3.5 text-pink-500" />
+                            <span>View on Instagram</span>
+                            <ExternalLink className="w-3 h-3 text-slate-400" />
+                          </a>
+                        ) : (
+                          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                            Queued for @{university.instagramHandle.replace(/^@/, '')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // PRIORITIZED LAYOUT STYLE 2: Additional Stripe Promoted Posts
+              if (promoted) {
+                return (
+                  <div
+                    key={post.id}
+                    className="rounded-3xl border-2 border-amber-300/80 bg-white shadow-md ring-2 ring-amber-400/10 overflow-hidden flex flex-col justify-between hover:shadow-lg transition-all group"
+                  >
+                    {/* Photo with 'Featured' badge */}
+                    <div className="aspect-square bg-slate-900 relative overflow-hidden">
+                      {photoSrc ? (
+                        <img
+                          src={photoSrc}
+                          alt={post.studentDisplayName}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 text-xs">
+                          <ImageIcon className="w-8 h-8 mb-1" />
+                          <span>Featured Portrait</span>
+                        </div>
+                      )}
+
+                      {/* 'Featured' Visual Badge */}
+                      <div className="absolute top-3 left-3 z-20 flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 text-slate-950 font-black text-[11px] shadow-md border border-amber-200 uppercase tracking-wide">
+                        <Sparkles className="w-3 h-3 fill-slate-950 text-slate-950" />
+                        <span>Featured</span>
+                      </div>
+
+                      {/* Stripe Verified Tag */}
+                      <div className="absolute top-3 right-3 z-20 flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-950/80 backdrop-blur-md text-white text-[10px] font-bold border border-white/20">
+                        <CreditCard className="w-3 h-3 text-emerald-400" />
+                        <span>Stripe</span>
+                      </div>
+                    </div>
+
+                    {/* Details */}
+                    <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-bold text-sm text-slate-950 flex items-center gap-1.5 truncate">
+                            <span>{post.studentDisplayName}</span>
+                            <span className="w-3.5 h-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8px] font-bold shrink-0">
+                              ✓
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold font-mono text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 shrink-0">
+                            ★ Promoted
+                          </span>
+                        </div>
+
+                        {post.personalInstagramHandle && (
+                          <div className="text-xs font-semibold text-blue-600 font-mono">
+                            @{post.personalInstagramHandle.replace(/^@/, '')}
+                          </div>
+                        )}
+
+                        <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                          "{post.caption || 'New student introduction.'}"
+                        </p>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {new Date(post.submittedAt).toLocaleDateString()}
+                        </span>
+                        {post.instagramPostUrl ? (
+                          <a
+                            href={post.instagramPostUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                          >
+                            <span>Instagram</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        ) : (
+                          <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                            <span>Featured</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // STANDARD LAYOUT STYLE: Non-promoted standard posts
+              return (
+                <div
+                  key={post.id}
+                  className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xs hover:shadow-md transition-shadow flex flex-col justify-between"
+                >
+                  <div className="aspect-square bg-slate-100 relative overflow-hidden">
+                    {photoSrc ? (
+                      <img
+                        src={photoSrc}
+                        alt={post.studentDisplayName}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
+                        Photo
+                      </div>
+                    )}
+                    <span className="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-full bg-black/70 backdrop-blur-xs text-white text-[10px] font-bold">
+                      Verified
+                    </span>
+                  </div>
+
+                  <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="font-bold text-xs text-slate-950">{post.studentDisplayName}</div>
+                      <p className="text-xs text-slate-600 line-clamp-2 mt-1">
+                        "{post.caption || 'Campus introduction.'}"
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {new Date(post.submittedAt).toLocaleDateString()}
+                      </span>
+                      {post.instagramPostUrl && (
+                        <a
+                          href={post.instagramPostUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <span>Instagram</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+      </section>
+
+      {/* 9. OTHER CAMPUS WEBSITES IN THE NETWORK */}
+      <section className="max-w-6xl mx-auto px-6 py-12 border-t border-slate-100">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+          <div>
+            <h3 className="text-xl font-bold text-slate-950">
+              Other Campus Communities
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Explore official class networks across other universities in the system.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              navigateTo('/campuses');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+          >
+            <span>Browse all {universities.length} schools</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {universities
+            .filter(u => u.slug !== university.slug)
+            .slice(0, 6)
+            .map(otherUni => (
+              <button
+                key={otherUni.id}
+                type="button"
+                onClick={() => {
+                  setEntryUniversityContext(otherUni);
+                  navigateTo(`/ig/${otherUni.slug}`);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="p-3.5 rounded-2xl bg-slate-50 hover:bg-white border border-slate-200/80 hover:border-slate-300 hover:shadow-2xs transition-all text-left flex flex-col justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div 
+                    className="w-7 h-7 rounded-full p-0.5 shrink-0 flex items-center justify-center shadow-2xs"
+                    style={{
+                      background: `linear-gradient(135deg, ${otherUni.primaryColor || '#004B87'} 0%, ${otherUni.accentColor || '#0284C7'} 100%)`
+                    }}
+                  >
+                    <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-[7px] font-bold text-slate-900 font-mono">
+                      '{otherUni.classYear?.slice(-2) || '31'}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-500 truncate">
+                    {otherUni.instagramHandle}
                   </span>
                 </div>
-                <div className="p-4 space-y-2">
-                  <div className="font-bold text-xs text-slate-950">{post.studentDisplayName}</div>
-                  <p className="text-xs text-slate-600 line-clamp-2">"{post.caption}"</p>
-                  {post.instagramPostUrl && (
-                    <a 
-                      href={post.instagramPostUrl} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 pt-1"
-                    >
-                      <span>View on Instagram</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
+                <div className="text-xs font-bold text-slate-900 group-hover:text-blue-600 line-clamp-1">
+                  {otherUni.name}
                 </div>
-              </div>
+              </button>
             ))}
-          </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* Global Image 1 Footer */}
       <Footer />
-
-      {/* Floating "We Are Here! 1" support badge from Image 1 and sample */}
-      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 select-none pointer-events-auto">
-        <div className="flex items-center gap-1 text-[#854D0E] font-bold text-xs select-none bg-white/80 backdrop-blur-xs px-2.5 py-1 rounded-full shadow-xs border border-amber-200/60">
-          <span className="text-sm">👋</span>
-          <span className="font-extrabold tracking-tight">We Are Here!</span>
-        </div>
-        <div className="relative flex items-center justify-center">
-          <button 
-            type="button"
-            onClick={() => addToast('Live Support', 'Our campus support team is online and ready to assist with your submission.', 'info')}
-            className="w-12 h-12 rounded-full bg-[#854D0E] text-white flex items-center justify-center shadow-xl border-2 border-white cursor-pointer hover:scale-105 active:scale-95 transition-transform"
-            aria-label="Contact live support"
-          >
-            <MessageCircle className="w-6 h-6 fill-white text-[#854D0E]" />
-          </button>
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
-            1
-          </span>
-        </div>
-      </div>
 
       {/* Video-Authentic Centered Loading Indicator Card */}
       {isNavLoading && (

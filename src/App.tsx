@@ -16,6 +16,7 @@ import { University } from './types';
 // Public & Community Pages
 import { LandingPage } from './pages/public/LandingPage';
 import { UniversityCommunityPage } from './pages/public/UniversityCommunityPage';
+import { CampusesDirectoryPage } from './pages/public/CampusesDirectoryPage';
 import { 
   TermsPage, 
   PrivacyPage, 
@@ -56,7 +57,7 @@ const AppContent: React.FC = () => {
   const requestedCampusSlug = (() => {
     const pathOnly = (currentRoute || (typeof window !== 'undefined' ? window.location.pathname : '/')).split('?')[0];
     const firstSegment = pathOnly.replace(/^\//, '').split('/')[0];
-    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'app', 'business', 'student'];
+    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'app', 'business', 'student', 'campuses', 'schools', 'my-submissions'];
 
     // Dedicated auth, admin, and app routes take precedence - never render community landing page over them
     if (reservedRoutes.includes(firstSegment)) {
@@ -386,6 +387,7 @@ const AppContent: React.FC = () => {
   if (pathOnly === '/terms') PublicComponent = TermsPage;
   else if (pathOnly === '/privacy') PublicComponent = PrivacyPage;
   else if (pathOnly === '/data-deletion') PublicComponent = DataDeletionPage;
+  else if (pathOnly === '/campuses' || pathOnly === '/schools') PublicComponent = CampusesDirectoryPage;
   else if (pathOnly === '/login' || pathOnly === '/business/login') PublicComponent = LoginPage;
   else if (pathOnly === '/register' || pathOnly === '/business/register') PublicComponent = RegisterPage;
   else if (pathOnly === '/forgot-password') PublicComponent = ForgotPasswordPage;

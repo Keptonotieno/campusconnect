@@ -117,42 +117,49 @@ export const StudentDashboardPage: React.FC = () => {
     }, 250);
   };
 
-  // Draft resolution (reads active draft or fallback to Morehead State matching Image 2 & 3)
-  const [activeDraft, setActiveDraft] = useState<StoredDraft>(() => {
-    // 1. Check for student's custom saved draft in localStorage
+  // Draft resolution (reads active draft from localStorage if present)
+  const [activeDraft, setActiveDraft] = useState<StoredDraft | null>(() => {
     try {
-      const activeRaw = localStorage.getItem('campusconnect_active_draft');
+      let activeRaw = localStorage.getItem('campusconnect_active_draft');
+      if (!activeRaw) {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('campusconnect_draft_')) {
+            activeRaw = localStorage.getItem(k);
+            break;
+          }
+        }
+      }
+
       if (activeRaw) {
         const parsed = JSON.parse(activeRaw);
-        return {
-          id: parsed.id || 'draft_active',
-          universityId: parsed.universityId || 'uni_moreheadstate2031class',
-          universityName: parsed.universityName || 'Morehead State University',
-          universitySlug: parsed.universitySlug || 'moreheadstate2031class',
-          universityInstagramHandle: parsed.universityInstagramHandle || '@moreheadstate2031class',
-          photoUrl: parsed.photos?.[0]?.previewUrl || parsed.photoUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
-          photosCount: parsed.photos?.length || 1,
-          builderStep: parsed.builderStep || 1,
-          dateStr: 'Oct 22',
-          detailsSummary: parsed.selectedMajor ? `${parsed.selectedMajor} • ${parsed.instagramHandle || 'details saved'}` : 'Details not added yet'
-        };
+        if (parsed && ((parsed.photos && parsed.photos.length > 0) || parsed.photoUrl)) {
+          return {
+            id: parsed.id || 'draft_active',
+            universityId: parsed.universityId || '',
+            universityName: parsed.universityName || 'Campus Community',
+            universitySlug: parsed.universitySlug || '',
+            universityInstagramHandle: parsed.universityInstagramHandle || '',
+            photoUrl: parsed.photos?.[0]?.previewUrl || parsed.photos?.[0]?.url || parsed.photoUrl || '',
+            photosCount: parsed.photos?.length || parsed.photosCount || 1,
+            builderStep: parsed.builderStep || 1,
+            dateStr: 'Recent',
+            detailsSummary: parsed.selectedMajor 
+              ? `${parsed.selectedMajor} • @${(parsed.instagramHandle || '').replace(/^@/, '') || 'profile'}` 
+              : (parsed.instagramHandle ? `@${parsed.instagramHandle.replace(/^@/, '')}` : 'Details in progress')
+          };
+        }
       }
     } catch {}
 
-    // 2. Default reference draft matching Image 2 / Image 3 (Morehead State University)
-    return {
-      id: 'draft_moreheadstate',
-      universityId: 'uni_moreheadstate2031class',
-      universityName: 'Morehead State University',
-      universitySlug: 'moreheadstate2031class',
-      universityInstagramHandle: '@moreheadstate2031class',
-      photoUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80', // glasses on laptop photo matching Image 2
-      photosCount: 1,
-      builderStep: 1,
-      dateStr: 'Oct 22',
-      detailsSummary: 'Details not added yet'
-    };
+    return null;
   });
+
+  // Dynamic live metric calculations from actual user state
+  const inProgressCount = activeDraft ? 1 : 0;
+  const inQueueCount = mySubmissions.filter(s => s.moderationStatus === 'PENDING' || s.moderationStatus === 'UNDER_REVIEW').length;
+  const postedCount = mySubmissions.filter(s => s.publishingStatus === 'PUBLISHED' || s.moderationStatus === 'APPROVED').length;
+  const totalSpent = mySubmissions.filter(s => s.paymentStatus === 'PAYMENT_CONFIRMED').length * 6;
 
   // Re-sync draft on mount or when returning
   useEffect(() => {
@@ -170,20 +177,28 @@ export const StudentDashboardPage: React.FC = () => {
 
       if (activeRaw) {
         const parsed = JSON.parse(activeRaw);
-        setActiveDraft({
-          id: parsed.id || 'draft_active',
-          universityId: parsed.universityId || 'uni_moreheadstate2031class',
-          universityName: parsed.universityName || 'Morehead State University',
-          universitySlug: parsed.universitySlug || 'moreheadstate2031class',
-          universityInstagramHandle: parsed.universityInstagramHandle || '@moreheadstate2031class',
-          photoUrl: parsed.photos?.[0]?.url || parsed.photos?.[0]?.previewUrl || parsed.photoUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
-          photosCount: parsed.photos?.length || parsed.photosCount || 1,
-          builderStep: parsed.builderStep || 1,
-          dateStr: 'Recent',
-          detailsSummary: parsed.selectedMajor ? `${parsed.selectedMajor} • @${(parsed.instagramHandle || '').replace(/^@/, '') || 'profile'}` : 'Details in progress'
-        });
+        if (parsed && ((parsed.photos && parsed.photos.length > 0) || parsed.photoUrl)) {
+          setActiveDraft({
+            id: parsed.id || 'draft_active',
+            universityId: parsed.universityId || '',
+            universityName: parsed.universityName || 'Campus Community',
+            universitySlug: parsed.universitySlug || '',
+            universityInstagramHandle: parsed.universityInstagramHandle || '',
+            photoUrl: parsed.photos?.[0]?.url || parsed.photos?.[0]?.previewUrl || parsed.photoUrl || '',
+            photosCount: parsed.photos?.length || parsed.photosCount || 1,
+            builderStep: parsed.builderStep || 1,
+            dateStr: 'Recent',
+            detailsSummary: parsed.selectedMajor ? `${parsed.selectedMajor} • @${(parsed.instagramHandle || '').replace(/^@/, '') || 'profile'}` : 'Details in progress'
+          });
+        } else {
+          setActiveDraft(null);
+        }
+      } else {
+        setActiveDraft(null);
       }
-    } catch {}
+    } catch {
+      setActiveDraft(null);
+    }
   }, []);
 
   // Filtered universities for school picker modal
@@ -204,6 +219,7 @@ export const StudentDashboardPage: React.FC = () => {
   };
 
   const handleContinueDraft = () => {
+    if (!activeDraft) return;
     setIsNavLoading(true);
     setTimeout(() => {
       setIsNavLoading(false);
@@ -441,6 +457,7 @@ export const StudentDashboardPage: React.FC = () => {
           </div>
 
           {/* 4 Metric Cards from Image 2 */}
+          {/* 4 Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             
             {/* Card 1: In progress */}
@@ -450,7 +467,7 @@ export const StudentDashboardPage: React.FC = () => {
               </div>
               <div className="mt-4">
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-950">
-                  1
+                  {inProgressCount}
                 </div>
                 <div className="text-xs font-medium text-slate-500 mt-0.5">
                   In progress
@@ -465,7 +482,7 @@ export const StudentDashboardPage: React.FC = () => {
               </div>
               <div className="mt-4">
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-950">
-                  0
+                  {inQueueCount}
                 </div>
                 <div className="text-xs font-medium text-slate-500 mt-0.5">
                   In queue
@@ -480,7 +497,7 @@ export const StudentDashboardPage: React.FC = () => {
               </div>
               <div className="mt-4">
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-950">
-                  0
+                  {postedCount}
                 </div>
                 <div className="text-xs font-medium text-slate-500 mt-0.5">
                   Posted
@@ -495,7 +512,7 @@ export const StudentDashboardPage: React.FC = () => {
               </div>
               <div className="mt-4">
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-950">
-                  $0.00
+                  ${totalSpent.toFixed(2)}
                 </div>
                 <div className="text-xs font-medium text-slate-500 mt-0.5">
                   Total spent
@@ -505,86 +522,107 @@ export const StudentDashboardPage: React.FC = () => {
 
           </div>
 
-          {/* Section: "Pick up where you left off" (Matching Image 2 & 3) */}
+          {/* Section: "Pick up where you left off" */}
           <div className="space-y-3.5">
             <h2 className="text-base font-bold text-slate-950 tracking-tight">
               Pick up where you left off
             </h2>
 
-            {/* Draft Card */}
-            <div className="max-w-md bg-white rounded-3xl border border-slate-200/90 shadow-2xs overflow-hidden">
-              
-              {/* Photo Banner with uploaded draft photo */}
-              <div className="relative h-48 w-full bg-slate-900 overflow-hidden">
-                <img 
-                  src={activeDraft.photoUrl} 
-                  alt={activeDraft.universityName}
-                  className="w-full h-full object-cover opacity-90"
-                />
+            {/* Draft Card or Empty State */}
+            {activeDraft ? (
+              <div className="max-w-md bg-white rounded-3xl border border-slate-200/90 shadow-2xs overflow-hidden">
                 
-                {/* Draft Badge at top-left */}
-                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-xs text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                  <span>Draft</span>
+                {/* Photo Banner with uploaded draft photo */}
+                <div className="relative h-48 w-full bg-slate-900 overflow-hidden">
+                  <img 
+                    src={activeDraft.photoUrl} 
+                    alt={activeDraft.universityName}
+                    className="w-full h-full object-cover opacity-90"
+                  />
+                  
+                  {/* Draft Badge at top-left */}
+                  <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-xs text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span>Draft</span>
+                  </div>
+
+                  {/* University Crest & Name at bottom of photo */}
+                  <div className="absolute bottom-3 left-3 flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-white p-0.5 shadow-md flex items-center justify-center text-[8px] font-bold text-blue-900">
+                      🦅 2031
+                    </div>
+                    <span className="text-xs font-bold text-white drop-shadow-md">
+                      {activeDraft.universityName}
+                    </span>
+                  </div>
                 </div>
 
-                {/* University Crest & Name at bottom of photo */}
-                <div className="absolute bottom-3 left-3 flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-white p-0.5 shadow-md flex items-center justify-center text-[8px] font-bold text-blue-900">
-                    🦅 2031
+                {/* 3 Step Progress Bar */}
+                <div className="p-5 space-y-4">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <div className={`h-1 rounded-full ${activeDraft.builderStep >= 1 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
+                      <span className={`text-[10px] ${activeDraft.builderStep >= 1 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>1. Photos</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className={`h-1 rounded-full ${activeDraft.builderStep >= 2 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
+                      <span className={`text-[10px] ${activeDraft.builderStep >= 2 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>2. Details</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className={`h-1 rounded-full ${activeDraft.builderStep >= 3 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
+                      <span className={`text-[10px] ${activeDraft.builderStep >= 3 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>3. Payment</span>
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-white drop-shadow-md">
-                    {activeDraft.universityName}
-                  </span>
+
+                  {/* Action Buttons: Continue -> and Edit button */}
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleContinueDraft}
+                      className="flex-1 py-2.5 px-5 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <span>Continue</span>
+                      <span className="text-xs font-bold">→</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleContinueDraft}
+                      className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                      title="Edit draft submission"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
                 </div>
+
               </div>
-
-              {/* 3 Step Progress Bar matching Image 2 */}
-              <div className="p-5 space-y-4">
-                
-                {/* 3 Step Bars */}
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="space-y-1">
-                    <div className={`h-1 rounded-full ${activeDraft.builderStep >= 1 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
-                    <span className={`text-[10px] ${activeDraft.builderStep >= 1 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>1. Photos</span>
-                  </div>
-                  <div className="space-y-1">
-                    <div className={`h-1 rounded-full ${activeDraft.builderStep >= 2 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
-                    <span className={`text-[10px] ${activeDraft.builderStep >= 2 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>2. Details</span>
-                  </div>
-                  <div className="space-y-1">
-                    <div className={`h-1 rounded-full ${activeDraft.builderStep >= 3 ? 'bg-[#C28B38]' : 'bg-slate-200'}`} />
-                    <span className={`text-[10px] ${activeDraft.builderStep >= 3 ? 'font-bold text-[#97641E]' : 'font-medium text-slate-400'}`}>3. Payment</span>
-                  </div>
+            ) : (
+              <div className="max-w-md bg-white rounded-3xl border border-dashed border-slate-300 p-8 text-center space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 mx-auto flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-[#C28B38]" />
                 </div>
-
-                {/* Action Buttons: Continue -> and Edit button */}
-                <div className="flex items-center gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleContinueDraft}
-                    className="flex-1 py-2.5 px-5 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span>Continue</span>
-                    <span className="text-xs font-bold">→</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleContinueDraft}
-                    className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-                    title="Edit draft submission"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">No submission in progress</h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+                    Ready to join the official collegiate Instagram spotlight? Pick your university and upload your photos.
+                  </p>
                 </div>
-
+                <button
+                  type="button"
+                  onClick={handleNewPost}
+                  className="px-5 py-2.5 rounded-xl bg-[#C28B38] hover:bg-[#A97529] text-white text-xs font-bold shadow-xs transition-all cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Choose university to get featured</span>
+                </button>
               </div>
+            )}
 
-            </div>
           </div>
 
-          {/* Section: "All submissions" with Filter Pills (Matching Image 3) */}
+          {/* Section: "All submissions" with Filter Pills */}
           <div className="space-y-4 pt-4">
             
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -592,7 +630,7 @@ export const StudentDashboardPage: React.FC = () => {
                 All submissions
               </h2>
 
-              {/* Filter Pills matching Image 3 */}
+              {/* Filter Pills */}
               <div className="flex items-center gap-1.5 flex-wrap text-xs">
                 <button
                   type="button"
@@ -603,7 +641,7 @@ export const StudentDashboardPage: React.FC = () => {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  All 1
+                  All {inProgressCount + mySubmissions.length}
                 </button>
                 <button
                   type="button"
@@ -614,7 +652,7 @@ export const StudentDashboardPage: React.FC = () => {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Drafts 1
+                  Drafts {inProgressCount}
                 </button>
                 <button
                   type="button"
@@ -625,7 +663,7 @@ export const StudentDashboardPage: React.FC = () => {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Awaiting payment 0
+                  Awaiting payment {mySubmissions.filter(s => s.paymentStatus === 'AWAITING_PAYMENT' || s.paymentStatus === 'DRAFT').length}
                 </button>
                 <button
                   type="button"
@@ -636,7 +674,7 @@ export const StudentDashboardPage: React.FC = () => {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  In queue 0
+                  In queue {inQueueCount}
                 </button>
                 <button
                   type="button"
@@ -647,57 +685,137 @@ export const StudentDashboardPage: React.FC = () => {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  Posted 0
+                  Posted {postedCount}
                 </button>
               </div>
             </div>
 
-            {/* Submission Item Row (Image 3) */}
-            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-all">
-              
-              <div className="flex items-center gap-3.5">
-                {/* Photo Thumbnail */}
-                <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-900 shrink-0 border border-slate-100 shadow-2xs">
-                  <img 
-                    src={activeDraft.photoUrl} 
-                    alt="Submission thumbnail"
-                    className="w-full h-full object-cover"
-                  />
+            {/* Submissions List Content */}
+            <div className="space-y-3">
+              {/* Draft Item Row if present and matching filter */}
+              {activeDraft && (submissionFilter === 'ALL' || submissionFilter === 'DRAFTS') && (
+                <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-all">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-900 shrink-0 border border-slate-100 shadow-2xs">
+                      <img 
+                        src={activeDraft.photoUrl} 
+                        alt="Submission thumbnail"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px]">🦅</span>
+                        <span className="text-xs sm:text-sm font-bold text-slate-900">
+                          {activeDraft.universityName}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {activeDraft.detailsSummary}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400">
+                        <span className="inline-flex items-center gap-1 font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          Draft in progress
+                        </span>
+                        <span>•</span>
+                        <span>{activeDraft.photosCount} photo(s)</span>
+                        <span>•</span>
+                        <span>{activeDraft.dateStr}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleContinueDraft}
+                    className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-800 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 self-end sm:self-center cursor-pointer"
+                  >
+                    <span>Continue</span>
+                    <span className="text-xs">›</span>
+                  </button>
                 </div>
+              )}
 
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px]">🦅</span>
-                    <span className="text-xs sm:text-sm font-bold text-slate-900">
-                      {activeDraft.universityName}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    {activeDraft.detailsSummary}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400">
-                    <span className="inline-flex items-center gap-1 font-semibold text-slate-600">
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                      Draft
-                    </span>
-                    <span>•</span>
-                    <span>{activeDraft.photosCount} photo</span>
-                    <span>•</span>
-                    <span>{activeDraft.dateStr}</span>
-                  </div>
+              {/* Submitted / Published Items from mySubmissions */}
+              {mySubmissions
+                .filter(s => {
+                  if (submissionFilter === 'DRAFTS') return false;
+                  if (submissionFilter === 'AWAITING_PAYMENT') return s.paymentStatus === 'AWAITING_PAYMENT' || s.paymentStatus === 'DRAFT';
+                  if (submissionFilter === 'IN_QUEUE') return s.moderationStatus === 'PENDING' || s.moderationStatus === 'UNDER_REVIEW';
+                  if (submissionFilter === 'POSTED') return s.publishingStatus === 'PUBLISHED' || s.moderationStatus === 'APPROVED';
+                  return true;
+                })
+                .map(sub => {
+                  const img = sub.watermarkedImagePath || sub.originalImagePath || (sub.photos && sub.photos[0]?.previewUrl) || '';
+                  const isPublished = sub.publishingStatus === 'PUBLISHED';
+                  const isApproved = sub.moderationStatus === 'APPROVED';
+                  const isRejected = sub.moderationStatus === 'REJECTED';
+                  const statusLabel = isPublished ? 'Published' : isApproved ? 'Approved' : isRejected ? 'Needs revision' : 'In review';
+                  const badgeClass = isPublished
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : isApproved
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : isRejected
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200';
+
+                  return (
+                    <div key={sub.id} className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-300 transition-all">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200 shadow-2xs">
+                          {img ? (
+                            <img 
+                              src={img} 
+                              alt="Submission thumbnail"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">Photo</div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs sm:text-sm font-bold text-slate-900">
+                              {sub.universityName || 'Campus Submission'}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5 truncate max-w-md">
+                            {sub.caption || (sub.personalInstagramHandle ? `@${sub.personalInstagramHandle}` : 'Campus submission')}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400">
+                            <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full border ${badgeClass}`}>
+                              {statusLabel}
+                            </span>
+                            <span>•</span>
+                            <span>${sub.paymentAmount || 6}.00</span>
+                            <span>•</span>
+                            <span>{new Date(sub.submittedAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {sub.instagramPostUrl && (
+                        <a
+                          href={sub.instagramPostUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 self-end sm:self-center"
+                        >
+                          <Instagram className="w-3.5 h-3.5 text-pink-600" />
+                          <span>View Post</span>
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+
+              {/* Empty state if nothing to display */}
+              {!activeDraft && mySubmissions.length === 0 && (
+                <div className="bg-white rounded-2xl border border-slate-200/80 p-8 text-center text-slate-400 text-xs">
+                  No submissions found. Start a new post to get featured on campus!
                 </div>
-              </div>
-
-              {/* Continue button on right */}
-              <button
-                type="button"
-                onClick={handleContinueDraft}
-                className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-800 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 self-end sm:self-center cursor-pointer"
-              >
-                <span>Continue</span>
-                <span className="text-xs">›</span>
-              </button>
-
+              )}
             </div>
 
           </div>

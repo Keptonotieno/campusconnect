@@ -81,6 +81,16 @@ export const Navbar: React.FC = () => {
             FAQ
           </button>
 
+          <button
+            onClick={() => {
+              setMobileMenuOpen(false);
+              navigateTo('/campuses');
+            }}
+            className="hover:text-slate-950 transition-colors cursor-pointer"
+          >
+            All Campuses
+          </button>
+
           {/* CampusConnect Student Network Dropdown */}
           <div className="relative">
             <button
@@ -97,6 +107,17 @@ export const Navbar: React.FC = () => {
                 className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-100"
                 onMouseLeave={() => setCampusDropdownOpen(false)}
               >
+                <button
+                  onClick={() => {
+                    setCampusDropdownOpen(false);
+                    navigateTo('/campuses');
+                  }}
+                  className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium border-b border-slate-100"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Browse All Campuses</span>
+                </button>
+
                 <button
                   onClick={() => {
                     setCampusDropdownOpen(false);
