@@ -246,17 +246,23 @@ class Database {
     const fromSqlite = sqliteStorage.getAllCampuses();
     const map = new Map<string, University>();
 
-    // Verified campuses as base
-    for (const u of VERIFIED_UNIVERSITIES) {
-      map.set(u.slug.toLowerCase(), u);
-      map.set(u.id, u);
-    }
-    // Supplemental/overrides from SQLite database
     for (const u of fromSqlite) {
       map.set(u.slug.toLowerCase(), u);
-      map.set(u.id, u);
     }
-    return Array.from(new Set(map.values()));
+
+    const result: University[] = [];
+    for (const u of VERIFIED_UNIVERSITIES) {
+      const live = map.get(u.slug.toLowerCase()) || u;
+      result.push(live);
+      map.delete(u.slug.toLowerCase());
+    }
+
+    for (const u of map.values()) {
+      if (!result.some(r => r.id === u.id || r.slug === u.slug)) {
+        result.push(u);
+      }
+    }
+    return result;
   }
 
   public getCampusBySlug(slug: string): University | undefined {

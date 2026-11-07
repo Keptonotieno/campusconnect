@@ -62,7 +62,7 @@ export const LandingPage: React.FC = () => {
         if (bIdx !== -1) return 1;
         return 0;
       });
-      return sorted.slice(0, 16);
+      return sorted.slice(0, 20);
     }
     return universities.filter(u => 
       u.name.toLowerCase().includes(q) ||

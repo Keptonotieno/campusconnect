@@ -132,25 +132,25 @@ export const AdminPortalPage: React.FC = () => {
   const [overviewData, setOverviewData] = useState<AdminOverviewData | null>(null);
 
   const [campuses, setCampuses] = useState<University[]>(() => {
+    const map = new Map<string, University>();
+    VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug.toLowerCase(), u));
     try {
       const stored = localStorage.getItem('campusconnect_campuses');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          parsed.forEach((u: University) => {
+            if (u && (u.slug || u.id)) {
+              const key = (u.slug || u.id).toLowerCase();
+              map.set(key, { ...(map.get(key) || {}), ...u });
+            }
+          });
+        }
       }
     } catch {}
-    return universities || [];
+    return Array.from(map.values());
   });
-  const [loadingCampuses, setLoadingCampuses] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem('campusconnect_campuses');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return false;
-      }
-    } catch {}
-    return (universities || []).length === 0;
-  });
+  const [loadingCampuses, setLoadingCampuses] = useState<boolean>(false);
 
   // Real-time Firestore sync & direct dynamic fetching for universities
   useEffect(() => {

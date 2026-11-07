@@ -122,16 +122,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [universities, setUniversities] = useState<University[]>(() => {
+    const map = new Map<string, University>();
+    // Always start with VERIFIED_UNIVERSITIES as ground truth base
+    VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug.toLowerCase(), u));
     try {
       const stored = localStorage.getItem('campusconnect_campuses');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          parsed.forEach((u: University) => {
+            if (u && (u.slug || u.id)) {
+              const key = (u.slug || u.id).toLowerCase();
+              map.set(key, { ...(map.get(key) || {}), ...u });
+            }
+          });
+        }
       }
     } catch {
       // ignore
     }
-    return VERIFIED_UNIVERSITIES;
+    const initialList = Array.from(map.values());
+    try {
+      localStorage.setItem('campusconnect_campuses', JSON.stringify(initialList));
+    } catch {}
+    return initialList;
   });
 
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
