@@ -128,6 +128,7 @@ export interface FeaturedSubmission {
   photos?: { id: string; previewUrl: string; isCover: boolean }[];
   major?: string;
   personalInstagramHandle?: string;
+  instagramHandle?: string;
   snapchatHandle?: string;
   tiktokHandle?: string;
   classYear?: string;

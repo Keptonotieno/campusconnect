@@ -1,4 +1,4 @@
-import { University } from '../types';
+import type { University } from '../types';
 
 export const VERIFIED_UNIVERSITIES: University[] = [
   // --- Original 11 Verified Universities ---
@@ -804,12 +804,14 @@ export const SLUG_ALIASES: Record<string, string> = {
   'miamiohio': 'miamiuniversity2031class',
   'miamiu': 'miamiuniversity2031class',
   'miamiuniversity': 'miamiuniversity2031class',
+  'miami-university': 'miamiuniversity2031class',
   'miamiuniversity2031': 'miamiuniversity2031class',
   'miamiuniversity2031class': 'miamiuniversity2031class',
   'redhawks': 'miamiuniversity2031class',
 
   // Virginia Tech
   'virginiatech': 'virginiatech2031class',
+  'virginia-tech': 'virginiatech2031class',
   'vt': 'virginiatech2031class',
   'hokies': 'virginiatech2031class',
   'virginiapolytechnic': 'virginiatech2031class',
@@ -819,9 +821,11 @@ export const SLUG_ALIASES: Record<string, string> = {
 
   // West Virginia University
   'westvirginia': 'westvirginiauniversity2031class',
+  'west-virginia': 'westvirginiauniversity2031class',
   'wvu': 'westvirginiauniversity2031class',
   'mountaineers': 'westvirginiauniversity2031class',
   'westvirginiauniversity': 'westvirginiauniversity2031class',
+  'west-virginia-university': 'westvirginiauniversity2031class',
   'wvu2031': 'westvirginiauniversity2031class',
   'westvirginiauniversity2031': 'westvirginiauniversity2031class',
   'westvirginiauniversity2031class': 'westvirginiauniversity2031class',
@@ -830,7 +834,9 @@ export const SLUG_ALIASES: Record<string, string> = {
   'michigan': 'michiganuniversity2031class',
   'umich': 'michiganuniversity2031class',
   'michiganuniversity': 'michiganuniversity2031class',
+  'michigan-university': 'michiganuniversity2031class',
   'universityofmichigan': 'michiganuniversity2031class',
+  'university-of-michigan': 'michiganuniversity2031class',
   'wolverines': 'michiganuniversity2031class',
   'michigan2031': 'michiganuniversity2031class',
   'michiganuniversity2031class': 'michiganuniversity2031class',
@@ -838,6 +844,7 @@ export const SLUG_ALIASES: Record<string, string> = {
   // Purdue University
   'purdue': 'purdueuniversity2031class',
   'purdueuniversity': 'purdueuniversity2031class',
+  'purdue-university': 'purdueuniversity2031class',
   'boilermakers': 'purdueuniversity2031class',
   'purdue2031': 'purdueuniversity2031class',
   'purdueuniversity2031class': 'purdueuniversity2031class',
@@ -847,14 +854,17 @@ export const SLUG_ALIASES: Record<string, string> = {
   'bu': 'bostonuniversity2031class',
   'bostonu': 'bostonuniversity2031class',
   'bostonuniversity': 'bostonuniversity2031class',
+  'boston-university': 'bostonuniversity2031class',
   'terriers': 'bostonuniversity2031class',
   'bu2031': 'bostonuniversity2031class',
   'bostonuniversity2031class': 'bostonuniversity2031class',
 
   // Stony Brook University
   'stonybrook': 'stonybrookuniversity2031class',
+  'stony-brook': 'stonybrookuniversity2031class',
   'sbu': 'stonybrookuniversity2031class',
   'stonybrookuniversity': 'stonybrookuniversity2031class',
+  'stony-brook-university': 'stonybrookuniversity2031class',
   'seawolves': 'stonybrookuniversity2031class',
   'stonybrook2031': 'stonybrookuniversity2031class',
   'stonybrookuniversity2031class': 'stonybrookuniversity2031class',
@@ -864,15 +874,19 @@ export const SLUG_ALIASES: Record<string, string> = {
   'bama': 'alabamauniversity2031class',
   'rolltide': 'alabamauniversity2031class',
   'alabamauniversity': 'alabamauniversity2031class',
+  'alabama-university': 'alabamauniversity2031class',
   'universityofalabama': 'alabamauniversity2031class',
+  'university-of-alabama': 'alabamauniversity2031class',
   'bama2031': 'alabamauniversity2031class',
   'alabamauniversity2031class': 'alabamauniversity2031class',
 
   // Illinois State University
   'illinoisstate': 'illinoisstateuniversity2031class',
+  'illinois-state': 'illinoisstateuniversity2031class',
   'isu': 'illinoisstateuniversity2031class',
   'redbirds': 'illinoisstateuniversity2031class',
   'illinoisstateuniversity': 'illinoisstateuniversity2031class',
+  'illinois-state-university': 'illinoisstateuniversity2031class',
   'isu2031': 'illinoisstateuniversity2031class',
   'illinoisstateuniversity2031class': 'illinoisstateuniversity2031class',
 
@@ -882,22 +896,28 @@ export const SLUG_ALIASES: Record<string, string> = {
   'cavaliers': 'universityofvirginia2031class',
   'wahoos': 'universityofvirginia2031class',
   'universityofvirginia': 'universityofvirginia2031class',
+  'university-of-virginia': 'universityofvirginia2031class',
   'uva2031': 'universityofvirginia2031class',
   'universityofvirginia2031class': 'universityofvirginia2031class',
 
   // Ohio State University
   'ohiostate': 'ohiostateuniversity2031class',
+  'ohio-state': 'ohiostateuniversity2031class',
   'osu': 'ohiostateuniversity2031class',
   'theohiostateuniversity': 'ohiostateuniversity2031class',
+  'the-ohio-state-university': 'ohiostateuniversity2031class',
   'ohiostateuniversity': 'ohiostateuniversity2031class',
+  'ohio-state-university': 'ohiostateuniversity2031class',
   'buckeyes': 'ohiostateuniversity2031class',
   'ohiostateuniversity2031class': 'ohiostateuniversity2031class',
 
   // Penn State University
   'pennstate': 'pennstateuniversity2031class',
+  'penn-state': 'pennstateuniversity2031class',
   'psu': 'pennstateuniversity2031class',
   'nittanylions': 'pennstateuniversity2031class',
   'pennstateuniversity': 'pennstateuniversity2031class',
+  'penn-state-university': 'pennstateuniversity2031class',
   'pennstateuniversity2031class': 'pennstateuniversity2031class',
 
   // University of Florida
@@ -905,21 +925,26 @@ export const SLUG_ALIASES: Record<string, string> = {
   'uf': 'universityofflorida2031class',
   'gators': 'universityofflorida2031class',
   'universityofflorida': 'universityofflorida2031class',
+  'university-of-florida': 'universityofflorida2031class',
   'universityofflorida2031class': 'universityofflorida2031class',
 
   // University of Texas at Austin
   'texas': 'universityoftexas2031class',
   'ut': 'universityoftexas2031class',
   'utaustin': 'universityoftexas2031class',
+  'ut-austin': 'universityoftexas2031class',
   'longhorns': 'universityoftexas2031class',
   'universityoftexas': 'universityoftexas2031class',
+  'university-of-texas': 'universityoftexas2031class',
   'universityoftexas2031class': 'universityoftexas2031class',
 
   // University of Wisconsin–Madison
   'wisconsin': 'universityofwisconsin2031class',
   'uwmadison': 'universityofwisconsin2031class',
+  'uw-madison': 'universityofwisconsin2031class',
   'badgers': 'universityofwisconsin2031class',
   'universityofwisconsin': 'universityofwisconsin2031class',
+  'university-of-wisconsin': 'universityofwisconsin2031class',
   'universityofwisconsin2031class': 'universityofwisconsin2031class',
 
   // UNC Chapel Hill
@@ -927,6 +952,7 @@ export const SLUG_ALIASES: Record<string, string> = {
   'carolina': 'uncchapelhill2031class',
   'tarheels': 'uncchapelhill2031class',
   'uncchapelhill': 'uncchapelhill2031class',
+  'unc-chapel-hill': 'uncchapelhill2031class',
   'uncchapelhill2031class': 'uncchapelhill2031class',
 
   // University of Washington
@@ -935,6 +961,7 @@ export const SLUG_ALIASES: Record<string, string> = {
   'udub': 'universityofwashington2031class',
   'huskies': 'universityofwashington2031class',
   'universityofwashington': 'universityofwashington2031class',
+  'university-of-washington': 'universityofwashington2031class',
   'universityofwashington2031class': 'universityofwashington2031class',
 
   // UCLA
@@ -948,6 +975,7 @@ export const SLUG_ALIASES: Record<string, string> = {
   'uga': 'universityofgeorgia2031class',
   'bulldogs': 'universityofgeorgia2031class',
   'universityofgeorgia': 'universityofgeorgia2031class',
+  'university-of-georgia': 'universityofgeorgia2031class',
   'universityofgeorgia2031class': 'universityofgeorgia2031class',
 
   // Indiana University Bloomington
@@ -956,6 +984,7 @@ export const SLUG_ALIASES: Record<string, string> = {
   'iub': 'indianau2031class',
   'hoosiers': 'indianau2031class',
   'indianau': 'indianau2031class',
+  'indiana-university': 'indianau2031class',
   'indianauniversity': 'indianau2031class',
   'indianau2031class': 'indianau2031class'
 };
@@ -970,26 +999,52 @@ export const findUniversityBySlug = (slug: string): University | undefined => {
     .replace(/^\/u\//, '')
     .replace(/^\/university\//, '');
   
+  const noSpecial = normalized.replace(/[^a-z0-9]/g, '');
+  const noDashes = normalized.replace(/[-_]/g, '');
+
   // 1. Alias lookup
   if (SLUG_ALIASES[normalized]) {
     const aliasMatch = VERIFIED_UNIVERSITIES.find(u => u.slug.toLowerCase() === SLUG_ALIASES[normalized]);
     if (aliasMatch) return aliasMatch;
   }
+  if (SLUG_ALIASES[noSpecial]) {
+    const aliasMatch = VERIFIED_UNIVERSITIES.find(u => u.slug.toLowerCase() === SLUG_ALIASES[noSpecial]);
+    if (aliasMatch) return aliasMatch;
+  }
+  if (SLUG_ALIASES[noDashes]) {
+    const aliasMatch = VERIFIED_UNIVERSITIES.find(u => u.slug.toLowerCase() === SLUG_ALIASES[noDashes]);
+    if (aliasMatch) return aliasMatch;
+  }
 
-  // 2. Exact match on slug, id, or instagramHandle
+  // 2. Exact match on slug, id, or normalized name
   const found = VERIFIED_UNIVERSITIES.find(
     u => u.slug.toLowerCase() === normalized || 
-         u.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') || 
+         u.slug.toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial ||
          u.id.toLowerCase() === normalized ||
          u.id.replace('uni_', '').toLowerCase() === normalized ||
-         u.instagramHandle.toLowerCase().replace('@', '') === normalized.replace('@', '')
+         u.id.replace('uni_', '').toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial ||
+         u.name.toLowerCase() === normalized ||
+         u.name.toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial ||
+         u.instagramHandle.toLowerCase().replace('@', '') === normalized ||
+         u.instagramHandle.toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial
   );
   if (found) return found;
 
-  // 3. Partial match on name or slug
+  // 3. Keyword matching (handles "Michigan University", "Alabama University", etc.)
+  const keywords = normalized.split(/[\s-_]+/).filter(w => w.length > 2 && w !== 'university' && w !== 'college' && w !== 'class' && w !== 'the');
+  if (keywords.length > 0) {
+    const keywordMatch = VERIFIED_UNIVERSITIES.find(u => {
+      const uText = `${u.name} ${u.slug} ${u.instagramHandle}`.toLowerCase();
+      return keywords.every(kw => uText.includes(kw));
+    });
+    if (keywordMatch) return keywordMatch;
+  }
+
+  // 4. Partial match on name or slug
   const partial = VERIFIED_UNIVERSITIES.find(u => 
     normalized.includes(u.slug.toLowerCase()) || 
     u.slug.toLowerCase().includes(normalized) ||
+    u.slug.toLowerCase().replace(/[^a-z0-9]/g, '').includes(noSpecial) ||
     u.name.toLowerCase().includes(normalized) ||
     u.instagramHandle.toLowerCase().replace('@', '').includes(normalized)
   );
@@ -997,6 +1052,7 @@ export const findUniversityBySlug = (slug: string): University | undefined => {
 
   return undefined;
 };
+
 
 export const findUniversityById = (id: string): University | undefined => {
   if (!id) return undefined;

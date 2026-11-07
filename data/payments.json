@@ -1,1 +1,18 @@
-[]
+[
+  {
+    "submissionId": "sub_1794068092943_ez51uu",
+    "studentUid": "std_1794068092943_n07s23",
+    "studentName": "Alex Morgan",
+    "universityId": "uni_eku2031class",
+    "provider": "STRIPE_CARD",
+    "providerTransactionReference": "ch_ftv1q8sqxxhe",
+    "amountUsd": 6,
+    "currency": "USD",
+    "status": "CONFIRMED",
+    "idempotencyKey": "idem_sub_1794068092943_ez51uu_1794068106285",
+    "verifiedAt": "2026-11-07T16:15:06.285Z",
+    "id": "pay_b629d249ae37",
+    "createdAt": "2026-11-07T16:15:06.285Z",
+    "updatedAt": "2026-11-07T16:15:06.285Z"
+  }
+]

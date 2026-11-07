@@ -137,6 +137,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedUniversity, setSelectedUniversity] = useState<University | null>(null);
   const [entryUniversityContext, setEntryUniversityContext] = useState<University | null>(null);
 
+  // Helper to merge campuses preserving core verified universities
+  const mergeCampuses = useCallback((base: University[], incoming: University[]): University[] => {
+    const map = new Map<string, University>();
+    // 1. Core ground truth verified universities
+    VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug.toLowerCase(), u));
+    // 2. Previous state
+    (base || []).forEach(u => {
+      const key = (u.slug || u.id).toLowerCase();
+      map.set(key, { ...(map.get(key) || {}), ...u });
+    });
+    // 3. Incoming
+    (incoming || []).forEach(u => {
+      const key = (u.slug || u.id).toLowerCase();
+      map.set(key, { ...(map.get(key) || {}), ...u });
+    });
+    return Array.from(map.values());
+  }, []);
+
   // Synchronize campuses with server database safely
   const refreshCampuses = useCallback(async () => {
     try {
@@ -144,18 +162,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.campuses) && data.campuses.length > 0) {
-          setUniversities(data.campuses);
-          try {
-            localStorage.setItem('campusconnect_campuses', JSON.stringify(data.campuses));
-          } catch {
-            // ignore
-          }
+          setUniversities(prev => {
+            const merged = mergeCampuses(prev, data.campuses);
+            try {
+              localStorage.setItem('campusconnect_campuses', JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
         }
       }
     } catch (err) {
       console.warn('Could not fetch server campuses, using cache:', err);
     }
-  }, []);
+  }, [mergeCampuses]);
 
   useEffect(() => {
     refreshCampuses();
@@ -174,10 +193,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         });
         if (firestoreList.length > 0) {
-          setUniversities(firestoreList);
-          try {
-            localStorage.setItem('campusconnect_campuses', JSON.stringify(firestoreList));
-          } catch {}
+          setUniversities(prev => {
+            const merged = mergeCampuses(prev, firestoreList);
+            try {
+              localStorage.setItem('campusconnect_campuses', JSON.stringify(merged));
+            } catch {}
+            return merged;
+          });
         }
       },
       (err) => {
@@ -186,7 +208,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     return () => unsub();
-  }, [refreshCampuses]);
+  }, [refreshCampuses, mergeCampuses]);
 
   // Synchronous upsert for campuses (used by Admin creation & updates)
   const addOrUpdateCampus = useCallback((campus: University) => {
@@ -235,19 +257,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .replace(/^\/u\//, '')
       .replace(/^\/university\//, '');
     
+    const noSpecial = normalized.replace(/[^a-z0-9]/g, '');
+
     // 1. Check live state first (includes any newly created campus)
     const found = universities.find(
       u => u.slug.toLowerCase() === normalized ||
-           u.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
+           u.slug.toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial ||
            u.id.toLowerCase() === normalized ||
            u.id.replace('uni_', '').toLowerCase() === normalized ||
+           u.id.replace('uni_', '').toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial ||
            u.name.toLowerCase() === normalized ||
-           u.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized.replace(/[^a-z0-9]/g, '') ||
-           u.instagramHandle.toLowerCase().replace('@', '') === normalized
+           u.name.toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial ||
+           u.instagramHandle.toLowerCase().replace('@', '') === normalized ||
+           u.instagramHandle.toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial
     );
     if (found) return found;
 
-    // 2. Check localStorage cache if not yet hydrated into memory
+    // 2. Keyword matching on live state (e.g., "Michigan University" matches "University of Michigan")
+    const keywords = normalized.split(/[\s-_]+/).filter(w => w.length > 2 && w !== 'university' && w !== 'college' && w !== 'class' && w !== 'the');
+    if (keywords.length > 0) {
+      const keywordMatch = universities.find(u => {
+        const uText = `${u.name} ${u.slug} ${u.instagramHandle}`.toLowerCase();
+        return keywords.every(kw => uText.includes(kw));
+      });
+      if (keywordMatch) return keywordMatch;
+    }
+
+    // 3. Check localStorage cache if not yet hydrated into memory
     try {
       const stored = localStorage.getItem('campusconnect_campuses');
       if (stored) {
@@ -255,9 +291,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (Array.isArray(parsed)) {
           const match = parsed.find(
             u => u.slug.toLowerCase() === normalized ||
-                 u.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
+                 u.slug.toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial ||
                  u.id.toLowerCase() === normalized ||
                  u.id.replace('uni_', '').toLowerCase() === normalized ||
+                 u.name.toLowerCase().replace(/[^a-z0-9]/g, '') === noSpecial ||
                  u.instagramHandle.toLowerCase().replace('@', '') === normalized
           );
           if (match) return match;
@@ -265,7 +302,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch {}
 
-    // 3. Check alias mappings & verified universities (strictly returns undefined if no match)
+    // 4. Check alias mappings & verified universities (strictly returns undefined if no match)
     return findUniversityBySlug(normalized);
   }, [universities]);
 
@@ -273,6 +310,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!id) return undefined;
     return universities.find(u => u.id === id) || findUniversityById(id);
   }, [universities]);
+
 
   // Asynchronous remote campus resolver for direct links
   const fetchCampusBySlug = useCallback(async (slug: string): Promise<University | undefined> => {

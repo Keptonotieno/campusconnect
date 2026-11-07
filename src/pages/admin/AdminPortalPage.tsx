@@ -49,6 +49,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { FeaturedSubmission, University, PaymentRecord, InstagramAccount, AuditLogItem } from '../../types';
+import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 import { 
   getAdminStatus, 
   bootstrapAdmin, 
@@ -169,11 +170,24 @@ export const AdminPortalPage: React.FC = () => {
         });
 
         if (firestoreCampuses.length > 0) {
-          setCampuses(firestoreCampuses);
-          try {
-            localStorage.setItem('campusconnect_campuses', JSON.stringify(firestoreCampuses));
-          } catch {}
-          firestoreCampuses.forEach((item) => addOrUpdateCampus(item));
+          setCampuses(prev => {
+            const map = new Map<string, University>();
+            VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug.toLowerCase(), u));
+            (prev || []).forEach(u => {
+              const key = (u.slug || u.id).toLowerCase();
+              map.set(key, { ...(map.get(key) || {}), ...u });
+            });
+            firestoreCampuses.forEach(u => {
+              const key = (u.slug || u.id).toLowerCase();
+              map.set(key, { ...(map.get(key) || {}), ...u });
+            });
+            const merged = Array.from(map.values());
+            try {
+              localStorage.setItem('campusconnect_campuses', JSON.stringify(merged));
+            } catch {}
+            merged.forEach((item) => addOrUpdateCampus(item));
+            return merged;
+          });
         } else {
           // If Firestore returns 0 documents, preserve any local or in-memory campuses and sync them up
           setCampuses(prev => {
@@ -895,12 +909,15 @@ export const AdminPortalPage: React.FC = () => {
   const filteredCampuses = useMemo(() => {
     const list = Array.isArray(campuses) ? campuses : [];
     const q = (campusSearch || '').toLowerCase().trim();
+    const noSpecialQ = q.replace(/[^a-z0-9]/g, '');
     return list.filter(c => {
       if (!c) return false;
       const name = (c.name || '').toLowerCase();
       const slug = (c.slug || '').toLowerCase();
       const loc = (c.location || '').toLowerCase();
-      const matchesSearch = !q || name.includes(q) || slug.includes(q) || loc.includes(q);
+      const handle = (c.instagramHandle || '').toLowerCase();
+      const cText = `${name} ${slug} ${loc} ${handle}`.replace(/[^a-z0-9]/g, '');
+      const matchesSearch = !q || name.includes(q) || slug.includes(q) || loc.includes(q) || handle.includes(q) || cText.includes(noSpecialQ);
       
       const matchesFilter = campusStatusFilter === 'ALL' ||
         (campusStatusFilter === 'ACTIVE' && c.communityEnabled) ||

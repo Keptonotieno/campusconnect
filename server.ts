@@ -3,7 +3,7 @@ import path from 'path';
 import cookieParser from 'cookie-parser';
 import { createServer as createViteServer } from 'vite';
 import { dbInstance } from './server/db';
-import { AdminSession } from './server/db';
+import type { AdminSession } from './server/db';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = 3000;

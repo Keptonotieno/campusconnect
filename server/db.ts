@@ -1,89 +1,31 @@
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
-import { University, PaymentRecord, InstagramAccount, User, AuditLogItem, FeaturedSubmission } from '../src/types';
+import { 
+  University, 
+  PaymentRecord, 
+  InstagramAccount, 
+  User, 
+  AuditLogItem, 
+  FeaturedSubmission 
+} from '../src/types';
 import { VERIFIED_UNIVERSITIES, findUniversityBySlug } from '../src/data/universities';
+import { sqliteStorage } from './sqlite';
+import type { 
+  AdminUser, 
+  AdminSession, 
+  EmailDeliveryLog, 
+  EmailConfig, 
+  IntegrationConfig 
+} from './sqlite';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+export type { 
+  AdminUser, 
+  AdminSession, 
+  EmailDeliveryLog, 
+  EmailConfig, 
+  IntegrationConfig 
+};
 
-export interface AdminUser {
-  id: string;
-  email: string;
-  passwordHash: string;
-  salt: string;
-  role: 'Admin';
-  createdAt: string;
-  lastLoginAt?: string;
-}
-
-export interface AdminSession {
-  token: string;
-  adminId: string;
-  email: string;
-  role: 'Admin';
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface EmailDeliveryLog {
-  id: string;
-  recipient: string;
-  subject: string;
-  template: string;
-  status: 'DELIVERED' | 'QUEUED' | 'BOUNCED' | 'FAILED';
-  sentAt: string;
-  messageId: string;
-  provider: string;
-  metadata?: Record<string, any>;
-}
-
-export interface EmailConfig {
-  senderEmail: string;
-  senderName: string;
-  smtpHost: string;
-  smtpPort: number;
-  tlsEnabled: boolean;
-  dkimVerified: boolean;
-  spfVerified: boolean;
-  status: 'OPERATIONAL' | 'DEGRADED' | 'OFFLINE';
-}
-
-export interface IntegrationConfig {
-  id: string;
-  name: string;
-  category: string;
-  status: 'CONNECTED' | 'PENDING_CONFIGURATION' | 'DEGRADED' | 'NOT_CONFIGURED';
-  configured: boolean;
-  lastVerifiedAt: string | null;
-  details: string;
-  keys: Record<string, string>;
-}
-
-function readJsonFile<T>(filename: string, fallback: T): T {
-  try {
-    const filePath = path.join(DATA_DIR, filename);
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2), 'utf8');
-      return fallback;
-    }
-    const content = fs.readFileSync(filePath, 'utf8');
-    return JSON.parse(content) as T;
-  } catch (err) {
-    console.error(`Error reading ${filename}:`, err);
-    return fallback;
-  }
-}
-
-function writeJsonFile<T>(filename: string, data: T): void {
-  try {
-    const filePath = path.join(DATA_DIR, filename);
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
-  } catch (err) {
-    console.error(`Error writing ${filename}:`, err);
-  }
-}
-
-// Password hashing using Node.js crypto
+// Password hashing using Node.js crypto pbkdf2
 export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
   const generatedSalt = salt || crypto.randomBytes(16).toString('hex');
   const hash = crypto.pbkdf2Sync(password, generatedSalt, 10000, 64, 'sha512').toString('hex');
@@ -121,15 +63,6 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
 }
 
 class Database {
-  private admins: AdminUser[] = [];
-  private sessions: AdminSession[] = [];
-  private campuses: University[] = [];
-  private payments: PaymentRecord[] = [];
-  private instagramAccounts: InstagramAccount[] = [];
-  private registeredUsers: User[] = [];
-  private submissions: FeaturedSubmission[] = [];
-  private emailLogs: EmailDeliveryLog[] = [];
-  private auditLogs: AuditLogItem[] = [];
   private loginAttempts: Record<string, { count: number; lockedUntil?: number }> = {};
   private emailConfig: EmailConfig = {
     senderEmail: 'notifications@campusconnect.app',
@@ -143,43 +76,46 @@ class Database {
   };
 
   constructor() {
-    this.init();
+    this.ensureMasterAdminAccounts();
   }
 
-  private init() {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
+  // Ensure initial bootstrap and master admins exist in SQLite
+  private ensureMasterAdminAccounts() {
+    const MASTER_HASH = '35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e';
+    const MASTER_SALT = 'b06b24e9b11bcd5c027c9cfa44e65a0f';
 
-    this.admins = readJsonFile<AdminUser[]>('admins.json', []);
-    this.sessions = readJsonFile<AdminSession[]>('sessions.json', []);
-    this.campuses = readJsonFile<University[]>('campuses.json', []);
-    const existingIds = new Set((this.campuses || []).map(c => c.id));
-    const missingVerified = VERIFIED_UNIVERSITIES.filter(u => !existingIds.has(u.id));
-    if (missingVerified.length > 0 || !this.campuses || this.campuses.length === 0) {
-      this.campuses = [...(this.campuses || []), ...missingVerified];
-      writeJsonFile('campuses.json', this.campuses);
+    const defaultMasters = [
+      { id: 'admin_user_keptonotieno', email: 'keptonotieno@gmail.com' },
+      { id: 'admin_secondary_campusconnect', email: 'campusconnect@gmail.com' },
+      { id: 'admin_general_campusconnect', email: 'admin@campusconnect.app' }
+    ];
+
+    for (const m of defaultMasters) {
+      const existing = sqliteStorage.getAdminByEmail(m.email);
+      if (!existing) {
+        sqliteStorage.insertAdmin({
+          id: m.id,
+          email: m.email,
+          passwordHash: MASTER_HASH,
+          salt: MASTER_SALT,
+          role: 'Admin',
+          createdAt: new Date().toISOString()
+        });
+      }
     }
-    
-    this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
-    this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
-    this.instagramAccounts = readJsonFile<InstagramAccount[]>('instagram.json', []);
-    this.registeredUsers = readJsonFile<User[]>('users.json', []);
-    this.emailLogs = readJsonFile<EmailDeliveryLog[]>('email-logs.json', []);
-    this.auditLogs = readJsonFile<AuditLogItem[]>('audit-logs.json', []);
   }
 
   // Admin Management & Bootstrap
   public getAdminCount(): number {
-    return this.admins.length;
+    return sqliteStorage.getAdminCount();
   }
 
   public getAdmins(): Omit<AdminUser, 'passwordHash' | 'salt'>[] {
-    return this.admins.map(({ passwordHash, salt, ...admin }) => admin);
+    return sqliteStorage.getAdmins().map(({ passwordHash, salt, ...admin }) => admin);
   }
 
   public bootstrapAdmin(email: string, password: string): { admin: Omit<AdminUser, 'passwordHash' | 'salt'>; session: AdminSession } {
-    if (this.admins.length > 0) {
+    if (this.getAdminCount() > 0) {
       throw new Error('Bootstrap already completed. An administrator account already exists.');
     }
     if (!email || !email.includes('@')) {
@@ -199,8 +135,7 @@ class Database {
       createdAt: new Date().toISOString()
     };
 
-    this.admins.push(newAdmin);
-    writeJsonFile('admins.json', this.admins);
+    sqliteStorage.insertAdmin(newAdmin);
 
     // Create initial session
     const session = this.createSession(newAdmin);
@@ -229,28 +164,7 @@ class Database {
       normalizedEmail = `${rawEmail}@gmail.com`;
     }
 
-    this.admins = readJsonFile<AdminUser[]>('admins.json', this.admins);
-
-    // If admins list is empty or missing master accounts, ensure master admin accounts are present
-    const masterEmails = ['campusconnect@gmail.com', 'compusconnect@gmail.com', 'keptonotieno@gmail.com', 'admin@campusconnect.app'];
-    const MASTER_HASH = '35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e';
-    const MASTER_SALT = 'b06b24e9b11bcd5c027c9cfa44e65a0f';
-
-    let admin = this.admins.find(a => a.email.toLowerCase() === normalizedEmail);
-
-    if (!admin && masterEmails.includes(normalizedEmail)) {
-      admin = {
-        id: `admin_${normalizedEmail.split('@')[0]}`,
-        email: normalizedEmail,
-        passwordHash: MASTER_HASH,
-        salt: MASTER_SALT,
-        role: 'Admin',
-        createdAt: '2026-10-21T08:14:00.000Z',
-        lastLoginAt: new Date().toISOString()
-      };
-      this.admins.push(admin);
-      writeJsonFile('admins.json', this.admins);
-    }
+    let admin = sqliteStorage.getAdminByEmail(normalizedEmail);
 
     // Verify Password first
     const isPasswordValid = admin ? verifyPassword(rawPassword, admin.passwordHash, admin.salt) : false;
@@ -258,6 +172,7 @@ class Database {
     // If credentials are valid, immediately clear any previous lockout
     if (admin && isPasswordValid) {
       delete this.loginAttempts[ip];
+      sqliteStorage.updateAdminLogin(admin.id, new Date().toISOString());
     } else {
       // Check lockout only for invalid attempts
       const now = Date.now();
@@ -304,53 +219,40 @@ class Database {
       expiresAt
     };
 
-    this.sessions.push(session);
-    writeJsonFile('sessions.json', this.sessions);
-    return session;
+    return sqliteStorage.createSession(session);
   }
 
   public validateSession(token: string): AdminSession | null {
     if (!token) return null;
-    this.sessions = readJsonFile<AdminSession[]>('sessions.json', this.sessions);
-    const session = this.sessions.find(s => s.token === token);
-    
+    const session = sqliteStorage.getSession(token);
     if (!session) return null;
 
     if (new Date(session.expiresAt).getTime() < Date.now()) {
       this.invalidateSession(token);
       return null;
     }
+
     return session;
   }
 
   public invalidateSession(token: string): void {
-    const idx = this.sessions.findIndex(s => s.token === token);
-    if (idx !== -1) {
-      const removed = this.sessions.splice(idx, 1)[0];
-      writeJsonFile('sessions.json', this.sessions);
-      this.logAudit({
-        actorUid: removed.adminId,
-        actorEmail: removed.email,
-        actorRole: 'Admin',
-        action: 'ADMIN_LOGOUT',
-        targetType: 'USER',
-        targetId: removed.adminId,
-        details: 'Admin session terminated'
-      });
+    if (token) {
+      sqliteStorage.deleteSession(token);
     }
   }
 
-  // Campuses Management
+  // Campuses Management (Stored in SQLite)
   public getCampuses(): University[] {
-    const list = [...this.campuses];
+    const fromSqlite = sqliteStorage.getAllCampuses();
     const map = new Map<string, University>();
-    // First insert verified universities
+
+    // Verified campuses as base
     for (const u of VERIFIED_UNIVERSITIES) {
       map.set(u.slug.toLowerCase(), u);
       map.set(u.id, u);
     }
-    // Override/supplement with database entries
-    for (const u of list) {
+    // Supplemental/overrides from SQLite database
+    for (const u of fromSqlite) {
       map.set(u.slug.toLowerCase(), u);
       map.set(u.id, u);
     }
@@ -371,23 +273,16 @@ class Database {
     const byHelper = findUniversityBySlug(normalized);
     if (byHelper) return byHelper;
 
-    // 2. Check custom database campuses created by admin
-    const inDb = this.campuses.find(c => 
-      c.slug.toLowerCase() === normalized ||
-      c.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
-      c.id.toLowerCase() === normalized ||
-      c.id.replace('uni_', '').toLowerCase() === normalized ||
-      c.instagramHandle.toLowerCase().replace('@', '') === normalized
-    );
+    // 2. Check SQLite database
+    const inDb = sqliteStorage.getCampusBySlug(normalized);
     if (inDb) return inDb;
 
-    // 2. Check verified campus network (including sample eku2031class)
-    return VERIFIED_UNIVERSITIES.find(v => 
-      v.slug.toLowerCase() === normalized ||
-      v.slug.replace(/[-_]/g, '') === normalized.replace(/[-_]/g, '') ||
-      v.id.toLowerCase() === normalized ||
-      v.id.replace('uni_', '').toLowerCase() === normalized ||
-      v.instagramHandle.toLowerCase().replace('@', '') === normalized
+    // 3. Fallback search by ID or handle
+    const all = this.getCampuses();
+    return all.find(c =>
+      c.slug.toLowerCase() === normalized ||
+      c.id.toLowerCase() === normalized ||
+      c.instagramHandle.toLowerCase().replace('@', '') === normalized
     );
   }
 
@@ -408,7 +303,7 @@ class Database {
     }
 
     // Check slug uniqueness
-    const exists = this.campuses.some(c => c.slug.toLowerCase() === slug.toLowerCase());
+    const exists = sqliteStorage.getCampusBySlug(slug);
     if (exists) {
       throw new Error(`A campus with the slug "${slug}" already exists. Please choose a unique name or slug.`);
     }
@@ -442,8 +337,7 @@ class Database {
       updatedAt: new Date().toISOString()
     };
 
-    this.campuses.unshift(newCampus);
-    writeJsonFile('campuses.json', this.campuses);
+    sqliteStorage.upsertCampus(newCampus);
 
     this.logAudit({
       actorUid: 'admin',
@@ -452,57 +346,33 @@ class Database {
       action: 'CAMPUS_CREATED',
       targetType: 'UNIVERSITY',
       targetId: newCampus.id,
-      details: `Created new campus "${newCampus.name}" with canonical route /ig/${newCampus.slug}`
+      details: `Created new campus community "${newCampus.name}" with URL /ig/${newCampus.slug}`
     });
 
     return newCampus;
   }
 
   public updateCampus(id: string, updates: Partial<University>, actorEmail: string): University {
-    const campus = this.campuses.find(c => c.id === id || c.slug === id);
+    const campus = sqliteStorage.getCampusById(id) || sqliteStorage.getCampusBySlug(id);
     if (!campus) {
-      throw new Error(`Campus with identifier "${id}" not found.`);
+      throw new Error(`Campus with id "${id}" not found.`);
     }
 
     if (updates.slug && updates.slug !== campus.slug) {
-      const slugTaken = this.campuses.some(c => c.id !== campus.id && c.slug.toLowerCase() === updates.slug!.toLowerCase());
-      if (slugTaken) {
-        throw new Error(`Slug "${updates.slug}" is already in use by another campus.`);
-      }
-      campus.slug = updates.slug;
-    }
-
-    if (updates.name !== undefined) campus.name = updates.name.trim();
-    if (updates.description !== undefined) campus.description = updates.description.trim();
-    if (updates.location !== undefined) campus.location = updates.location.trim();
-    if (updates.logoUrl !== undefined) campus.logoUrl = updates.logoUrl.trim();
-    if (updates.coverUrl !== undefined) campus.coverUrl = updates.coverUrl.trim();
-    if (updates.instagramHandle !== undefined) campus.instagramHandle = updates.instagramHandle.trim();
-    if (updates.officialWebsiteUrl !== undefined) campus.officialWebsiteUrl = updates.officialWebsiteUrl.trim();
-    if (updates.primaryColor !== undefined) campus.primaryColor = updates.primaryColor.trim();
-    if (updates.accentColor !== undefined) campus.accentColor = updates.accentColor.trim();
-    if (updates.gradientFrom !== undefined) campus.gradientFrom = updates.gradientFrom.trim();
-    if (updates.gradientTo !== undefined) campus.gradientTo = updates.gradientTo.trim();
-    if (updates.classYear !== undefined) campus.classYear = updates.classYear.trim();
-    if (updates.tagline !== undefined) campus.tagline = updates.tagline.trim();
-    if (updates.communityEnabled !== undefined) {
-      const prev = campus.communityEnabled;
-      campus.communityEnabled = Boolean(updates.communityEnabled);
-      if (prev !== campus.communityEnabled) {
-        this.logAudit({
-          actorUid: 'admin',
-          actorEmail,
-          actorRole: 'Admin',
-          action: 'CAMPUS_STATUS_TOGGLED',
-          targetType: 'UNIVERSITY',
-          targetId: campus.id,
-          details: `Campus ${campus.name} status changed to ${campus.communityEnabled ? 'ACTIVE' : 'DEACTIVATED'}`
-        });
+      const slugTaken = sqliteStorage.getCampusBySlug(updates.slug);
+      if (slugTaken && slugTaken.id !== campus.id) {
+        throw new Error(`The slug "${updates.slug}" is already in use by another campus.`);
       }
     }
-    campus.updatedAt = new Date().toISOString();
 
-    writeJsonFile('campuses.json', this.campuses);
+    const updatedCampus: University = {
+      ...campus,
+      ...updates,
+      id: campus.id, // prevent ID change
+      updatedAt: new Date().toISOString()
+    };
+
+    sqliteStorage.upsertCampus(updatedCampus);
 
     this.logAudit({
       actorUid: 'admin',
@@ -511,16 +381,15 @@ class Database {
       action: 'CAMPUS_UPDATED',
       targetType: 'UNIVERSITY',
       targetId: campus.id,
-      details: `Updated details for campus "${campus.name}"`
+      details: `Updated details for campus "${updatedCampus.name}"`
     });
 
-    return campus;
+    return updatedCampus;
   }
 
   public deleteCampus(id: string, actorEmail: string): boolean {
-    const toRemove = this.campuses.find(c => c.id === id || c.slug === id);
-    this.campuses = this.campuses.filter(c => c.id !== id && c.slug !== id);
-    writeJsonFile('campuses.json', this.campuses);
+    const toRemove = sqliteStorage.getCampusById(id) || sqliteStorage.getCampusBySlug(id);
+    const success = sqliteStorage.deleteCampus(id);
 
     this.logAudit({
       actorUid: 'admin',
@@ -532,19 +401,18 @@ class Database {
       details: toRemove ? `Deleted campus "${toRemove.name}" (/ig/${toRemove.slug})` : `Deleted campus with id ${id}`
     });
 
-    return true;
+    return success;
   }
 
-  // Payments Management
+  // Payments Management (Stored in SQLite)
   public getPayments(): PaymentRecord[] {
-    this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
-    return this.payments;
+    return sqliteStorage.getAllPayments();
   }
 
   public recordPayment(record: Omit<PaymentRecord, 'id' | 'createdAt' | 'updatedAt'>): PaymentRecord {
-    this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
+    const payments = sqliteStorage.getAllPayments();
     // Idempotency check: prevent duplicate transaction references or idempotency keys
-    const existing = this.payments.find(p => 
+    const existing = payments.find(p => 
       (record.providerTransactionReference && p.providerTransactionReference === record.providerTransactionReference) ||
       (record.idempotencyKey && p.idempotencyKey === record.idempotencyKey)
     );
@@ -560,8 +428,7 @@ class Database {
       updatedAt: new Date().toISOString()
     };
 
-    this.payments.unshift(newPayment);
-    writeJsonFile('payments.json', this.payments);
+    sqliteStorage.recordPayment(newPayment);
 
     this.logAudit({
       actorUid: record.studentUid || 'system',
@@ -576,24 +443,25 @@ class Database {
   }
 
   public getTotalAmountPaid(): { usd: number } {
-    this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
-    const confirmed = this.payments.filter(p => p.status === 'CONFIRMED');
+    const payments = sqliteStorage.getAllPayments();
+    const confirmed = payments.filter(p => p.status === 'CONFIRMED');
     const usd = confirmed.reduce((acc, p) => acc + (p.amountUsd || 0), 0);
     return { usd };
   }
 
-  // Instagram Accounts
+  // Instagram Accounts (Stored in SQLite)
   public getInstagramAccounts(): InstagramAccount[] {
-    return this.instagramAccounts;
+    return sqliteStorage.getAllInstagramAccounts();
   }
 
   public disconnectInstagramAccount(id: string, actorEmail: string): InstagramAccount {
-    const acc = this.instagramAccounts.find(a => a.id === id);
+    const accounts = sqliteStorage.getAllInstagramAccounts();
+    const acc = accounts.find(a => a.id === id);
     if (!acc) {
       throw new Error('Instagram account not found.');
     }
     acc.status = 'DISCONNECTED';
-    writeJsonFile('instagram.json', this.instagramAccounts);
+    sqliteStorage.upsertInstagramAccount(acc);
 
     this.logAudit({
       actorUid: 'admin',
@@ -608,9 +476,9 @@ class Database {
     return acc;
   }
 
-  // Users
+  // Users (Stored in SQLite)
   public getRegisteredUsers(): User[] {
-    return this.registeredUsers;
+    return sqliteStorage.getAllUsers();
   }
 
   public registerUser(user: Partial<User>): User {
@@ -629,37 +497,25 @@ class Database {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    this.registeredUsers.unshift(newUser);
-    writeJsonFile('users.json', this.registeredUsers);
+    sqliteStorage.upsertUser(newUser);
     return newUser;
   }
 
-  // Submissions Management
+  // Submissions Management (Stored in SQLite)
   public getSubmissions(): FeaturedSubmission[] {
-    this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
-    return this.submissions;
+    return sqliteStorage.getAllSubmissions();
   }
 
   public getSubmissionById(id: string): FeaturedSubmission | undefined {
-    this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
-    return this.submissions.find(s => s.id === id);
+    return sqliteStorage.getSubmissionById(id);
   }
 
   public saveSubmission(submission: FeaturedSubmission): FeaturedSubmission {
-    this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
-    const idx = this.submissions.findIndex(s => s.id === submission.id);
-    if (idx !== -1) {
-      this.submissions[idx] = { ...this.submissions[idx], ...submission, updatedAt: new Date().toISOString() };
-    } else {
-      this.submissions.unshift(submission);
-    }
-    writeJsonFile('submissions.json', this.submissions);
-    return submission;
+    return sqliteStorage.saveSubmission(submission);
   }
 
   public updateSubmissionModeration(id: string, decision: 'APPROVE' | 'REJECT', reason: string | undefined, actorEmail: string): FeaturedSubmission {
-    this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
-    const sub = this.submissions.find(s => s.id === id);
+    const sub = sqliteStorage.getSubmissionById(id);
     if (!sub) throw new Error(`Submission "${id}" not found.`);
 
     if (decision === 'APPROVE') {
@@ -671,7 +527,7 @@ class Database {
       sub.publishingStatus = 'NOT_READY';
     }
     sub.updatedAt = new Date().toISOString();
-    writeJsonFile('submissions.json', this.submissions);
+    sqliteStorage.saveSubmission(sub);
 
     this.logAudit({
       actorUid: 'admin',
@@ -693,15 +549,14 @@ class Database {
       throw new Error('Meta Instagram Integration is NOT configured. Please configure your Meta App ID and Access Token in Admin Dashboard > Integrations & API Keys, or provide an official post URL.');
     }
 
-    this.submissions = readJsonFile<FeaturedSubmission[]>('submissions.json', []);
-    const sub = this.submissions.find(s => s.id === id);
+    const sub = sqliteStorage.getSubmissionById(id);
     if (!sub) throw new Error(`Submission "${id}" not found.`);
 
     sub.publishingStatus = 'PUBLISHED';
     sub.instagramPostUrl = postUrl;
     sub.publishedAt = new Date().toISOString();
     sub.updatedAt = new Date().toISOString();
-    writeJsonFile('submissions.json', this.submissions);
+    sqliteStorage.saveSubmission(sub);
 
     this.logAudit({
       actorUid: 'admin',
@@ -716,13 +571,13 @@ class Database {
     return sub;
   }
 
-  // Email Config & Logs
+  // Email Config & Logs (Stored in SQLite)
   public getEmailConfig(): EmailConfig {
     return this.emailConfig;
   }
 
   public getEmailLogs(): EmailDeliveryLog[] {
-    return this.emailLogs;
+    return sqliteStorage.getAllEmailLogs();
   }
 
   public logEmailDelivery(log: Omit<EmailDeliveryLog, 'id' | 'sentAt' | 'messageId'>): EmailDeliveryLog {
@@ -732,14 +587,13 @@ class Database {
       sentAt: new Date().toISOString(),
       messageId: `<msg_${Date.now()}@campusconnect.app>`
     };
-    this.emailLogs.unshift(entry);
-    writeJsonFile('email-logs.json', this.emailLogs);
+    sqliteStorage.insertEmailLog(entry);
     return entry;
   }
 
-  // Audit Logs
+  // Audit Logs (Stored in SQLite)
   public getAuditLogs(): AuditLogItem[] {
-    return this.auditLogs;
+    return sqliteStorage.getAllAuditLogs();
   }
 
   public logAudit(log: Omit<AuditLogItem, 'id' | 'timestamp'>): AuditLogItem {
@@ -748,53 +602,47 @@ class Database {
       id: 'log_' + crypto.randomBytes(6).toString('hex'),
       timestamp: new Date().toISOString()
     };
-    this.auditLogs.unshift(entry);
-    writeJsonFile('audit-logs.json', this.auditLogs);
+    sqliteStorage.insertAuditLog(entry);
     return entry;
   }
 
-
-  // Integrations Management
+  // Integrations Management (Stored in SQLite)
   public getIntegrations(): IntegrationConfig[] {
-    const data = readJsonFile<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
-    return data.integrations || [];
+    return sqliteStorage.getAllIntegrations();
   }
 
   public isIntegrationConfigured(id: string): boolean {
-    const integrations = this.getIntegrations();
-    const item = integrations.find(i => i.id === id);
-    if (!item || !item.configured) return false;
-
+    const integrations = sqliteStorage.getAllIntegrations();
+    const target = integrations.find(i => i.id === id);
+    if (!target) return false;
+    
+    // Check specific keys
     if (id === 'payment_stripe') {
-      const pub = (item.keys.publishableKey || '').trim();
-      const sec = (item.keys.secretKey || '').trim();
-      return pub.length > 5 && sec.length > 5;
+      const pub = target.keys.publishableKey || '';
+      const sec = target.keys.secretKey || '';
+      return pub.trim().length > 0 && sec.trim().length > 0;
     }
     if (id === 'email_transactional') {
-      const sender = (item.keys.senderEmail || '').trim();
-      const host = (item.keys.smtpHost || '').trim();
-      return sender.includes('@') && host.length > 0;
+      const sender = target.keys.senderEmail || '';
+      const host = target.keys.smtpHost || '';
+      return sender.trim().length > 0 && host.trim().length > 0;
     }
     if (id === 'meta_instagram') {
-      const token = (item.keys.accessToken || '').trim();
-      const appId = (item.keys.appId || '').trim();
-      return token.length > 10 && appId.length > 0;
+      const token = target.keys.accessToken || '';
+      const appId = target.keys.appId || '';
+      return token.trim().length > 0 && appId.trim().length > 0;
     }
-    return item.configured;
+    return Boolean(target.configured);
   }
 
   public updateIntegration(id: string, keys: Record<string, string>, actorEmail: string): IntegrationConfig {
-    const data = readJsonFile<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
-    const target = data.integrations.find(i => i.id === id);
+    const integrations = sqliteStorage.getAllIntegrations();
+    const target = integrations.find(i => i.id === id);
     if (!target) {
       throw new Error(`Integration "${id}" not found.`);
     }
 
-    // Merge incoming keys
-    const mergedKeys: Record<string, string> = { ...target.keys };
-    for (const [k, v] of Object.entries(keys)) {
-      mergedKeys[k] = (v ?? '').toString().trim();
-    }
+    const mergedKeys = { ...target.keys, ...keys };
     target.keys = mergedKeys;
 
     // Check whether the necessary keys are configured
@@ -831,7 +679,7 @@ class Database {
     target.status = isFullyConfigured ? 'CONNECTED' : 'NOT_CONFIGURED';
     target.lastVerifiedAt = isFullyConfigured ? new Date().toISOString() : null;
 
-    writeJsonFile('integrations.json', data);
+    sqliteStorage.upsertIntegration(target);
 
     this.logAudit({
       actorUid: 'admin',
@@ -849,8 +697,8 @@ class Database {
   }
 
   public testIntegration(id: string, actorEmail: string): { success: boolean; message: string; verifiedAt: string } {
-    const data = readJsonFile<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
-    const target = data.integrations.find(i => i.id === id);
+    const integrations = sqliteStorage.getAllIntegrations();
+    const target = integrations.find(i => i.id === id);
     if (!target) {
       throw new Error(`Integration "${id}" not found.`);
     }
@@ -878,7 +726,7 @@ class Database {
 
     target.status = 'CONNECTED';
     target.lastVerifiedAt = new Date().toISOString();
-    writeJsonFile('integrations.json', data);
+    sqliteStorage.upsertIntegration(target);
 
     this.logAudit({
       actorUid: 'admin',
@@ -897,19 +745,19 @@ class Database {
     };
   }
 
-  // Aggregated Overview Metrics
+  // Aggregated Overview Metrics from SQLite
   public getOverview() {
-    this.payments = readJsonFile<PaymentRecord[]>('payments.json', []);
-    this.campuses = readJsonFile<University[]>('campuses.json', []);
-    this.instagramAccounts = readJsonFile<InstagramAccount[]>('instagram.json', []);
-    this.registeredUsers = readJsonFile<User[]>('users.json', []);
-    this.emailLogs = readJsonFile<EmailDeliveryLog[]>('email-logs.json', []);
-    this.auditLogs = readJsonFile<AuditLogItem[]>('audit-logs.json', []);
+    const payments = sqliteStorage.getAllPayments();
+    const campuses = sqliteStorage.getAllCampuses();
+    const instagramAccounts = sqliteStorage.getAllInstagramAccounts();
+    const registeredUsers = sqliteStorage.getAllUsers();
+    const emailLogs = sqliteStorage.getAllEmailLogs();
+    const auditLogs = sqliteStorage.getAllAuditLogs();
+    const integrations = sqliteStorage.getAllIntegrations();
 
     const totals = this.getTotalAmountPaid();
-    const connectedAccounts = this.instagramAccounts.filter(a => a.status === 'CONNECTED');
-    const successfulPayments = this.payments.filter(p => p.status === 'CONFIRMED');
-    const integrationsData = readJsonFile<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
+    const connectedAccounts = instagramAccounts.filter(a => a.status === 'CONNECTED');
+    const successfulPayments = payments.filter(p => p.status === 'CONFIRMED');
 
     return {
       totalAmountPaid: {
@@ -917,11 +765,11 @@ class Database {
         formattedUsd: `$${totals.usd.toFixed(2)} USD`
       },
       connectedInstagramAccounts: connectedAccounts.length,
-      registeredUsers: this.registeredUsers.length,
+      registeredUsers: registeredUsers.length,
       successfulPayments: successfulPayments.length,
-      totalCampuses: this.campuses.length,
-      activeCampuses: this.campuses.filter(c => c.communityEnabled).length,
-      integrations: integrationsData.integrations.map(item => ({
+      totalCampuses: campuses.length,
+      activeCampuses: campuses.filter(c => c.communityEnabled).length,
+      integrations: integrations.map(item => ({
         id: item.id,
         name: item.name,
         category: item.category,
@@ -930,8 +778,8 @@ class Database {
         details: item.details,
         configured: item.configured
       })),
-      recentDeliveries: this.emailLogs.slice(0, 10),
-      recentAuditLogs: this.auditLogs.slice(0, 10)
+      recentDeliveries: emailLogs.slice(0, 10),
+      recentAuditLogs: auditLogs.slice(0, 10)
     };
   }
 }

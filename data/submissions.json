@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "universitySlug": "eku2031class",
+    "studentDisplayName": "Alex Morgan",
+    "instagramHandle": "@alexm_eku",
+    "major": "Computer Science",
+    "bio": "Excited to join EKU Class of 2031!",
+    "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80",
+    "id": "sub_1794068092943_ez51uu",
+    "studentUid": "std_1794068092943_n07s23",
+    "studentEmail": "",
+    "universityId": "uni_eku2031class",
+    "universityName": "Eastern Kentucky University (EKU)",
+    "paymentStatus": "PAYMENT_CONFIRMED",
+    "paymentAmount": 6,
+    "moderationStatus": "PENDING",
+    "publishingStatus": "NOT_READY",
+    "submittedAt": "2026-11-07T16:14:52.943Z",
+    "updatedAt": "2026-11-07T16:15:06.287Z",
+    "paymentReference": "ch_ftv1q8sqxxhe"
+  }
+]

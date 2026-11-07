@@ -39,12 +39,17 @@ export const CampusesDirectoryPage: React.FC = () => {
   const filteredCampuses = useMemo(() => {
     return universities.filter(u => {
       const q = searchQuery.toLowerCase().trim();
-      const matchesSearch = !q || 
-        u.name.toLowerCase().includes(q) ||
-        u.slug.toLowerCase().includes(q) ||
-        u.instagramHandle.toLowerCase().includes(q) ||
-        (u.location && u.location.toLowerCase().includes(q)) ||
-        (u.tagline && u.tagline.toLowerCase().includes(q));
+      if (!q) return selectedState === 'ALL' || (u.location && u.location.includes(selectedState));
+
+      const noSpecialQ = q.replace(/[^a-z0-9]/g, '');
+      const keywords = q.split(/[\s-_]+/).filter(w => w.length > 2 && w !== 'university' && w !== 'college' && w !== 'the');
+      const uText = `${u.name} ${u.slug} ${u.instagramHandle} ${u.location || ''} ${u.tagline || ''}`.toLowerCase();
+      const uNoSpecial = uText.replace(/[^a-z0-9]/g, '');
+
+      const matchesSearch = 
+        uText.includes(q) ||
+        uNoSpecial.includes(noSpecialQ) ||
+        (keywords.length > 0 && keywords.every(kw => uText.includes(kw)));
 
       const matchesState = selectedState === 'ALL' || (u.location && u.location.includes(selectedState));
 
