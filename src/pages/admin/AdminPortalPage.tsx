@@ -35,7 +35,9 @@ import {
   Moon,
   Key,
   Sliders,
-  Trash2
+  Trash2,
+  GraduationCap,
+  Users
 } from 'lucide-react';
 import { 
   collection, 
@@ -48,7 +50,7 @@ import {
   where 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { FeaturedSubmission, University, PaymentRecord, InstagramAccount, AuditLogItem } from '../../types';
+import { FeaturedSubmission, University, PaymentRecord, InstagramAccount, AuditLogItem, User as StudentUser } from '../../types';
 import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 import { 
   getAdminStatus, 
@@ -58,6 +60,7 @@ import {
   checkAdminSession, 
   isMasterAdminEmail, 
   isMasterPassword, 
+  fetchAdminUsers,
   fetchAdminOverview, 
   fetchAdminCampuses, 
   createAdminCampus, 
@@ -125,8 +128,17 @@ export const AdminPortalPage: React.FC = () => {
 
   // Active Dashboard Tab
   const [activeTab, setActiveTab] = useState<
-    'OVERVIEW' | 'CAMPUSES' | 'INTEGRATIONS' | 'INSTAGRAM' | 'PAYMENTS' | 'EMAIL' | 'SUBMISSIONS' | 'AUDIT_LOGS'
+    'OVERVIEW' | 'CAMPUSES' | 'STUDENTS' | 'INTEGRATIONS' | 'INSTAGRAM' | 'PAYMENTS' | 'EMAIL' | 'SUBMISSIONS' | 'AUDIT_LOGS'
   >('OVERVIEW');
+
+  // Global University Filter for centralized operations across all views
+  const [selectedAdminUniFilter, setSelectedAdminUniFilter] = useState<string>('ALL');
+
+  // Registered Students Management State
+  const [registeredStudents, setRegisteredStudents] = useState<StudentUser[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState<boolean>(false);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentStatusFilter, setStudentStatusFilter] = useState<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL');
 
   // Backend Live Data
   const [overviewData, setOverviewData] = useState<AdminOverviewData | null>(null);
@@ -253,6 +265,8 @@ export const AdminPortalPage: React.FC = () => {
   const [newCampusAccentColor, setNewCampusAccentColor] = useState('#0284C7');
   const [newCampusClassYear, setNewCampusClassYear] = useState('2031');
   const [newCampusTagline, setNewCampusTagline] = useState('');
+  const [newCampusInstagramUrl, setNewCampusInstagramUrl] = useState('');
+  const [newCampusOfficialWebsite, setNewCampusOfficialWebsite] = useState('');
   const [newCampusEnabled, setNewCampusEnabled] = useState(true);
   const [campusSaving, setCampusSaving] = useState(false);
   const [campusError, setCampusError] = useState<string | null>(null);
@@ -338,7 +352,7 @@ export const AdminPortalPage: React.FC = () => {
     isLoadingDataRef.current = true;
     setLoadingData(true);
     try {
-      const [ov, cp, py, ig, em, al, itg, subsData] = await Promise.all([
+      const [ov, cp, py, ig, em, al, itg, subsData, usersData] = await Promise.all([
         fetchAdminOverview().catch(() => null),
         fetchAdminCampuses().catch(() => ({ campuses: [] })),
         fetchAdminPayments().catch(() => ({ payments: [], totals: { usd: 0 } })),
@@ -346,7 +360,8 @@ export const AdminPortalPage: React.FC = () => {
         fetchAdminEmail().catch(() => null),
         fetchAdminAuditLogs().catch(() => ({ logs: [] })),
         fetchAdminIntegrations().catch(() => ({ integrations: [] })),
-        fetchAdminSubmissions().catch(() => ({ submissions: [] }))
+        fetchAdminSubmissions().catch(() => ({ submissions: [] })),
+        fetchAdminUsers().catch(() => ({ users: [] }))
       ]);
 
       if (ov) {
@@ -386,6 +401,35 @@ export const AdminPortalPage: React.FC = () => {
       if (subsData?.submissions && Array.isArray(subsData.submissions)) {
         setBackendSubmissions(subsData.submissions);
       }
+
+      // Build unified student registry from SQLite users + active submissions
+      const studentMap = new Map<string, StudentUser>();
+      if (Array.isArray(usersData?.users)) {
+        usersData.users.forEach(u => {
+          if (u && (u.id || u.email)) {
+            studentMap.set((u.id || u.email).toLowerCase(), u);
+          }
+        });
+      }
+      if (subsData?.submissions && Array.isArray(subsData.submissions)) {
+        subsData.submissions.forEach((s: any) => {
+          const key = (s.studentUid || s.studentEmail || s.id).toLowerCase();
+          if (!studentMap.has(key)) {
+            studentMap.set(key, {
+              id: s.studentUid || `stu_${s.id}`,
+              name: s.studentDisplayName || s.studentName || 'Student',
+              email: s.studentEmail || 'student@campus.edu',
+              role: 'Student',
+              universityId: s.universityId,
+              universityName: s.universityName,
+              universitySlug: s.universitySlug,
+              studentVerificationStatus: s.paymentStatus === 'PAID' ? 'VERIFIED' : 'UNVERIFIED',
+              createdAt: s.submittedAt || new Date().toISOString()
+            });
+          }
+        });
+      }
+      setRegisteredStudents(Array.from(studentMap.values()));
     } catch (err: any) {
       if (err?.status === 401 || err?.status === 403) {
         setIsAdminAuthenticated(false);
@@ -599,6 +643,10 @@ export const AdminPortalPage: React.FC = () => {
           name: newCampusName.trim(),
           slug: newCampusSlug.trim(),
           instagramHandle: newCampusHandle.trim(),
+          instagramProfileUrl: newCampusInstagramUrl.trim() || editingCampus.instagramProfileUrl || `https://instagram.com/${newCampusHandle.trim().replace(/^@/, '')}`,
+          officialWebsiteUrl: newCampusOfficialWebsite.trim() || editingCampus.officialWebsiteUrl,
+          websiteRoute: `/university/${newCampusSlug.trim()}`,
+          bioLink: `https://campusconnect.app/ig/${newCampusSlug.trim()}`,
           location: newCampusLocation.trim(),
           description: newCampusDesc.trim(),
           logoUrl: newCampusLogo.trim() || editingCampus.logoUrl,
@@ -636,8 +684,10 @@ export const AdminPortalPage: React.FC = () => {
           name: newCampusName.trim(),
           slug: newCampusSlug.trim(),
           instagramHandle: newCampusHandle.trim(),
-          instagramProfileUrl: `https://instagram.com/${cleanHandle}`,
-          officialWebsiteUrl: `https://${newCampusSlug.trim()}.edu`,
+          instagramProfileUrl: newCampusInstagramUrl.trim() || `https://instagram.com/${cleanHandle}`,
+          officialWebsiteUrl: newCampusOfficialWebsite.trim() || `https://${newCampusSlug.trim()}.edu`,
+          websiteRoute: `/university/${newCampusSlug.trim()}`,
+          bioLink: `https://campusconnect.app/ig/${newCampusSlug.trim()}`,
           location: newCampusLocation.trim(),
           description: newCampusDesc.trim(),
           logoUrl: newCampusLogo.trim() || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
@@ -693,6 +743,8 @@ export const AdminPortalPage: React.FC = () => {
     setNewCampusName('');
     setNewCampusSlug('');
     setNewCampusHandle('');
+    setNewCampusInstagramUrl('');
+    setNewCampusOfficialWebsite('');
     setNewCampusLocation('');
     setNewCampusDesc('');
     setNewCampusLogo('');
@@ -710,6 +762,8 @@ export const AdminPortalPage: React.FC = () => {
     setNewCampusName(c.name);
     setNewCampusSlug(c.slug);
     setNewCampusHandle(c.instagramHandle);
+    setNewCampusInstagramUrl(c.instagramProfileUrl || '');
+    setNewCampusOfficialWebsite(c.officialWebsiteUrl || '');
     setNewCampusLocation(c.location);
     setNewCampusDesc(c.description);
     setNewCampusLogo(c.logoUrl);
@@ -820,6 +874,15 @@ export const AdminPortalPage: React.FC = () => {
     addToast('URL Copied', `Canonical link copied: ${canonicalPath}`, 'success');
   };
 
+  // Generate & Copy Direct Instagram Bio Link
+  const handleCopyBioLink = (slug: string) => {
+    const bioUrl = `https://campusconnect.app/ig/${slug}`;
+    try {
+      navigator.clipboard.writeText(bioUrl);
+    } catch {}
+    addToast('Instagram Bio Link Copied', `Copied: ${bioUrl}. Ready to paste in Instagram Bio!`, 'success');
+  };
+
   // Send Test Email
   const handleSendTestEmail = async () => {
     setSendingTestEmail(true);
@@ -887,12 +950,45 @@ export const AdminPortalPage: React.FC = () => {
   const filteredSubmissions = useMemo(() => {
     return activeSubmissionsList.filter(sub => {
       if (!sub) return false;
+      if (selectedAdminUniFilter !== 'ALL') {
+        const matches = sub.universityId === selectedAdminUniFilter || 
+                        sub.universitySlug === selectedAdminUniFilter ||
+                        (sub.universityName && sub.universityName.toLowerCase().includes(selectedAdminUniFilter.toLowerCase()));
+        if (!matches) return false;
+      }
       if (submissionFilter === 'PENDING') return sub.moderationStatus === 'PENDING' || sub.moderationStatus === 'UNDER_REVIEW';
       if (submissionFilter === 'APPROVED') return sub.moderationStatus === 'APPROVED' && sub.publishingStatus !== 'PUBLISHED';
       if (submissionFilter === 'PUBLISHED') return sub.publishingStatus === 'PUBLISHED';
       return true;
     });
-  }, [activeSubmissionsList, submissionFilter]);
+  }, [activeSubmissionsList, submissionFilter, selectedAdminUniFilter]);
+
+  const filteredPayments = useMemo(() => {
+    const list = Array.isArray(payments) ? payments : [];
+    if (selectedAdminUniFilter === 'ALL') return list;
+    return list.filter(p => p.universityId === selectedAdminUniFilter || (p as any).universitySlug === selectedAdminUniFilter);
+  }, [payments, selectedAdminUniFilter]);
+
+  const filteredStudents = useMemo(() => {
+    const list = Array.isArray(registeredStudents) ? registeredStudents : [];
+    const q = (studentSearch || '').toLowerCase().trim();
+    return list.filter(stu => {
+      if (!stu) return false;
+      if (selectedAdminUniFilter !== 'ALL') {
+        const matchUni = stu.universityId === selectedAdminUniFilter || 
+                         stu.universitySlug === selectedAdminUniFilter || 
+                         (stu.universityName && stu.universityName.toLowerCase().includes(selectedAdminUniFilter.toLowerCase()));
+        if (!matchUni) return false;
+      }
+      if (studentStatusFilter === 'VERIFIED' && stu.studentVerificationStatus !== 'VERIFIED') return false;
+      if (studentStatusFilter === 'UNVERIFIED' && stu.studentVerificationStatus === 'VERIFIED') return false;
+      if (!q) return true;
+      const name = (stu.name || '').toLowerCase();
+      const email = (stu.email || '').toLowerCase();
+      const uni = (stu.universityName || '').toLowerCase();
+      return name.includes(q) || email.includes(q) || uni.includes(q);
+    });
+  }, [registeredStudents, studentSearch, studentStatusFilter, selectedAdminUniFilter]);
 
   const handleAdminReview = async (id: string, decision: 'APPROVE' | 'REJECT', reason?: string) => {
     try {
@@ -923,9 +1019,11 @@ export const AdminPortalPage: React.FC = () => {
         (campusStatusFilter === 'ACTIVE' && c.communityEnabled) ||
         (campusStatusFilter === 'INACTIVE' && !c.communityEnabled);
 
-      return matchesSearch && matchesFilter;
+      const matchesGlobal = selectedAdminUniFilter === 'ALL' || c.id === selectedAdminUniFilter || c.slug === selectedAdminUniFilter;
+
+      return matchesSearch && matchesFilter && matchesGlobal;
     });
-  }, [campuses, campusSearch, campusStatusFilter]);
+  }, [campuses, campusSearch, campusStatusFilter, selectedAdminUniFilter]);
 
   // Overview Tab Universities Filter
   const overviewCampuses = useMemo(() => {
@@ -1320,6 +1418,58 @@ export const AdminPortalPage: React.FC = () => {
 
       {/* 2. DASHBOARD BODY & TABS */}
       <div className="max-w-7xl mx-auto p-4 sm:p-8 space-y-6">
+
+        {/* Global University Filter Dropdown Bar */}
+        <div className={`p-3.5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs ${
+          isDarkMode ? 'bg-[#101726] border-slate-800' : 'bg-white border-slate-200'
+        }`}>
+          <div className="flex items-center gap-2.5">
+            <Filter className="w-4 h-4 text-blue-500 shrink-0" />
+            <div>
+              <div className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
+                <span>Global University Scope:</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  selectedAdminUniFilter === 'ALL'
+                    ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20'
+                    : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                }`}>
+                  {selectedAdminUniFilter === 'ALL' ? 'All Universities' : (campuses.find(c => c.id === selectedAdminUniFilter)?.name || 'Filtered Campus')}
+                </span>
+              </div>
+              <div className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                Controls active views across Submissions, Payments, Students & Instagram Publishing queues
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start md:self-auto w-full md:w-auto">
+            <select
+              value={selectedAdminUniFilter}
+              onChange={(e) => setSelectedAdminUniFilter(e.target.value)}
+              className={`w-full md:w-80 py-2 px-3 rounded-xl border text-xs font-semibold focus:outline-none focus:border-blue-500 cursor-pointer ${
+                isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
+              }`}
+            >
+              <option value="ALL">🌐 All Campuses ({(campuses || []).length} institutions)</option>
+              {(campuses || [])
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} — {u.location}
+                  </option>
+                ))}
+            </select>
+            {selectedAdminUniFilter !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedAdminUniFilter('ALL')}
+                className="px-3 py-2 rounded-xl text-xs font-bold bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors whitespace-nowrap cursor-pointer shrink-0"
+              >
+                Clear Scope
+              </button>
+            )}
+          </div>
+        </div>
         
         {/* Mobile Tab Dropdown & Tappable Touch Pills for Phones & Tablets */}
         <div className="md:hidden space-y-2.5">
@@ -1335,6 +1485,7 @@ export const AdminPortalPage: React.FC = () => {
           >
             <option value="OVERVIEW">📊 Admin Overview</option>
             <option value="CAMPUSES">🏛️ Campus Management ({(campuses || []).length})</option>
+            <option value="STUDENTS">🎓 Student Directory ({(registeredStudents || []).length})</option>
             <option value="INTEGRATIONS">🔑 Integrations & API Keys ({(integrationsList || []).filter(i => i?.configured).length}/{(integrationsList || []).length || 3})</option>
             <option value="INSTAGRAM">📸 Instagram Accounts ({(instagramAccounts || []).length})</option>
             <option value="PAYMENTS">💳 Payment Transactions ({(payments || []).length})</option>
@@ -1348,6 +1499,7 @@ export const AdminPortalPage: React.FC = () => {
             {[
               { id: 'OVERVIEW', label: 'Overview', icon: Layers },
               { id: 'CAMPUSES', label: `Campuses (${(campuses || []).length})`, icon: Building2 },
+              { id: 'STUDENTS', label: `Students (${(registeredStudents || []).length})`, icon: GraduationCap },
               { id: 'INSTAGRAM', label: 'Instagram', icon: Instagram },
               { id: 'PAYMENTS', label: 'Payments', icon: CreditCard },
               { id: 'INTEGRATIONS', label: 'Integrations', icon: Key },
@@ -1385,6 +1537,7 @@ export const AdminPortalPage: React.FC = () => {
           {[
             { id: 'OVERVIEW', label: 'Admin Overview', icon: Layers },
             { id: 'CAMPUSES', label: 'Campus Management', icon: Building2, count: (campuses || []).length },
+            { id: 'STUDENTS', label: 'Student Directory', icon: GraduationCap, count: (registeredStudents || []).length },
             { id: 'INTEGRATIONS', label: 'Integrations & API Keys', icon: Key, count: `${(integrationsList || []).filter(i => i?.configured).length}/${(integrationsList || []).length || 3}` },
             { id: 'INSTAGRAM', label: 'Instagram Accounts', icon: Instagram, count: (instagramAccounts || []).length },
             { id: 'PAYMENTS', label: 'Payment Transactions', icon: CreditCard, count: (payments || []).length },
@@ -2087,24 +2240,88 @@ export const AdminPortalPage: React.FC = () => {
                     <div>
                       <h3 className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{c.name}</h3>
                       <div className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{c.location}</div>
-                      <div className="text-xs text-blue-500 font-semibold mt-1">{c.instagramHandle}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <a 
+                          href={c.instagramProfileUrl || `https://instagram.com/${(c.instagramHandle || '').replace('@', '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-blue-500 hover:text-blue-600 font-semibold flex items-center gap-1"
+                        >
+                          <Instagram className="w-3 h-3" />
+                          <span>{c.instagramHandle}</span>
+                        </a>
+                        {c.officialWebsiteUrl && (
+                          <a 
+                            href={c.officialWebsiteUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`text-[10px] ${isDarkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'} flex items-center gap-0.5`}
+                          >
+                            <span>Official Web</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                      </div>
                     </div>
 
                     <p className={`text-xs line-clamp-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                       {c.description}
                     </p>
 
-                    {/* Canonical URL badge */}
-                    <div className={`p-2 rounded-lg border text-[11px] font-mono flex items-center justify-between ${
-                      isDarkMode ? 'bg-[#0A0E1A] border-slate-800/80 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                    {/* Operational Metrics Badges */}
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className={`p-2 rounded-xl border text-center ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-800/80' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Submissions</div>
+                        <div className={`text-sm font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                          {backendSubmissions.filter(s => s.universityId === c.id || s.universitySlug === c.slug).length}
+                        </div>
+                      </div>
+                      <div className={`p-2 rounded-xl border text-center ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-800/80' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Students</div>
+                        <div className={`text-sm font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                          {registeredStudents.filter(u => u.universityId === c.id || u.universitySlug === c.slug).length}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Instagram Bio Link Box with One-Click Copy */}
+                    <div className={`p-2.5 rounded-xl border space-y-1.5 ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-800/80 text-slate-300' : 'bg-blue-50/50 border-blue-200/80 text-slate-800'
                     }`}>
-                      <span className="truncate">/ig/{c.slug}</span>
+                      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                        <span>Instagram Bio Link</span>
+                        <span className="font-mono text-[9px] text-slate-400">Direct Entrypoint</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-1 text-[11px] font-mono">
+                        <span className="truncate">https://campusconnect.app/ig/{c.slug}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyBioLink(c.slug)}
+                          title="Copy Instagram Bio Link"
+                          className="px-2 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-sans text-[10px] font-bold flex items-center gap-1 cursor-pointer shrink-0 transition-colors shadow-2xs"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Copy Bio Link</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Website Route */}
+                    <div className={`px-2 py-1.5 rounded-lg border text-[11px] font-mono flex items-center justify-between ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-800/80 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+                    }`}>
+                      <span className="truncate">Route: /university/{c.slug}</span>
                       <button
-                        onClick={() => handleCopyCanonicalUrl(c.slug)}
-                        title="Copy canonical shareable URL"
-                        className="text-blue-500 hover:text-blue-600 ml-2 cursor-pointer shrink-0"
+                        type="button"
+                        onClick={() => navigateTo(`/university/${c.slug}`)}
+                        className="text-blue-500 hover:underline text-[10px] font-semibold cursor-pointer shrink-0 flex items-center gap-0.5"
                       >
-                        <Copy className="w-3.5 h-3.5" />
+                        <span>Visit Site</span>
+                        <ChevronRight className="w-3 h-3" />
                       </button>
                     </div>
                   </div>
@@ -2146,9 +2363,9 @@ export const AdminPortalPage: React.FC = () => {
 
                       <button
                         type="button"
-                        onClick={() => navigateTo(`/ig/${c.slug}`)}
+                        onClick={() => navigateTo(`/university/${c.slug}`)}
                         className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
-                        title={`Preview live campus hub /ig/${c.slug}`}
+                        title={`Preview university website /university/${c.slug}`}
                       >
                         <span>Preview</span>
                         <ExternalLink className="w-3 h-3" />
@@ -2198,6 +2415,216 @@ export const AdminPortalPage: React.FC = () => {
                 )}
               </div>
             ) : null}
+
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------------- */}
+        {/* TAB 2.5: STUDENT MANAGEMENT DIRECTORY                               */}
+        {/* ------------------------------------------------------------------- */}
+        {activeTab === 'STUDENTS' && (
+          <div className="space-y-6 animate-in fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className={`text-2xl font-black tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2.5`}>
+                  <GraduationCap className="w-7 h-7 text-blue-500" />
+                  <span>Student Directory & Registration Management</span>
+                </h2>
+                <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                  Centralized administrative record of all student accounts, associated university communities, and submission verification statuses.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {(['ALL', 'VERIFIED', 'UNVERIFIED'] as const).map(st => (
+                  <button
+                    key={st}
+                    onClick={() => setStudentStatusFilter(st)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                      studentStatusFilter === st
+                        ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                        : isDarkMode
+                          ? 'text-slate-400 hover:text-white bg-[#131B2E]'
+                          : 'text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Student Directory Summary Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className={`p-4 rounded-2xl border ${
+                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+              }`}>
+                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Total Registered</div>
+                <div className={`text-2xl font-black mt-1 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                  {(registeredStudents || []).length}
+                </div>
+                <div className="text-[11px] text-blue-500 font-medium mt-0.5">Across all institutions</div>
+              </div>
+
+              <div className={`p-4 rounded-2xl border ${
+                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+              }`}>
+                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Filtered in View</div>
+                <div className={`text-2xl font-black mt-1 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                  {filteredStudents.length}
+                </div>
+                <div className="text-[11px] text-slate-500 font-medium mt-0.5">Matching current filters</div>
+              </div>
+
+              <div className={`p-4 rounded-2xl border ${
+                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+              }`}>
+                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Verified Accounts</div>
+                <div className={`text-2xl font-black mt-1 text-emerald-500`}>
+                  {(registeredStudents || []).filter(s => s.studentVerificationStatus === 'VERIFIED').length}
+                </div>
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">Payment verified</div>
+              </div>
+
+              <div className={`p-4 rounded-2xl border ${
+                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+              }`}>
+                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Campuses Represented</div>
+                <div className={`text-2xl font-black mt-1 text-purple-500`}>
+                  {new Set((registeredStudents || []).map(s => s.universityId || s.universitySlug).filter(Boolean)).size}
+                </div>
+                <div className="text-[11px] text-purple-600 dark:text-purple-400 font-medium mt-0.5">Unique colleges</div>
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative w-full">
+              <Search className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+              <input
+                type="text"
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search students by name, email, or affiliated university..."
+                className={`w-full rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 border ${
+                  isDarkMode 
+                    ? 'bg-[#131B2E] border-slate-800 text-white placeholder-slate-500' 
+                    : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 shadow-2xs'
+                }`}
+              />
+            </div>
+
+            {/* Students Table */}
+            <div className={`rounded-2xl border overflow-hidden ${
+              isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+            }`}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className={`border-b text-[11px] font-bold uppercase tracking-wider ${
+                    isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
+                  }`}>
+                    <tr>
+                      <th className="py-3 px-4">Student</th>
+                      <th className="py-3 px-4">Email</th>
+                      <th className="py-3 px-4">University Community</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-center">Submissions</th>
+                      <th className="py-3 px-4">Registered Date</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${isDarkMode ? 'divide-slate-800 text-slate-200' : 'divide-slate-100 text-slate-800'}`}>
+                    {filteredStudents.map((stu) => {
+                      const studentSubs = backendSubmissions.filter(s => 
+                        s.studentUid === stu.id || 
+                        (s.studentEmail && s.studentEmail.toLowerCase() === stu.email?.toLowerCase())
+                      );
+                      const uni = campuses.find(c => c.id === stu.universityId || c.slug === stu.universitySlug);
+                      return (
+                        <tr key={stu.id} className={`transition-colors ${isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50/70'}`}>
+                          <td className="py-3 px-4 font-semibold">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white text-[11px] font-bold shadow-2xs shrink-0">
+                                {(stu.name || 'S').charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-bold">{stu.name || 'Student Account'}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{stu.id}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">{stu.email}</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1.5">
+                              <span 
+                                className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                style={{ backgroundColor: uni?.primaryColor || '#004B87' }} 
+                              />
+                              <span className="font-semibold">{stu.universityName || uni?.name || 'Unassigned'}</span>
+                              {stu.universitySlug && (
+                                <button
+                                  type="button"
+                                  onClick={() => navigateTo(`/university/${stu.universitySlug}`)}
+                                  className="text-blue-500 hover:text-blue-600 ml-1 cursor-pointer"
+                                  title="View university website"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${
+                              stu.studentVerificationStatus === 'VERIFIED'
+                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                            }`}>
+                              {stu.studentVerificationStatus === 'VERIFIED' && <CheckCircle2 className="w-3 h-3" />}
+                              <span>{stu.studentVerificationStatus || 'UNVERIFIED'}</span>
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold text-[11px]">
+                              {studentSubs.length}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px]">
+                            {safeFormatDateTime(stu.createdAt)}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveTab('SUBMISSIONS');
+                                if (stu.universityId) {
+                                  setSelectedAdminUniFilter(stu.universityId);
+                                }
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-[11px] cursor-pointer transition-colors shadow-2xs"
+                            >
+                              View Submissions
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {filteredStudents.length === 0 && (
+                <div className="p-8 text-center space-y-2">
+                  <GraduationCap className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
+                  <div className="text-sm font-bold text-slate-900 dark:text-white">
+                    {studentSearch ? 'No students match your search' : 'No registered students found'}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                    Students who sign up through university-specific websites or submit introduction photos will appear here automatically.
+                  </p>
+                </div>
+              )}
+            </div>
 
           </div>
         )}
@@ -3331,13 +3758,14 @@ export const AdminPortalPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={`block font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Official Instagram Handle
+                    Official Instagram Handle *
                   </label>
                   <input
                     type="text"
+                    required
                     value={newCampusHandle}
                     onChange={(e) => setNewCampusHandle(e.target.value)}
-                    placeholder="@lwc_classof2031"
+                    placeholder="@miamiuniversity2031class"
                     className={`w-full rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-blue-500 border ${
                       isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white'
                     }`}
@@ -3346,13 +3774,46 @@ export const AdminPortalPage: React.FC = () => {
 
                 <div>
                   <label className={`block font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                    Campus Location
+                    Campus Location *
                   </label>
                   <input
                     type="text"
+                    required
                     value={newCampusLocation}
                     onChange={(e) => setNewCampusLocation(e.target.value)}
-                    placeholder="Columbia, Kentucky, USA"
+                    placeholder="Oxford, Ohio, USA"
+                    className={`w-full rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-blue-500 border ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={`block font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Verified Instagram Profile URL
+                  </label>
+                  <input
+                    type="url"
+                    value={newCampusInstagramUrl}
+                    onChange={(e) => setNewCampusInstagramUrl(e.target.value)}
+                    placeholder="https://instagram.com/miamiuniversity2031class"
+                    className={`w-full rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-blue-500 border ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white'
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className={`block font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Official University Website
+                  </label>
+                  <input
+                    type="url"
+                    value={newCampusOfficialWebsite}
+                    onChange={(e) => setNewCampusOfficialWebsite(e.target.value)}
+                    placeholder="https://www.miamioh.edu"
                     className={`w-full rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-blue-500 border ${
                       isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white'
                     }`}

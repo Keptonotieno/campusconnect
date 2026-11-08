@@ -21,6 +21,8 @@ export interface University {
   gradientFrom?: string;
   gradientTo?: string;
   tagline?: string;
+  websiteRoute?: string;
+  bioLink?: string;
   createdAt: string;
   updatedAt: string;
 }

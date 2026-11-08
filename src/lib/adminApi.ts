@@ -1,4 +1,4 @@
-import { University, PaymentRecord, InstagramAccount, AuditLogItem, FeaturedSubmission } from '../types';
+import { University, PaymentRecord, InstagramAccount, AuditLogItem, FeaturedSubmission, User } from '../types';
 import { VERIFIED_UNIVERSITIES } from '../data/universities';
 
 export interface AdminAuthResponse {
@@ -244,6 +244,23 @@ function saveLocalPayments(payments: PaymentRecord[]) {
   } catch {}
 }
 
+function getLocalUsers(): User[] {
+  try {
+    const raw = localStorage.getItem('campusconnect_users');
+    if (raw) {
+      const parsed: User[] = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function saveLocalUsers(users: User[]) {
+  try {
+    localStorage.setItem('campusconnect_users', JSON.stringify(users));
+  } catch {}
+}
+
 function getLocalCampuses(): University[] {
   try {
     const raw = localStorage.getItem('campusconnect_campuses');
@@ -407,6 +424,10 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
     }
     if (cleanEndpoint.includes('submissions')) {
       return { submissions: getLocalSubmissions() } as unknown as T;
+    }
+    if (cleanEndpoint.includes('users')) {
+      const usrs = getLocalUsers();
+      return { users: usrs, count: usrs.length } as unknown as T;
     }
     if (cleanEndpoint.includes('overview')) {
       const campuses = getLocalCampuses();
@@ -1277,4 +1298,9 @@ export async function publishSubmissionToUniversityInstagram(
       body: JSON.stringify(data)
     }
   );
+}
+
+// 11. Student Management
+export async function fetchAdminUsers(): Promise<{ users: User[]; count: number }> {
+  return adminFetch<{ users: User[]; count: number }>('/api/admin/users');
 }

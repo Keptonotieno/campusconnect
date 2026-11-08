@@ -111,6 +111,8 @@ interface AppContextType {
   hideComment: (id: string) => void;
   deleteComment: (id: string) => void;
   sendMessage: (convId: string, text: string) => void;
+  clearCampusDraft: (slug: string) => void;
+  clearAllStudentDrafts: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -694,6 +696,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       VERIFIED_UNIVERSITIES[0];
 
     // Wipe any legacy/prior session records so new user finds 100% clean state
+    clearAllStudentDrafts();
     try {
       localStorage.removeItem('campusconnect_instagram_accounts');
       localStorage.removeItem('campusconnect_notifications');
@@ -775,11 +778,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
+  const clearCampusDraft = useCallback((slug: string) => {
+    try {
+      localStorage.removeItem(`campusconnect_draft_${slug}`);
+      const active = localStorage.getItem('campusconnect_active_draft');
+      if (active) {
+        const parsed = JSON.parse(active);
+        if (parsed?.universitySlug === slug) {
+          localStorage.removeItem('campusconnect_active_draft');
+        }
+      }
+    } catch {}
+  }, []);
+
+  const clearAllStudentDrafts = useCallback(() => {
+    try {
+      localStorage.removeItem('campusconnect_active_draft');
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('campusconnect_draft_')) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch {}
+  }, []);
+
   const logout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
     setAccounts([]);
     setNotifications([]);
+    clearAllStudentDrafts();
     try {
       localStorage.removeItem('campusconnect_auth');
       localStorage.removeItem('campusconnect_user');
@@ -1263,7 +1294,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     replyToComment: () => {},
     hideComment: () => {},
     deleteComment: () => {},
-    sendMessage: () => {}
+    sendMessage: () => {},
+    clearCampusDraft,
+    clearAllStudentDrafts
   }), [
     currentRoute,
     navigateTo,
@@ -1301,7 +1334,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedConversationId,
     activeAccount,
     selectedAccountId,
-    isOAuthModalOpen
+    isOAuthModalOpen,
+    clearCampusDraft,
+    clearAllStudentDrafts
   ]);
 
   return (

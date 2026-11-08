@@ -32,7 +32,8 @@ import {
   Layers,
   Sparkle,
   Zap,
-  Image as ImageIcon
+  Image as ImageIcon,
+  RotateCcw
 } from 'lucide-react';
 import { University, FeaturedSubmission } from '../../types';
 import { ACADEMIC_MAJORS } from '../../data/majors';
@@ -184,48 +185,116 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
 
   // Draft initialization and persistence tracking
   const [hasInitializedDraft, setHasInitializedDraft] = useState(false);
+  const [savedDraftForCampus, setSavedDraftForCampus] = useState<any | null>(null);
+  const [showDraftBanner, setShowDraftBanner] = useState(false);
 
-  // Restore draft on initial mount
+  // Check for existing draft on initial mount:
+  // - If URL has ?resume=true or ?step=..., explicitly restore draft
+  // - Otherwise, start with 100% clean inputs for new students, offering an optional resume prompt
   useEffect(() => {
     try {
       const draftKey = `campusconnect_draft_${university.slug}`;
-      const savedRaw = localStorage.getItem(draftKey) || localStorage.getItem('campusconnect_active_draft');
+      const savedRaw = localStorage.getItem(draftKey);
       if (savedRaw) {
         const saved = JSON.parse(savedRaw);
         if (saved && (saved.universitySlug === university.slug || saved.universityId === university.id)) {
-          if (Array.isArray(saved.photos) && saved.photos.length > 0) {
-            setPhotos(saved.photos);
-          }
-          if (saved.instagramHandle) setInstagramHandle(saved.instagramHandle);
-          if (saved.snapchatHandle) setSnapchatHandle(saved.snapchatHandle);
-          if (saved.tiktokHandle) setTiktokHandle(saved.tiktokHandle);
-          if (saved.selectedMajor) setSelectedMajor(saved.selectedMajor);
-          if (saved.bioText) setBioText(saved.bioText);
-          if (saved.classYear) setClassYearInput(saved.classYear);
-          if (saved.semester) setSemesterInput(saved.semester);
+          const hasContent = (Array.isArray(saved.photos) && saved.photos.length > 0) || 
+                             saved.instagramHandle || 
+                             saved.bioText || 
+                             saved.selectedMajor;
 
-          const urlParams = new URLSearchParams(window.location.search);
-          const isResume = urlParams.get('resume') === 'true';
-          const explicitStep = urlParams.get('step');
-          if (isResume || explicitStep) {
-            setPageView('BUILDER');
-            const stepNum = explicitStep ? parseInt(explicitStep) : (saved.builderStep || 1);
-            if (stepNum === 2 || stepNum === 3) {
-              setBuilderStep(stepNum as 2 | 3);
+          if (hasContent) {
+            setSavedDraftForCampus(saved);
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const isResume = urlParams.get('resume') === 'true';
+            const explicitStep = urlParams.get('step');
+
+            if (isResume || explicitStep) {
+              if (Array.isArray(saved.photos) && saved.photos.length > 0) {
+                setPhotos(saved.photos);
+              }
+              if (saved.instagramHandle) setInstagramHandle(saved.instagramHandle);
+              if (saved.snapchatHandle) setSnapchatHandle(saved.snapchatHandle);
+              if (saved.tiktokHandle) setTiktokHandle(saved.tiktokHandle);
+              if (saved.selectedMajor) setSelectedMajor(saved.selectedMajor);
+              if (saved.bioText) setBioText(saved.bioText);
+              if (saved.classYear) setClassYearInput(saved.classYear);
+              if (saved.semester) setSemesterInput(saved.semester);
+
+              setPageView('BUILDER');
+              const stepNum = explicitStep ? parseInt(explicitStep) : (saved.builderStep || 1);
+              if (stepNum === 2 || stepNum === 3) {
+                setBuilderStep(stepNum as 2 | 3);
+              } else {
+                setBuilderStep(1);
+              }
             } else {
-              setBuilderStep(1);
+              // New student visit defaults to pristine clean slate; draft banner gives choice to resume
+              setShowDraftBanner(true);
             }
           }
         }
       }
     } catch (e) {
-      console.warn('Failed to restore draft:', e);
+      console.warn('Failed to inspect draft:', e);
     } finally {
       setHasInitializedDraft(true);
     }
   }, [university.slug, university.id]);
 
-  // Auto-save draft whenever builder state changes
+  // Handler to explicitly resume a previous unfinished submission for this school
+  const handleResumeSavedDraft = () => {
+    if (!savedDraftForCampus) return;
+    if (Array.isArray(savedDraftForCampus.photos) && savedDraftForCampus.photos.length > 0) {
+      setPhotos(savedDraftForCampus.photos);
+    }
+    if (savedDraftForCampus.instagramHandle) setInstagramHandle(savedDraftForCampus.instagramHandle);
+    if (savedDraftForCampus.snapchatHandle) setSnapchatHandle(savedDraftForCampus.snapchatHandle);
+    if (savedDraftForCampus.tiktokHandle) setTiktokHandle(savedDraftForCampus.tiktokHandle);
+    if (savedDraftForCampus.selectedMajor) setSelectedMajor(savedDraftForCampus.selectedMajor);
+    if (savedDraftForCampus.bioText) setBioText(savedDraftForCampus.bioText);
+    if (savedDraftForCampus.classYear) setClassYearInput(savedDraftForCampus.classYear);
+    if (savedDraftForCampus.semester) setSemesterInput(savedDraftForCampus.semester);
+
+    const stepNum = savedDraftForCampus.builderStep || 1;
+    if (stepNum === 2 || stepNum === 3) {
+      setBuilderStep(stepNum as 2 | 3);
+    } else {
+      setBuilderStep(1);
+    }
+    setPageView('BUILDER');
+    setShowDraftBanner(false);
+    addToast('Draft Resumed', `Resumed your previous submission for ${university.name}.`, 'info');
+  };
+
+  // Handler to discard existing draft and start fresh from Step 1
+  const handleStartFreshSubmission = () => {
+    try {
+      localStorage.removeItem(`campusconnect_draft_${university.slug}`);
+      const activeRaw = localStorage.getItem('campusconnect_active_draft');
+      if (activeRaw) {
+        const parsed = JSON.parse(activeRaw);
+        if (parsed?.universitySlug === university.slug) {
+          localStorage.removeItem('campusconnect_active_draft');
+        }
+      }
+    } catch {}
+    setSavedDraftForCampus(null);
+    setShowDraftBanner(false);
+    setPhotos([]);
+    setInstagramHandle('');
+    setSnapchatHandle('');
+    setTiktokHandle('');
+    setSelectedMajor('');
+    setBioText('');
+    setClassYearInput('2031');
+    setSemesterInput('Fall 2026');
+    setBuilderStep(1);
+    addToast('Clean Slate', `Started fresh submission for ${university.name}.`, 'success');
+  };
+
+  // Auto-save draft strictly isolated to this university slug whenever builder state changes
   useEffect(() => {
     if (!hasInitializedDraft) return;
     if (builderStep === 'SUCCESS') return;
@@ -302,17 +371,9 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
           return true;
         }
       }
-      const activeRaw = localStorage.getItem('campusconnect_active_draft');
-      if (activeRaw) {
-        const parsed = JSON.parse(activeRaw);
-        if (parsed && (parsed.universitySlug === university.slug || parsed.universityId === university.id) && 
-            ((parsed.photos && parsed.photos.length > 0) || parsed.photosCount > 0)) {
-          return true;
-        }
-      }
     } catch {}
     return false;
-  }, [photos, university.slug, university.id]);
+  }, [photos, university.slug]);
 
   // Requirement: "this option of my submission is only shown when one had sign in before and start procedure of posting the photo to the university he/she wanted to be featured on..."
   const showMySubmissions = Boolean(hasSignedInBefore && hasStartedProcedure);
@@ -326,12 +387,22 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       setTiktokHandle('');
       setSelectedMajor('');
       setBioText('');
+      setClassYearInput('2031');
+      setSemesterInput('Fall 2026');
       setBuilderStep(1);
+      setSavedDraftForCampus(null);
+      setShowDraftBanner(false);
       try {
         localStorage.removeItem(`campusconnect_draft_${university.slug}`);
-        localStorage.removeItem('campusconnect_active_draft');
+        const activeRaw = localStorage.getItem('campusconnect_active_draft');
+        if (activeRaw) {
+          const parsed = JSON.parse(activeRaw);
+          if (parsed?.universitySlug === university.slug) {
+            localStorage.removeItem('campusconnect_active_draft');
+          }
+        }
       } catch {}
-      addToast('Draft Discarded', 'You can now start a fresh submission.', 'info');
+      addToast('Draft Discarded', 'You can now start a fresh submission from step 1.', 'info');
     }
   };
 
@@ -602,6 +673,8 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       setCompletedPaymentRef(txnRef);
       setCompletedSubId(submissionId);
       setBuilderStep('SUCCESS');
+      setSavedDraftForCampus(null);
+      setShowDraftBanner(false);
       try {
         localStorage.removeItem(`campusconnect_draft_${university.slug}`);
         localStorage.removeItem('campusconnect_active_draft');
@@ -776,6 +849,18 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
 
           {/* Right Action / Indicator */}
           <div className="flex items-center gap-2">
+            {(photos.length > 0 || instagramHandle || bioText || selectedMajor) && builderStep !== 'SUCCESS' && (
+              <button
+                type="button"
+                onClick={discardDraft}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 text-xs font-semibold transition-colors cursor-pointer"
+                title="Discard draft and start fresh"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Start Clean</span>
+              </button>
+            )}
+
             {builderStep === 1 ? (
               <button
                 type="button"
@@ -835,6 +920,42 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
         {/* ----------------------------------------------------------------- */}
         <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
           
+          {/* Optional In-Builder Draft Resume Prompt */}
+          {showDraftBanner && savedDraftForCampus && photos.length === 0 && (
+            <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-950 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                <span>
+                  Found an unfinished submission draft for <strong>{university.name}</strong> ({savedDraftForCampus.photosCount || savedDraftForCampus.photos?.length || 0} photo{savedDraftForCampus.photos?.length === 1 ? '' : 's'}).
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleResumeSavedDraft}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors cursor-pointer shadow-2xs"
+                >
+                  Resume Draft
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartFreshSubmission}
+                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-amber-100/60 text-amber-900 border border-amber-300 font-semibold transition-colors cursor-pointer"
+                >
+                  Start Clean
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDraftBanner(false)}
+                  className="p-1 rounded text-amber-600 hover:text-amber-900 cursor-pointer"
+                  title="Dismiss"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* =============================================================== */}
           {/* STEP 1: BUILD YOUR PROFILE (UPLOAD)                             */}
           {/* =============================================================== */}
@@ -1890,6 +2011,44 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
         <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-center text-xs font-bold border-b border-amber-600 flex items-center justify-center gap-2">
           <AlertCircle className="w-4 h-4 text-slate-950 shrink-0" />
           <span>Notice: This campus portal is currently paused by administration. Submissions will reopen soon.</span>
+        </div>
+      )}
+
+      {/* Optional Unfinished Draft Resume Banner for Returning Students */}
+      {showDraftBanner && savedDraftForCampus && (
+        <div className="bg-amber-50 border-b border-amber-200/90 px-4 py-2.5 text-xs text-amber-950 animate-in fade-in">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              <span>
+                You have an unfinished draft for <strong>{university.name}</strong> ({savedDraftForCampus.photosCount || savedDraftForCampus.photos?.length || 0} photo{savedDraftForCampus.photos?.length === 1 ? '' : 's'}).
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleResumeSavedDraft}
+                className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors cursor-pointer shadow-2xs text-xs"
+              >
+                Resume Draft
+              </button>
+              <button
+                type="button"
+                onClick={handleStartFreshSubmission}
+                className="px-3 py-1 rounded-lg bg-white hover:bg-amber-100/60 text-amber-900 border border-amber-300 font-semibold transition-colors cursor-pointer text-xs"
+              >
+                Start Clean
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDraftBanner(false)}
+                className="p-1 rounded text-amber-600 hover:text-amber-900 cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

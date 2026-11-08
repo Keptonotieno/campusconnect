@@ -33,7 +33,7 @@ export const SettingsPage: React.FC = () => {
 
   // Form states
   const [bizName, setBizName] = useState(business?.name || 'Campus Workspace');
-  const [email, setEmail] = useState(currentUser?.email || 'keptonotieno@gmail.com');
+  const [email, setEmail] = useState(currentUser?.email || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
 
   // Notifications preference toggles (Image 6)
@@ -137,7 +137,7 @@ export const SettingsPage: React.FC = () => {
                 </h2>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   Everything also appears under Notifications in your dashboard. Choose what to get by email to{' '}
-                  <strong className="text-slate-800 font-semibold">{currentUser?.email || 'keptonotieno@gmail.com'}</strong>.
+                  <strong className="text-slate-800 font-semibold">{currentUser?.email || 'your account email'}</strong>.
                 </p>
               </div>
 

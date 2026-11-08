@@ -27,7 +27,9 @@ import {
   Lock,
   MessageCircle,
   X,
-  FileText
+  FileText,
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 import { FeaturedSubmission, University } from '../../types';
 
@@ -79,11 +81,19 @@ export const StudentDashboardPage: React.FC = () => {
     }
   });
 
-  // Profile Form State
-  const [fullName, setFullName] = useState(currentUser?.name || 'software developers');
-  const [email, setEmail] = useState(currentUser?.email || 'keptonotieno@gmail.com');
-  const [phone, setPhone] = useState(currentUser?.phone || '+1 (555) 123-4567');
+  // Profile Form State - clean empty defaults for new students
+  const [fullName, setFullName] = useState(currentUser?.name || '');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.name) setFullName(currentUser.name);
+      if (currentUser.email) setEmail(currentUser.email);
+      if (currentUser.phone) setPhone(currentUser.phone);
+    }
+  }, [currentUser]);
 
   // Password Change Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -215,7 +225,7 @@ export const StudentDashboardPage: React.FC = () => {
   const handleSelectSchool = (uni: University) => {
     setSelectedUniversity(uni);
     setIsFindSchoolModalOpen(false);
-    navigateTo(`/ig/${uni.slug}?resume=true`);
+    navigateTo(`/ig/${uni.slug}`);
   };
 
   const handleContinueDraft = () => {
@@ -225,6 +235,23 @@ export const StudentDashboardPage: React.FC = () => {
       setIsNavLoading(false);
       navigateTo(`/ig/${activeDraft.universitySlug}?resume=true`);
     }, 250);
+  };
+
+  const handleDiscardDraft = () => {
+    if (activeDraft) {
+      try {
+        localStorage.removeItem(`campusconnect_draft_${activeDraft.universitySlug}`);
+        const activeRaw = localStorage.getItem('campusconnect_active_draft');
+        if (activeRaw) {
+          const parsed = JSON.parse(activeRaw);
+          if (parsed?.universitySlug === activeDraft.universitySlug) {
+            localStorage.removeItem('campusconnect_active_draft');
+          }
+        }
+      } catch {}
+      setActiveDraft(null);
+      addToast('Draft Removed', 'Draft has been removed so you can start completely fresh.', 'info');
+    }
   };
 
   const handleSaveProfile = (e: React.FormEvent) => {
@@ -270,8 +297,10 @@ export const StudentDashboardPage: React.FC = () => {
     addToast('Funds Added', `$${amount.toFixed(2)} added to your wallet balance.`, 'success');
   };
 
-  const userDisplayName = currentUser?.name || 'software';
-  const userInitials = 'SD'; // Matching Image 2 / Image 5 / Image 6: "SD"
+  const userDisplayName = currentUser?.name?.trim() || 'Student';
+  const userInitials = currentUser?.name
+    ? currentUser.name.split(' ').map(n => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'ST'
+    : 'ST';
 
   return (
     <div className="min-h-screen bg-[#FBFBFA] flex flex-col font-sans selection:bg-amber-600 selection:text-white">
@@ -574,12 +603,12 @@ export const StudentDashboardPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Action Buttons: Continue -> and Edit button */}
-                  <div className="flex items-center gap-2.5 pt-1">
+                  {/* Action Buttons: Continue ->, Edit button, and Discard button */}
+                  <div className="flex items-center gap-2 pt-1">
                     <button
                       type="button"
                       onClick={handleContinueDraft}
-                      className="flex-1 py-2.5 px-5 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#C28B38] hover:bg-[#A97529] active:scale-98 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <span>Continue</span>
                       <span className="text-xs font-bold">→</span>
@@ -592,6 +621,15 @@ export const StudentDashboardPage: React.FC = () => {
                       title="Edit draft submission"
                     >
                       <Edit2 className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDiscardDraft}
+                      className="p-2.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-500 hover:text-rose-700 transition-colors cursor-pointer"
+                      title="Discard draft and start fresh"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
 
@@ -975,6 +1013,7 @@ export const StudentDashboardPage: React.FC = () => {
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. Alex Morgan"
                   className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
                 />
               </div>
@@ -989,6 +1028,7 @@ export const StudentDashboardPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder="student@university.edu"
                   className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
                 />
               </div>

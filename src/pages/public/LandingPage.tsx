@@ -13,64 +13,12 @@ import {
   ChevronDown, 
   ChevronUp, 
   Sparkles, 
-  Instagram,
-  GraduationCap,
-  Building2,
-  Search
+  Instagram
 } from 'lucide-react';
-import { CampusEmblemBadge } from '../../components/common/CampusEmblemBadge';
 
 export const LandingPage: React.FC = () => {
-  const { navigateTo, isAuthenticated, universities, setEntryUniversityContext } = useApp();
+  const { navigateTo, isAuthenticated } = useApp();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [homeCampusSearch, setHomeCampusSearch] = useState('');
-  const [showAllCampuses, setShowAllCampuses] = useState(false);
-
-  const filteredHomeCampuses = React.useMemo(() => {
-    const q = homeCampusSearch.toLowerCase().trim();
-    if (!q) {
-      if (showAllCampuses) return universities;
-      const prioritySlugs = [
-        'miamiuniversity2031class',
-        'virginiatech2031class',
-        'westvirginiauniversity2031class',
-        'michiganuniversity2031class',
-        'purdueuniversity2031class',
-        'bostonuniversity2031class',
-        'stonybrookuniversity2031class',
-        'alabamauniversity2031class',
-        'illinoisstateuniversity2031class',
-        'universityofvirginia2031class',
-        'ohiostateuniversity2031class',
-        'pennstateuniversity2031class',
-        'universityofflorida2031class',
-        'universityoftexas2031class',
-        'universityofwisconsin2031class',
-        'uncchapelhill2031class',
-        'universityofwashington2031class',
-        'ucla2031class',
-        'universityofgeorgia2031class',
-        'indianau2031class',
-        'harvard',
-        'eku2031class'
-      ];
-      const sorted = [...universities].sort((a, b) => {
-        const aIdx = prioritySlugs.indexOf(a.slug);
-        const bIdx = prioritySlugs.indexOf(b.slug);
-        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-        if (aIdx !== -1) return -1;
-        if (bIdx !== -1) return 1;
-        return 0;
-      });
-      return sorted.slice(0, 20);
-    }
-    return universities.filter(u => 
-      u.name.toLowerCase().includes(q) ||
-      u.slug.toLowerCase().includes(q) ||
-      u.instagramHandle.toLowerCase().includes(q) ||
-      (u.location && u.location.toLowerCase().includes(q))
-    );
-  }, [universities, homeCampusSearch, showAllCampuses]);
 
   const faqs = [
     {
@@ -255,121 +203,6 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-
-      {/* FEATURED CAMPUS SPOTLIGHT WEBSITES */}
-      <section className="py-14 px-4 sm:px-6 max-w-7xl mx-auto w-full border-t border-slate-100">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-[#1D64EC] text-xs font-bold mb-2">
-              <GraduationCap className="w-3.5 h-3.5" />
-              <span>Campus Spotlight Network ({universities.length} Active Universities)</span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
-              Featured University Communities
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl">
-              Official Instagram class portals and student introduction networks. Choose your campus to see who is featured or submit your introduction photo.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 self-start sm:self-auto">
-            <button
-              onClick={() => navigateTo('/campuses')}
-              className="text-xs sm:text-sm font-bold text-[#1D64EC] hover:text-blue-700 flex items-center gap-1.5 cursor-pointer"
-            >
-              <span>Explore all directory</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Search Bar */}
-        <div className="mb-6 max-w-md">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={homeCampusSearch}
-              onChange={(e) => setHomeCampusSearch(e.target.value)}
-              placeholder="Find campus: Miami, Virginia Tech, Michigan, Purdue, Boston, Alabama..."
-              className="w-full pl-10 pr-16 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
-            />
-            {homeCampusSearch && (
-              <button
-                onClick={() => setHomeCampusSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-
-        {filteredHomeCampuses.length === 0 ? (
-          <div className="text-center py-10 bg-white rounded-2xl border border-slate-200 p-8 space-y-3">
-            <Building2 className="w-8 h-8 text-slate-300 mx-auto" />
-            <p className="text-sm font-bold text-slate-700">No campuses matched "{homeCampusSearch}"</p>
-            <button
-              onClick={() => setHomeCampusSearch('')}
-              className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
-            >
-              Reset search
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {filteredHomeCampuses.map((uni) => (
-              <div
-                key={uni.id}
-                onClick={() => {
-                  setEntryUniversityContext(uni);
-                  navigateTo(`/ig/${uni.slug}`);
-                }}
-                className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between cursor-pointer group"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <CampusEmblemBadge university={uni} size="sm" />
-
-                    <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full font-bold">
-                      {uni.instagramHandle}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-950 group-hover:text-[#1D64EC] transition-colors line-clamp-1">
-                      {uni.name}
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
-                      {uni.location}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span className="text-slate-500 font-medium">$6.00 feature</span>
-                  <span className="font-bold text-[#1D64EC] flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                    <span>Visit site</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!homeCampusSearch && (
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setShowAllCampuses(!showAllCampuses)}
-              className="text-xs font-bold px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-2"
-            >
-              <span>{showAllCampuses ? 'Show Fewer Universities' : `Show All ${universities.length} Universities`}</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllCampuses ? 'rotate-180' : ''}`} />
-            </button>
-          </div>
-        )}
-      </section>
 
       {/* 2. SECTION: EVERYTHING IN ONE DASHBOARD (Matching Screenshot 00:04 / 11:34) */}
       <section id="features" className="py-20 px-4 sm:px-6 max-w-7xl mx-auto w-full border-t border-slate-100">

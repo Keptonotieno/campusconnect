@@ -1,6 +1,7 @@
 import type { University } from '../types';
+import videoUniversitiesData from '../../data/video_universities.json';
 
-export const VERIFIED_UNIVERSITIES: University[] = [
+const INITIAL_VERIFIED_UNIVERSITIES: University[] = [
   {
     "id": "uni_miamiuniversity2031class",
     "name": "Miami University",
@@ -745,6 +746,11 @@ export const VERIFIED_UNIVERSITIES: University[] = [
     "createdAt": "2026-01-01T00:00:00Z",
     "updatedAt": "2026-10-18T00:00:00Z"
   }
+];
+
+export const VERIFIED_UNIVERSITIES: University[] = [
+  ...INITIAL_VERIFIED_UNIVERSITIES,
+  ...(videoUniversitiesData as unknown as University[])
 ];
 
 export const SLUG_ALIASES: Record<string, string> = {
