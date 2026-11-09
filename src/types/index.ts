@@ -18,6 +18,7 @@ export interface University {
   classYear?: string;
   primaryColor?: string;
   accentColor?: string;
+  secondaryColor?: string;
   gradientFrom?: string;
   gradientTo?: string;
   tagline?: string;
@@ -36,7 +37,7 @@ export interface User {
   email: string;
   phone?: string;
   role: UserRole;
-  avatarUrl: string;
+  avatarUrl?: string;
   universityId?: string;
   universityName?: string;
   universitySlug?: string;
@@ -162,7 +163,7 @@ export interface AuditLogItem {
   actorEmail?: string;
   actorRole: string;
   action: string;
-  targetType: 'SUBMISSION' | 'PAYMENT' | 'UNIVERSITY' | 'USER' | 'INSTAGRAM_POST';
+  targetType: 'SUBMISSION' | 'PAYMENT' | 'UNIVERSITY' | 'CAMPUS' | 'USER' | 'INSTAGRAM_POST' | 'SYSTEM';
   targetId: string;
   details?: string;
   timestamp: string;
@@ -280,4 +281,87 @@ export interface MediaAsset {
   type: 'IMAGE' | 'VIDEO';
   uploadedAt: string;
   tags: string[];
+}
+
+// -----------------------------------------------------------------------------
+// CENTRALIZED EMAIL INFRASTRUCTURE & UNIVERSITY EMAIL MANAGEMENT TYPES
+// -----------------------------------------------------------------------------
+
+export type UniversityEmailEventType =
+  | 'WELCOME'
+  | 'ACCOUNT_VERIFICATION'
+  | 'PASSWORD_RESET'
+  | 'PAYMENT_CONFIRMATION'
+  | 'PAYMENT_FAILURE'
+  | 'SUBMISSION_RECEIVED'
+  | 'SUBMISSION_APPROVED'
+  | 'SUBMISSION_REJECTED'
+  | 'INSTAGRAM_PUBLISHED';
+
+export interface UniversityEmailIdentity {
+  universityId: string;
+  universitySlug: string;
+  universityName: string;
+  senderName: string;
+  senderEmail: string;
+  replyTo?: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  signature?: string;
+  isEnabled: boolean;
+  updatedAt?: string;
+}
+
+export interface UniversityEmailTemplate {
+  id: string; // `${universityId}_${eventType}`
+  universityId: string;
+  eventType: UniversityEmailEventType;
+  subject: string;
+  preheader?: string;
+  headline?: string;
+  bodyMarkdown: string;
+  buttonText?: string;
+  buttonLink?: string;
+  footerText?: string;
+  isCustom: boolean;
+  updatedAt?: string;
+}
+
+export interface CentralEmailConfig {
+  provider: 'SMTP' | 'MAILGUN' | 'SENDGRID' | 'RESEND' | 'POSTMARK' | 'AWS_SES';
+  senderEmail: string;
+  senderName: string;
+  replyTo?: string;
+  senderDomain: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  smtpPass?: string;
+  apiKey?: string;
+  tlsEnabled: boolean;
+  status: 'OPERATIONAL' | 'DEGRADED' | 'OFFLINE';
+  sendingEnabled: boolean;
+  dailyLimit: number;
+  spfVerified: boolean;
+  dkimVerified: boolean;
+  dmarcVerified: boolean;
+  updatedAt?: string;
+}
+
+export interface DetailedEmailLog {
+  id: string;
+  universityId?: string;
+  universityName?: string;
+  recipient: string;
+  subject: string;
+  template: UniversityEmailEventType | string;
+  status: 'DELIVERED' | 'QUEUED' | 'BOUNCED' | 'FAILED';
+  sentAt: string;
+  messageId: string;
+  provider: string;
+  errorMessage?: string;
+  idempotencyKey?: string;
+  renderedHtml?: string;
+  metadata?: Record<string, any>;
 }

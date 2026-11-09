@@ -1,4 +1,16 @@
-import { University, PaymentRecord, InstagramAccount, AuditLogItem, FeaturedSubmission, User } from '../types';
+import { 
+  University, 
+  PaymentRecord, 
+  InstagramAccount, 
+  AuditLogItem, 
+  FeaturedSubmission, 
+  User,
+  CentralEmailConfig,
+  UniversityEmailIdentity,
+  UniversityEmailTemplate,
+  DetailedEmailLog,
+  UniversityEmailEventType
+} from '../types';
 import { VERIFIED_UNIVERSITIES } from '../data/universities';
 
 export interface AdminAuthResponse {
@@ -1304,3 +1316,84 @@ export async function publishSubmissionToUniversityInstagram(
 export async function fetchAdminUsers(): Promise<{ users: User[]; count: number }> {
   return adminFetch<{ users: User[]; count: number }>('/api/admin/users');
 }
+
+// -----------------------------------------------------------------------------
+// 12. CENTRALIZED EMAIL INFRASTRUCTURE & UNIVERSITY EMAIL MANAGEMENT
+// -----------------------------------------------------------------------------
+
+export async function fetchCentralEmailConfig(): Promise<{ config: CentralEmailConfig }> {
+  return adminFetch<{ config: CentralEmailConfig }>('/api/admin/email/config');
+}
+
+export async function updateCentralEmailConfig(updates: Partial<CentralEmailConfig>): Promise<{ success: boolean; config: CentralEmailConfig }> {
+  return adminFetch<{ success: boolean; config: CentralEmailConfig }>('/api/admin/email/config', {
+    method: 'POST',
+    body: JSON.stringify(updates)
+  });
+}
+
+export async function fetchAllUniversityEmailIdentities(): Promise<{ identities: UniversityEmailIdentity[] }> {
+  return adminFetch<{ identities: UniversityEmailIdentity[] }>('/api/admin/email/identities');
+}
+
+export async function fetchUniversityEmailIdentity(uniId: string): Promise<{ identity: UniversityEmailIdentity | null }> {
+  return adminFetch<{ identity: UniversityEmailIdentity | null }>(`/api/admin/email/identities/${encodeURIComponent(uniId)}`);
+}
+
+export async function saveUniversityEmailIdentity(
+  uniId: string, 
+  identity: Partial<UniversityEmailIdentity>
+): Promise<{ success: boolean; identity: UniversityEmailIdentity }> {
+  return adminFetch<{ success: boolean; identity: UniversityEmailIdentity }>(`/api/admin/email/identities/${encodeURIComponent(uniId)}`, {
+    method: 'POST',
+    body: JSON.stringify(identity)
+  });
+}
+
+export async function fetchUniversityEmailTemplates(uniId: string): Promise<{ templates: UniversityEmailTemplate[] }> {
+  return adminFetch<{ templates: UniversityEmailTemplate[] }>(`/api/admin/email/templates/${encodeURIComponent(uniId)}`);
+}
+
+export async function saveUniversityEmailTemplate(
+  uniId: string, 
+  template: Partial<UniversityEmailTemplate>
+): Promise<{ success: boolean; template: UniversityEmailTemplate }> {
+  return adminFetch<{ success: boolean; template: UniversityEmailTemplate }>(`/api/admin/email/templates/${encodeURIComponent(uniId)}`, {
+    method: 'POST',
+    body: JSON.stringify(template)
+  });
+}
+
+export async function resetUniversityEmailTemplate(
+  uniId: string, 
+  eventType: UniversityEmailEventType
+): Promise<{ success: boolean; message: string }> {
+  return adminFetch<{ success: boolean; message: string }>(`/api/admin/email/templates/${encodeURIComponent(uniId)}/${encodeURIComponent(eventType)}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function previewEmailTemplate(params: {
+  universityId?: string;
+  eventType: UniversityEmailEventType;
+  customTemplate?: Partial<UniversityEmailTemplate>;
+  sampleVariables?: Record<string, any>;
+}): Promise<{ success: boolean; subject: string; html: string }> {
+  return adminFetch<{ success: boolean; subject: string; html: string }>('/api/admin/email/preview-template', {
+    method: 'POST',
+    body: JSON.stringify(params)
+  });
+}
+
+export async function sendTestUniversityEmail(params: {
+  recipient?: string;
+  universityId?: string;
+  eventType?: UniversityEmailEventType;
+  customVariables?: Record<string, any>;
+}): Promise<{ success: boolean; message: string; log: DetailedEmailLog }> {
+  return adminFetch<{ success: boolean; message: string; log: DetailedEmailLog }>('/api/admin/email/test-template', {
+    method: 'POST',
+    body: JSON.stringify(params)
+  });
+}
+

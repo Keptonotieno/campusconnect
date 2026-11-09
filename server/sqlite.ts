@@ -7,9 +7,15 @@ import {
   InstagramAccount, 
   User, 
   AuditLogItem, 
-  FeaturedSubmission 
+  FeaturedSubmission,
+  CentralEmailConfig,
+  UniversityEmailIdentity,
+  UniversityEmailTemplate,
+  DetailedEmailLog,
+  UniversityEmailEventType
 } from '../src/types';
 import { VERIFIED_UNIVERSITIES } from '../src/data/universities';
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -29,28 +35,8 @@ export interface AdminSession {
   expiresAt: string;
 }
 
-export interface EmailDeliveryLog {
-  id: string;
-  recipient: string;
-  subject: string;
-  template: string;
-  status: 'DELIVERED' | 'QUEUED' | 'BOUNCED' | 'FAILED';
-  sentAt: string;
-  messageId: string;
-  provider: string;
-  metadata?: Record<string, any>;
-}
-
-export interface EmailConfig {
-  senderEmail: string;
-  senderName: string;
-  smtpHost: string;
-  smtpPort: number;
-  tlsEnabled: boolean;
-  dkimVerified: boolean;
-  spfVerified: boolean;
-  status: 'OPERATIONAL' | 'DEGRADED' | 'OFFLINE';
-}
+export type EmailDeliveryLog = DetailedEmailLog;
+export type EmailConfig = CentralEmailConfig;
 
 export interface IntegrationConfig {
   id: string;
@@ -235,6 +221,61 @@ export class SQLiteStorage {
         raw_json TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS central_email_config (
+        id TEXT PRIMARY KEY DEFAULT 'central',
+        provider TEXT NOT NULL DEFAULT 'SMTP',
+        sender_email TEXT NOT NULL DEFAULT 'notifications@campusconnect.app',
+        sender_name TEXT NOT NULL DEFAULT 'CampusConnect Global',
+        reply_to TEXT DEFAULT 'support@campusconnect.app',
+        sender_domain TEXT DEFAULT 'campusconnect.app',
+        smtp_host TEXT DEFAULT 'smtp.mailgun.org',
+        smtp_port INTEGER DEFAULT 587,
+        smtp_user TEXT,
+        smtp_pass TEXT,
+        api_key TEXT,
+        tls_enabled INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'OPERATIONAL',
+        sending_enabled INTEGER NOT NULL DEFAULT 1,
+        daily_limit INTEGER NOT NULL DEFAULT 5000,
+        spf_verified INTEGER NOT NULL DEFAULT 1,
+        dkim_verified INTEGER NOT NULL DEFAULT 1,
+        dmarc_verified INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL,
+        raw_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS university_email_identities (
+        university_id TEXT PRIMARY KEY,
+        university_slug TEXT NOT NULL,
+        university_name TEXT NOT NULL,
+        sender_name TEXT NOT NULL,
+        sender_email TEXT NOT NULL,
+        reply_to TEXT,
+        logo_url TEXT,
+        primary_color TEXT,
+        secondary_color TEXT,
+        signature TEXT,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL,
+        raw_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS university_email_templates (
+        id TEXT PRIMARY KEY,
+        university_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        preheader TEXT,
+        headline TEXT,
+        body_markdown TEXT NOT NULL,
+        button_text TEXT,
+        button_link TEXT,
+        footer_text TEXT,
+        is_custom INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL,
+        raw_json TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS system_settings (
         key TEXT PRIMARY KEY,
         value_json TEXT NOT NULL,
@@ -246,6 +287,8 @@ export class SQLiteStorage {
       CREATE INDEX IF NOT EXISTS idx_submissions_student ON submissions(student_uid);
       CREATE INDEX IF NOT EXISTS idx_payments_sub ON payments(submission_id);
       CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_email_identities_slug ON university_email_identities(university_slug);
+      CREATE INDEX IF NOT EXISTS idx_email_templates_uni ON university_email_templates(university_id);
     `);
   }
 
@@ -930,6 +973,218 @@ export class SQLiteStorage {
     );
     this.backupToJson('email-logs.json', this.getAllEmailLogs());
     return log;
+  }
+
+  // --- CENTRAL EMAIL CONFIGURATION ---
+  public getCentralEmailConfig(): CentralEmailConfig {
+    const row = this.db.prepare('SELECT raw_json FROM central_email_config WHERE id = ?').get('central') as { raw_json: string } | undefined;
+    if (row && row.raw_json) {
+      try {
+        return JSON.parse(row.raw_json) as CentralEmailConfig;
+      } catch {}
+    }
+
+    const defaultConfig: CentralEmailConfig = {
+      provider: 'SMTP',
+      senderEmail: 'notifications@campusconnect.app',
+      senderName: 'CampusConnect Global',
+      replyTo: 'support@campusconnect.app',
+      senderDomain: 'campusconnect.app',
+      smtpHost: 'smtp.mailgun.org',
+      smtpPort: 587,
+      smtpUser: 'postmaster@campusconnect.app',
+      smtpPass: '',
+      apiKey: '',
+      tlsEnabled: true,
+      status: 'OPERATIONAL',
+      sendingEnabled: true,
+      dailyLimit: 5000,
+      spfVerified: true,
+      dkimVerified: true,
+      dmarcVerified: true,
+      updatedAt: new Date().toISOString()
+    };
+
+    return this.saveCentralEmailConfig(defaultConfig);
+  }
+
+  public saveCentralEmailConfig(updates: Partial<CentralEmailConfig>): CentralEmailConfig {
+    const row = this.db.prepare('SELECT raw_json FROM central_email_config WHERE id = ?').get('central') as { raw_json: string } | undefined;
+    let base: CentralEmailConfig = {
+      provider: 'SMTP',
+      senderEmail: 'notifications@campusconnect.app',
+      senderName: 'CampusConnect Global',
+      replyTo: 'support@campusconnect.app',
+      senderDomain: 'campusconnect.app',
+      smtpHost: 'smtp.mailgun.org',
+      smtpPort: 587,
+      smtpUser: 'postmaster@campusconnect.app',
+      smtpPass: '',
+      apiKey: '',
+      tlsEnabled: true,
+      status: 'OPERATIONAL',
+      sendingEnabled: true,
+      dailyLimit: 5000,
+      spfVerified: true,
+      dkimVerified: true,
+      dmarcVerified: true,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (row && row.raw_json) {
+      try {
+        base = { ...base, ...JSON.parse(row.raw_json) };
+      } catch {}
+    }
+
+    const updated: CentralEmailConfig = {
+      ...base,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO central_email_config (
+        id, provider, sender_email, sender_name, reply_to, sender_domain,
+        smtp_host, smtp_port, smtp_user, smtp_pass, api_key, tls_enabled,
+        status, sending_enabled, daily_limit, spf_verified, dkim_verified,
+        dmarc_verified, updated_at, raw_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'central',
+      updated.provider,
+      updated.senderEmail,
+      updated.senderName,
+      updated.replyTo || null,
+      updated.senderDomain,
+      updated.smtpHost || null,
+      updated.smtpPort || 587,
+      updated.smtpUser || null,
+      updated.smtpPass || null,
+      updated.apiKey || null,
+      updated.tlsEnabled ? 1 : 0,
+      updated.status,
+      updated.sendingEnabled ? 1 : 0,
+      updated.dailyLimit || 5000,
+      updated.spfVerified ? 1 : 0,
+      updated.dkimVerified ? 1 : 0,
+      updated.dmarcVerified ? 1 : 0,
+      updated.updatedAt,
+      JSON.stringify(updated)
+    );
+
+    this.backupToJson('email-config.json', updated);
+    return updated;
+  }
+
+  // --- UNIVERSITY EMAIL IDENTITIES ---
+  public getAllUniversityEmailIdentities(): UniversityEmailIdentity[] {
+    const rows = this.db.prepare('SELECT raw_json FROM university_email_identities ORDER BY university_name ASC').all() as { raw_json: string }[];
+    return rows.map(r => JSON.parse(r.raw_json) as UniversityEmailIdentity);
+  }
+
+  public getUniversityEmailIdentity(uniId: string): UniversityEmailIdentity | null {
+    const row = this.db.prepare('SELECT raw_json FROM university_email_identities WHERE university_id = ? OR university_slug = ?').get(uniId, uniId) as { raw_json: string } | undefined;
+    if (row && row.raw_json) {
+      try {
+        return JSON.parse(row.raw_json) as UniversityEmailIdentity;
+      } catch {}
+    }
+    return null;
+  }
+
+  public saveUniversityEmailIdentity(identity: UniversityEmailIdentity): UniversityEmailIdentity {
+    const updated = {
+      ...identity,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO university_email_identities (
+        university_id, university_slug, university_name, sender_name,
+        sender_email, reply_to, logo_url, primary_color, secondary_color,
+        signature, is_enabled, updated_at, raw_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      updated.universityId,
+      updated.universitySlug,
+      updated.universityName,
+      updated.senderName,
+      updated.senderEmail,
+      updated.replyTo || null,
+      updated.logoUrl || null,
+      updated.primaryColor || null,
+      updated.secondaryColor || null,
+      updated.signature || null,
+      updated.isEnabled ? 1 : 0,
+      updated.updatedAt,
+      JSON.stringify(updated)
+    );
+
+    this.backupToJson('university-email-identities.json', this.getAllUniversityEmailIdentities());
+    return updated;
+  }
+
+  // --- UNIVERSITY EMAIL TEMPLATES ---
+  public getUniversityEmailTemplates(uniId: string): UniversityEmailTemplate[] {
+    const rows = this.db.prepare('SELECT raw_json FROM university_email_templates WHERE university_id = ?').all(uniId) as { raw_json: string }[];
+    return rows.map(r => JSON.parse(r.raw_json) as UniversityEmailTemplate);
+  }
+
+  public getUniversityEmailTemplate(uniId: string, eventType: string): UniversityEmailTemplate | null {
+    const id = `${uniId}_${eventType}`;
+    const row = this.db.prepare('SELECT raw_json FROM university_email_templates WHERE id = ?').get(id) as { raw_json: string } | undefined;
+    if (row && row.raw_json) {
+      try {
+        return JSON.parse(row.raw_json) as UniversityEmailTemplate;
+      } catch {}
+    }
+    return null;
+  }
+
+  public saveUniversityEmailTemplate(tpl: UniversityEmailTemplate): UniversityEmailTemplate {
+    const id = `${tpl.universityId}_${tpl.eventType}`;
+    const updated = {
+      ...tpl,
+      id,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO university_email_templates (
+        id, university_id, event_type, subject, preheader, headline,
+        body_markdown, button_text, button_link, footer_text, is_custom,
+        updated_at, raw_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      updated.universityId,
+      updated.eventType,
+      updated.subject,
+      updated.preheader || null,
+      updated.headline || null,
+      updated.bodyMarkdown,
+      updated.buttonText || null,
+      updated.buttonLink || null,
+      updated.footerText || null,
+      updated.isCustom ? 1 : 0,
+      updated.updatedAt,
+      JSON.stringify(updated)
+    );
+
+    return updated;
+  }
+
+  public deleteUniversityEmailTemplate(uniId: string, eventType: string): boolean {
+    const id = `${uniId}_${eventType}`;
+    this.db.prepare('DELETE FROM university_email_templates WHERE id = ?').run(id);
+    return true;
+  }
+
+  public findEmailLogByIdempotency(key: string): DetailedEmailLog | null {
+    if (!key) return null;
+    const all = this.getAllEmailLogs();
+    return all.find(l => l.idempotencyKey === key) || null;
   }
 
   // --- AUDIT LOGS ---

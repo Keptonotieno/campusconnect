@@ -50,7 +50,18 @@ import {
   where 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { FeaturedSubmission, University, PaymentRecord, InstagramAccount, AuditLogItem, User as StudentUser } from '../../types';
+import { 
+  FeaturedSubmission, 
+  University, 
+  PaymentRecord, 
+  InstagramAccount, 
+  AuditLogItem, 
+  User as StudentUser,
+  CentralEmailConfig,
+  DetailedEmailLog,
+  UniversityEmailIdentity,
+  UniversityEmailTemplate
+} from '../../types';
 import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 import { 
   getAdminStatus, 
@@ -82,8 +93,13 @@ import {
   IntegrationItem, 
   AdminOverviewData, 
   EmailConfigData, 
-  getStoredAdminToken 
+  getStoredAdminToken,
+  fetchCentralEmailConfig,
+  updateCentralEmailConfig
 } from '../../lib/adminApi';
+import { CentralEmailConfigModule } from '../../components/admin/CentralEmailConfigModule';
+import { EmailLogDetailModal } from '../../components/admin/EmailLogDetailModal';
+import { UniversityEmailManagerModal } from '../../components/admin/UniversityEmailManagerModal';
 
 export const AdminPortalPage: React.FC = () => {
   const { 
@@ -243,6 +259,9 @@ export const AdminPortalPage: React.FC = () => {
   const [paymentTotals, setPaymentTotals] = useState<{ usd: number }>({ usd: 0 });
   const [instagramAccounts, setInstagramAccounts] = useState<InstagramAccount[]>([]);
   const [emailData, setEmailData] = useState<EmailConfigData | null>(null);
+  const [centralEmailConfig, setCentralEmailConfig] = useState<CentralEmailConfig | null>(null);
+  const [selectedCampusForEmailModal, setSelectedCampusForEmailModal] = useState<University | null>(null);
+  const [selectedLogForInspectModal, setSelectedLogForInspectModal] = useState<DetailedEmailLog | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [loadingData, setLoadingData] = useState(false);
 
@@ -352,7 +371,7 @@ export const AdminPortalPage: React.FC = () => {
     isLoadingDataRef.current = true;
     setLoadingData(true);
     try {
-      const [ov, cp, py, ig, em, al, itg, subsData, usersData] = await Promise.all([
+      const [ov, cp, py, ig, em, al, itg, subsData, usersData, centralEmail] = await Promise.all([
         fetchAdminOverview().catch(() => null),
         fetchAdminCampuses().catch(() => ({ campuses: [] })),
         fetchAdminPayments().catch(() => ({ payments: [], totals: { usd: 0 } })),
@@ -361,11 +380,15 @@ export const AdminPortalPage: React.FC = () => {
         fetchAdminAuditLogs().catch(() => ({ logs: [] })),
         fetchAdminIntegrations().catch(() => ({ integrations: [] })),
         fetchAdminSubmissions().catch(() => ({ submissions: [] })),
-        fetchAdminUsers().catch(() => ({ users: [] }))
+        fetchAdminUsers().catch(() => ({ users: [] })),
+        fetchCentralEmailConfig().catch(() => null)
       ]);
 
       if (ov) {
         setOverviewData(ov);
+      }
+      if (centralEmail?.config) {
+        setCentralEmailConfig(centralEmail.config);
       }
       // Campuses are maintained as a dynamic live list fetched directly from Firestore
       if (Array.isArray(py?.payments)) {
@@ -423,6 +446,7 @@ export const AdminPortalPage: React.FC = () => {
               universityId: s.universityId,
               universityName: s.universityName,
               universitySlug: s.universitySlug,
+              avatarUrl: s.originalImagePath || s.watermarkedImagePath || '',
               studentVerificationStatus: s.paymentStatus === 'PAID' ? 'VERIFIED' : 'UNVERIFIED',
               createdAt: s.submittedAt || new Date().toISOString()
             });
@@ -2363,6 +2387,16 @@ export const AdminPortalPage: React.FC = () => {
 
                       <button
                         type="button"
+                        onClick={() => setSelectedCampusForEmailModal(c)}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-900/60 font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                        title={`Configure Email Identity & Templates for ${c.name}`}
+                      >
+                        <Mail className="w-3 h-3" />
+                        <span>Email</span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => navigateTo(`/university/${c.slug}`)}
                         className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1 shadow-2xs cursor-pointer"
                         title={`Preview university website /university/${c.slug}`}
@@ -2847,137 +2881,34 @@ export const AdminPortalPage: React.FC = () => {
         {/* ------------------------------------------------------------------- */}
         {/* TAB 5: EMAIL CONFIGURATION & DELIVERY LOGS                          */}
         {/* ------------------------------------------------------------------- */}
+        {/* ------------------------------------------------------------------- */}
+        {/* TAB 5: CENTRAL EMAIL INFRASTRUCTURE & UNIVERSITY EMAIL MANAGEMENT    */}
+        {/* ------------------------------------------------------------------- */}
         {activeTab === 'EMAIL' && (
-          <div className="space-y-6 animate-in fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className={`text-2xl font-black tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                  Email Configuration & Delivery Logs
-                </h2>
-                <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                  Transactional SMTP delivery status, DKIM/SPF verification, and delivery audit history.
-                </p>
-              </div>
-
-              {/* Send Test Email Input */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="email"
-                  value={testEmailRecipient}
-                  onChange={(e) => setTestEmailRecipient(e.target.value)}
-                  placeholder="Recipient (default admin email)"
-                  className={`border rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500 ${
-                    isDarkMode 
-                      ? 'bg-[#131B2E] border-slate-700 text-white placeholder-slate-500' 
-                      : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 shadow-2xs'
-                  }`}
-                />
-                <button
-                  onClick={handleSendTestEmail}
-                  disabled={sendingTestEmail}
-                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>{sendingTestEmail ? 'Sending...' : 'Send Test'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Warning banner if email is unconfigured */}
-            {!integrationsList.find(i => i.id === 'email_transactional')?.configured && (
-              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-                  <span>Transactional Email Service is not configured. Outbound emails are paused until SMTP credentials are provided.</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('INTEGRATIONS')}
-                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shrink-0 cursor-pointer shadow-2xs"
-                >
-                  Configure SMTP Keys →
-                </button>
-              </div>
-            )}
-
-            {/* SMTP Status Card */}
-            {emailData?.config && (
-              <div className={`p-6 rounded-2xl border grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs ${
-                isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs'
-              }`}>
-                <div>
-                  <div className={`font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Sender Address</div>
-                  <div className={`font-bold mt-1 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{emailData.config.senderEmail}</div>
-                </div>
-                <div>
-                  <div className={`font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>SMTP Gateway</div>
-                  <div className={`font-bold mt-1 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{emailData.config.smtpHost}:{emailData.config.smtpPort}</div>
-                </div>
-                <div>
-                  <div className={`font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Security & Handshake</div>
-                  <div className="font-bold text-emerald-600 dark:text-emerald-400 mt-1">TLS Active • DKIM/SPF Verified</div>
-                </div>
-                <div>
-                  <div className={`font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Provider Status</div>
-                  <div className="font-bold text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>{emailData.config.status}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Delivery Logs Table */}
-            <div className={`rounded-2xl border overflow-hidden shadow-xs ${
-              isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200'
-            }`}>
-              <div className={`p-4 border-b font-bold text-xs ${
-                isDarkMode ? 'border-slate-800 text-white' : 'border-slate-200 text-slate-900'
-              }`}>
-                Delivery Logs
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs min-w-[560px]">
-                  <thead className={`border-b font-semibold ${
-                    isDarkMode ? 'bg-[#0A0E1A] text-slate-400 border-slate-800' : 'bg-slate-50 text-slate-500 border-slate-200 uppercase text-[11px]'
-                  }`}>
-                    <tr>
-                      <th className="px-4 py-3">Message ID</th>
-                      <th className="px-4 py-3">Recipient</th>
-                      <th className="px-4 py-3">Subject</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Sent Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody className={`divide-y ${
-                    isDarkMode ? 'divide-slate-800 text-slate-300' : 'divide-slate-100 text-slate-700 bg-white'
-                  }`}>
-                    {(emailData?.logs || []).map(log => (
-                      <tr key={log.id} className={`transition-colors ${isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-blue-50/40'}`}>
-                        <td className="px-4 py-3 font-mono text-[11px] text-slate-400">{log.messageId}</td>
-                        <td className={`px-4 py-3 font-semibold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{log.recipient}</td>
-                        <td className={`px-4 py-3 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>{log.subject}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                            {log.status}
-                          </span>
-                        </td>
-                        <td className={`px-4 py-3 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(log.sentAt).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                    {(!emailData?.logs || emailData.logs.length === 0) && (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-xs">
-                          No delivery logs recorded yet. Outbound transactional emails will be logged here.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-          </div>
+          <CentralEmailConfigModule
+            initialConfig={centralEmailConfig || {
+              provider: 'SMTP',
+              senderEmail: 'notifications@campusconnect.app',
+              senderName: 'CampusConnect Global',
+              senderDomain: 'campusconnect.app',
+              replyTo: 'support@campusconnect.app',
+              smtpHost: 'smtp.mailgun.org',
+              smtpPort: 587,
+              tlsEnabled: true,
+              status: 'OPERATIONAL',
+              sendingEnabled: true,
+              dailyLimit: 5000,
+              spfVerified: true,
+              dkimVerified: true,
+              dmarcVerified: true
+            }}
+            logs={(emailData?.logs as DetailedEmailLog[]) || []}
+            campuses={campuses}
+            onRefresh={loadAllAdminData}
+            onInspectLog={(log) => setSelectedLogForInspectModal(log)}
+            onToast={(t, m, type) => addToast(t, m, type)}
+            isDarkMode={isDarkMode}
+          />
         )}
 
         {/* ------------------------------------------------------------------- */}
@@ -4570,6 +4501,25 @@ export const AdminPortalPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* University Email Manager Modal */}
+      {selectedCampusForEmailModal && (
+        <UniversityEmailManagerModal
+          university={selectedCampusForEmailModal}
+          onClose={() => setSelectedCampusForEmailModal(null)}
+          onSuccessToast={(title, message) => addToast(title, message, 'success')}
+          isDarkMode={isDarkMode}
+        />
+      )}
+
+      {/* Email Log Inspection Modal */}
+      {selectedLogForInspectModal && (
+        <EmailLogDetailModal
+          log={selectedLogForInspectModal}
+          onClose={() => setSelectedLogForInspectModal(null)}
+          isDarkMode={isDarkMode}
+        />
       )}
 
     </div>

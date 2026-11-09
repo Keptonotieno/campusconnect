@@ -1,0 +1,20 @@
+{
+  "provider": "SMTP",
+  "senderEmail": "notifications@campusconnect.app",
+  "senderName": "CampusConnect Global",
+  "replyTo": "support@campusconnect.app",
+  "senderDomain": "campusconnect.app",
+  "smtpHost": "smtp.mailgun.org",
+  "smtpPort": 587,
+  "smtpUser": "postmaster@campusconnect.app",
+  "smtpPass": "",
+  "apiKey": "",
+  "tlsEnabled": true,
+  "status": "OPERATIONAL",
+  "sendingEnabled": true,
+  "dailyLimit": 5000,
+  "spfVerified": true,
+  "dkimVerified": true,
+  "dmarcVerified": true,
+  "updatedAt": "2026-11-09T21:24:16.388Z"
+}

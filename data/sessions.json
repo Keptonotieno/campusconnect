@@ -1,19 +1,19 @@
 [
   {
-    "token": "sess_9a8a34f10837aba162dfea7fd5a985735e1fedec31806adec07dbcee32268525",
-    "adminId": "admin_user_keptonotieno",
-    "email": "keptonotieno@gmail.com",
+    "token": "sess_b67737eda618f41a886ded12dd73c51724fd9110f97f33ab222bca71f00f4461",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
     "role": "Admin",
-    "createdAt": "2026-11-05T20:39:42.079Z",
-    "expiresAt": "2026-11-06T00:39:42.079Z"
+    "createdAt": "2026-11-09T21:23:49.528Z",
+    "expiresAt": "2026-11-10T01:23:49.528Z"
   },
   {
-    "token": "sess_669a83a7baa21061f235369c63c4b41b8a70cdab6834173c52a41d412c4dae38",
+    "token": "sess_c9d5b9abbb14ad725e243520efb771760314c1dfb597ba9e4b333717c7082d31",
     "adminId": "admin_user_keptonotieno",
     "email": "keptonotieno@gmail.com",
     "role": "Admin",
-    "createdAt": "2026-11-05T20:40:28.628Z",
-    "expiresAt": "2026-11-06T00:40:28.628Z"
+    "createdAt": "2026-11-05T20:42:22.776Z",
+    "expiresAt": "2026-11-06T00:42:22.776Z"
   },
   {
     "token": "sess_11806d79873daf09aa1b23115c5c7680075735276b62c808142f01dd33e5efbf",
@@ -24,11 +24,19 @@
     "expiresAt": "2026-11-06T00:41:09.927Z"
   },
   {
-    "token": "sess_c9d5b9abbb14ad725e243520efb771760314c1dfb597ba9e4b333717c7082d31",
+    "token": "sess_669a83a7baa21061f235369c63c4b41b8a70cdab6834173c52a41d412c4dae38",
     "adminId": "admin_user_keptonotieno",
     "email": "keptonotieno@gmail.com",
     "role": "Admin",
-    "createdAt": "2026-11-05T20:42:22.776Z",
-    "expiresAt": "2026-11-06T00:42:22.776Z"
+    "createdAt": "2026-11-05T20:40:28.628Z",
+    "expiresAt": "2026-11-06T00:40:28.628Z"
+  },
+  {
+    "token": "sess_9a8a34f10837aba162dfea7fd5a985735e1fedec31806adec07dbcee32268525",
+    "adminId": "admin_user_keptonotieno",
+    "email": "keptonotieno@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-05T20:39:42.079Z",
+    "expiresAt": "2026-11-06T00:39:42.079Z"
   }
 ]

@@ -1,5 +1,16 @@
 [
   {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_edc0860c9e7b",
+    "timestamp": "2026-11-09T21:23:49.529Z"
+  },
+  {
     "actorUid": "std_1794068092943_n07s23",
     "actorRole": "System",
     "action": "PAYMENT_VERIFIED",
