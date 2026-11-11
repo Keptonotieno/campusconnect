@@ -247,7 +247,9 @@ export const AdminPortalPage: React.FC = () => {
         setLoadingCampuses(false);
       },
       (error) => {
-        console.warn('Firestore universities fetch/sync notice:', error);
+        if (error?.code !== 'unavailable' && error?.code !== 'failed-precondition') {
+          console.warn('Firestore universities fetch/sync notice:', error);
+        }
         setLoadingCampuses(false);
       }
     );
@@ -1513,7 +1515,7 @@ export const AdminPortalPage: React.FC = () => {
             <option value="INTEGRATIONS">🔑 Integrations & API Keys ({(integrationsList || []).filter(i => i?.configured).length}/{(integrationsList || []).length || 3})</option>
             <option value="INSTAGRAM">📸 Instagram Accounts ({(instagramAccounts || []).length})</option>
             <option value="PAYMENTS">💳 Payment Transactions ({(payments || []).length})</option>
-            <option value="EMAIL">✉️ Email & Delivery Logs</option>
+            <option value="EMAIL">✉️ Email Infrastructure & Templates</option>
             <option value="SUBMISSIONS">✨ Photo Moderation ({(submissions || []).length})</option>
             <option value="AUDIT_LOGS">🛡️ Security & Audit Logs ({(auditLogs || []).length})</option>
           </select>
@@ -1565,7 +1567,7 @@ export const AdminPortalPage: React.FC = () => {
             { id: 'INTEGRATIONS', label: 'Integrations & API Keys', icon: Key, count: `${(integrationsList || []).filter(i => i?.configured).length}/${(integrationsList || []).length || 3}` },
             { id: 'INSTAGRAM', label: 'Instagram Accounts', icon: Instagram, count: (instagramAccounts || []).length },
             { id: 'PAYMENTS', label: 'Payment Transactions', icon: CreditCard, count: (payments || []).length },
-            { id: 'EMAIL', label: 'Email & Delivery Logs', icon: Mail },
+            { id: 'EMAIL', label: 'Email Infrastructure & Templates', icon: Mail },
             { id: 'SUBMISSIONS', label: 'Photo Moderation', icon: Sparkles, count: (submissions || []).length },
             { id: 'AUDIT_LOGS', label: 'Security & Audit Logs', icon: ShieldCheck, count: (auditLogs || []).length },
           ].map(tab => {
@@ -2906,6 +2908,7 @@ export const AdminPortalPage: React.FC = () => {
             campuses={campuses}
             onRefresh={loadAllAdminData}
             onInspectLog={(log) => setSelectedLogForInspectModal(log)}
+            onOpenCampusEmail={(c) => setSelectedCampusForEmailModal(c)}
             onToast={(t, m, type) => addToast(t, m, type)}
             isDarkMode={isDarkMode}
           />

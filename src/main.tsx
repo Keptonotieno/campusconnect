@@ -29,7 +29,7 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // Verify connection to Firestore on boot as required by Firebase skill
-testConnection();
+testConnection().catch(() => {});
 
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary fallbackTitle="Application Error Recovery">

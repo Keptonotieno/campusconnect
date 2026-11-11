@@ -329,7 +329,7 @@ export interface UniversityEmailTemplate {
 }
 
 export interface CentralEmailConfig {
-  provider: 'SMTP' | 'MAILGUN' | 'SENDGRID' | 'RESEND' | 'POSTMARK' | 'AWS_SES';
+  provider: 'SMTP' | 'MAILGUN' | 'SENDGRID' | 'RESEND' | 'POSTMARK' | 'AWS_SES' | 'BREVO';
   senderEmail: string;
   senderName: string;
   replyTo?: string;

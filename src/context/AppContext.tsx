@@ -219,7 +219,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       },
       (err) => {
-        console.warn('AppContext Firestore sync notice:', err);
+        if (err?.code !== 'unavailable' && err?.code !== 'failed-precondition') {
+          console.warn('AppContext Firestore sync notice:', err);
+        }
       }
     );
 

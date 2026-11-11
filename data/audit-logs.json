@@ -7,6 +7,39 @@
     "targetType": "USER",
     "targetId": "admin_secondary_campusconnect",
     "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_cf1b42779e01",
+    "timestamp": "2026-11-11T08:59:20.569Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_ffedd6f2df3a",
+    "timestamp": "2026-11-11T08:59:00.395Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_334f9db61dcd",
+    "timestamp": "2026-11-11T08:58:51.400Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
     "id": "log_edc0860c9e7b",
     "timestamp": "2026-11-09T21:23:49.529Z"
   },

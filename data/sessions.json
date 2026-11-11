@@ -1,5 +1,29 @@
 [
   {
+    "token": "sess_7021d805963f9cbb268891795f4407fa957a7ba719ae7393d7bf3ae6df046c79",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-11T08:59:20.568Z",
+    "expiresAt": "2026-11-11T12:59:20.568Z"
+  },
+  {
+    "token": "sess_c994189cedcb4904a38c8cccf232c95a5a26396c7eaacf570c4cd81c1bbed94f",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-11T08:59:00.395Z",
+    "expiresAt": "2026-11-11T12:59:00.395Z"
+  },
+  {
+    "token": "sess_06fb8757ff90de9f1abb83d70bc53f788a20fc097ab78ecc3282e5da0569ddbf",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-11T08:58:51.399Z",
+    "expiresAt": "2026-11-11T12:58:51.399Z"
+  },
+  {
     "token": "sess_b67737eda618f41a886ded12dd73c51724fd9110f97f33ab222bca71f00f4461",
     "adminId": "admin_secondary_campusconnect",
     "email": "campusconnect@gmail.com",

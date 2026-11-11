@@ -27,7 +27,9 @@ import {
   CheckCircle2, 
   AlertCircle,
   Palette,
-  ExternalLink
+  ExternalLink,
+  Monitor,
+  Smartphone
 } from 'lucide-react';
 
 interface UniversityEmailManagerModalProps {
@@ -105,6 +107,7 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
   // Live preview state
   const [previewHtml, setPreviewHtml] = useState<string>('');
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewDevice, setPreviewDevice] = useState<'DESKTOP' | 'MOBILE'>('DESKTOP');
 
   // Test email state
   const [testEmailRecipient, setTestEmailRecipient] = useState<string>('admin@campusconnect.app');
@@ -745,17 +748,53 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                       <Eye className="w-3.5 h-3.5 text-blue-500" />
                       <span>Live Branded Preview</span>
                     </span>
-                    {loadingPreview && <span className="text-[10px] text-blue-500 font-normal">Rendering...</span>}
+
+                    <div className="flex items-center gap-2">
+                      {loadingPreview && <span className="text-[10px] text-blue-500 font-normal">Rendering...</span>}
+                      
+                      <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5 text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDevice('DESKTOP')}
+                          className={`px-2 py-0.5 rounded flex items-center gap-1 font-semibold cursor-pointer transition-colors ${
+                            previewDevice === 'DESKTOP'
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                          title="Desktop View"
+                        >
+                          <Monitor className="w-3 h-3" />
+                          <span>Desktop</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDevice('MOBILE')}
+                          className={`px-2 py-0.5 rounded flex items-center gap-1 font-semibold cursor-pointer transition-colors ${
+                            previewDevice === 'MOBILE'
+                              ? 'bg-blue-600 text-white shadow-2xs'
+                              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                          title="Mobile Phone View"
+                        >
+                          <Smartphone className="w-3 h-3" />
+                          <span>Mobile</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs bg-[#F1F5F9] p-3 flex justify-center min-h-[500px]">
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs bg-[#F1F5F9] dark:bg-slate-950 p-3 flex justify-center min-h-[500px]">
                     {previewHtml ? (
-                      <iframe
-                        title="Live Preview"
-                        srcDoc={previewHtml}
-                        className="w-full h-[520px] rounded-xl border border-slate-300 shadow-sm bg-white"
-                        sandbox="allow-same-origin"
-                      />
+                      <div className={`transition-all duration-300 flex justify-center ${
+                        previewDevice === 'MOBILE' ? 'w-[340px]' : 'w-full max-w-[560px]'
+                      }`}>
+                        <iframe
+                          title="Live Preview"
+                          srcDoc={previewHtml}
+                          className="w-full h-[520px] rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm bg-white"
+                          sandbox="allow-same-origin"
+                        />
+                      </div>
                     ) : (
                       <div className="flex items-center justify-center text-xs text-slate-400">
                         Generating live email preview...
