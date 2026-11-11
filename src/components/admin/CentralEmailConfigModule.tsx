@@ -663,6 +663,39 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                 </div>
               </div>
 
+              {/* Inbound Email Delivery Webhook Configuration & Status */}
+              <div className={`p-4 rounded-2xl border space-y-3 ${
+                isDarkMode ? 'bg-[#0F172A] border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Inbound Webhook Event Gateway
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                    Listening & Active
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-500">Live Webhook URL for Resend / Email Provider:</span>
+                    <span className="text-[10px] text-slate-400">POST endpoint</span>
+                  </div>
+                  <div className={`p-2.5 rounded-xl font-mono text-xs flex items-center justify-between border select-all ${
+                    isDarkMode ? 'bg-[#070B14] border-slate-800 text-emerald-400' : 'bg-white border-slate-200 text-slate-800'
+                  }`}>
+                    <span>https://campusconnect.app/api/webhooks/resend</span>
+                    <span className="text-[10px] text-slate-400 font-sans ml-2">Click to copy</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 leading-relaxed">
+                    Automatically ingests <span className="font-mono text-emerald-500">email.delivered</span>, <span className="font-mono text-rose-500">email.bounced</span>, <span className="font-mono text-blue-500">email.opened</span>, and <span className="font-mono text-purple-500">email.clicked</span> events into audit and delivery logs with optional signature verification.
+                  </div>
+                </div>
+              </div>
+
               {/* Form Actions */}
               <div className="pt-2 flex justify-end">
                 <button

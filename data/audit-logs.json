@@ -1,5 +1,59 @@
 [
   {
+    "actorUid": "admin",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "INTEGRATION_KEYS_CLEARED",
+    "targetType": "USER",
+    "targetId": "email_transactional",
+    "details": "Admin cleared credentials for Transactional Email Service. Status: NOT_CONFIGURED",
+    "id": "log_acc4fc2dcd16",
+    "timestamp": "2026-11-11T11:35:58.398Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "INTEGRATION_HANDSHAKE_VERIFIED",
+    "targetType": "USER",
+    "targetId": "email_transactional",
+    "details": "Verified handshake with external provider for Transactional Email Service: Resend Transactional Email API handshake verified (re_te...7890). Outbound email delivery pipeline and webhook ingestion endpoint (/api/webhooks/resend) operational.",
+    "id": "log_583ee1367de4",
+    "timestamp": "2026-11-11T11:35:35.604Z"
+  },
+  {
+    "actorUid": "admin",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "INTEGRATION_KEYS_CONFIGURED",
+    "targetType": "USER",
+    "targetId": "email_transactional",
+    "details": "Admin entered active API credentials for Transactional Email Service. Status: CONNECTED",
+    "id": "log_232dd767f15b",
+    "timestamp": "2026-11-11T11:35:27.594Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_957a46d0ae28",
+    "timestamp": "2026-11-11T11:35:08.174Z"
+  },
+  {
+    "actorUid": "email_webhook",
+    "actorRole": "System",
+    "action": "EMAIL_WEBHOOK_PROCESSED",
+    "targetType": "EMAIL",
+    "targetId": "re_msg_test_live_999",
+    "details": "Processed email.delivered webhook for message re_msg_test_live_999 (Recipient: student@university.edu, Status: DELIVERED)",
+    "id": "log_bf0953ab4f70",
+    "timestamp": "2026-11-11T11:35:02.891Z"
+  },
+  {
     "actorUid": "admin_secondary_campusconnect",
     "actorEmail": "campusconnect@gmail.com",
     "actorRole": "Admin",

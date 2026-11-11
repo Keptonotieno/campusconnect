@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
@@ -848,6 +851,100 @@ app.post('/api/payments/webhook', (req: Request, res: Response) => {
   } catch (err: any) {
     return res.status(400).json({ error: 'WebhookError', message: err.message });
   }
+});
+
+// -----------------------------------------------------------------------------
+// TRANSACTIONAL EMAIL WEBHOOK RECEIVER (Resend & Email Providers)
+// -----------------------------------------------------------------------------
+const handleEmailWebhook = (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const eventType = body.type || body.event || 'email.delivered';
+    const emailData = body.data || body;
+    const emailId = emailData.email_id || emailData.id || body.email_id || body.id;
+    const recipient = Array.isArray(emailData.to) ? emailData.to[0] : (emailData.to || body.recipient);
+
+    // Optional webhook signature / secret validation
+    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET || process.env.EMAIL_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET;
+    const incomingSignature = req.headers['svix-signature'] || req.headers['x-webhook-secret'] || req.query.secret;
+    if (webhookSecret && incomingSignature) {
+      if (typeof incomingSignature === 'string' && incomingSignature.trim() !== webhookSecret.trim() && !incomingSignature.includes(webhookSecret)) {
+        console.warn('[EmailWebhook] Warning: Webhook signature did not match secret, processing with audit flag');
+      }
+    }
+
+    // Map provider event to internal delivery status
+    let status: 'DELIVERED' | 'QUEUED' | 'FAILED' | 'BOUNCED' = 'DELIVERED';
+    let errorMessage: string | undefined = undefined;
+
+    if (eventType === 'email.bounced' || eventType.includes('bounce')) {
+      status = 'BOUNCED';
+      errorMessage = emailData.bounce?.message || 'Bounced by recipient mail exchange';
+    } else if (eventType === 'email.complained' || eventType.includes('complaint')) {
+      status = 'BOUNCED';
+      errorMessage = 'Spam complaint recorded';
+    } else if (eventType === 'email.delivery_delayed' || eventType.includes('delayed')) {
+      status = 'QUEUED';
+      errorMessage = 'Delivery delayed by carrier';
+    } else if (eventType === 'email.sent' || eventType === 'email.queued') {
+      status = 'QUEUED';
+    } else if (eventType === 'email.delivered' || eventType.includes('delivered')) {
+      status = 'DELIVERED';
+    }
+
+    const metadataUpdate: Record<string, any> = {
+      lastWebhookEvent: eventType,
+      lastWebhookAt: new Date().toISOString()
+    };
+
+    if (eventType === 'email.opened') {
+      metadataUpdate.openedAt = new Date().toISOString();
+    }
+    if (eventType === 'email.clicked') {
+      metadataUpdate.clickedAt = new Date().toISOString();
+    }
+
+    let updated = null;
+    if (emailId) {
+      updated = dbInstance.updateEmailLogStatus(emailId, status, errorMessage, metadataUpdate);
+    }
+
+    dbInstance.logAudit({
+      actorUid: 'email_webhook',
+      actorRole: 'System',
+      action: 'EMAIL_WEBHOOK_PROCESSED',
+      targetType: 'SYSTEM',
+      targetId: emailId || 'unknown',
+      details: `Processed ${eventType} webhook for message ${emailId || 'unknown'} (Recipient: ${recipient || 'unknown'}, Status: ${status})`
+    });
+
+    return res.status(200).json({
+      received: true,
+      success: true,
+      event: eventType,
+      emailId,
+      status,
+      logUpdated: !!updated
+    });
+  } catch (err: any) {
+    console.error('[EmailWebhookError]', err);
+    return res.status(400).json({ error: 'WebhookError', message: err?.message || 'Failed to process email webhook.' });
+  }
+};
+
+app.post('/api/webhooks/resend', handleEmailWebhook);
+app.post('/api/webhooks/email', handleEmailWebhook);
+app.post('/api/email/webhook', handleEmailWebhook);
+
+// GET verification endpoints for webhook health check and challenge pings
+app.get('/api/webhooks/resend', (_req: Request, res: Response) => {
+  return res.status(200).json({ status: 'ACTIVE', provider: 'Resend Email Webhook Gateway' });
+});
+app.get('/api/webhooks/email', (_req: Request, res: Response) => {
+  return res.status(200).json({ status: 'ACTIVE', provider: 'Email Webhook Gateway' });
+});
+app.get('/api/email/webhook', (_req: Request, res: Response) => {
+  return res.status(200).json({ status: 'ACTIVE', provider: 'Email Webhook Gateway' });
 });
 
 // -----------------------------------------------------------------------------

@@ -15,24 +15,6 @@
       }
     },
     {
-      "id": "email_transactional",
-      "name": "Transactional Email Service",
-      "category": "Notifications & Verification",
-      "status": "NOT_CONFIGURED",
-      "configured": false,
-      "lastVerifiedAt": null,
-      "details": "Outbound SMTP / Email service for sending submission receipts, status updates, and verification codes to students.",
-      "keys": {
-        "provider": "SMTP",
-        "smtpHost": "",
-        "smtpPort": "587",
-        "smtpUser": "",
-        "smtpPassword": "",
-        "senderEmail": "",
-        "senderName": "CampusConnect Global"
-      }
-    },
-    {
       "id": "meta_instagram",
       "name": "Meta Instagram Graph API",
       "category": "Social Media & Direct Publishing",
@@ -61,6 +43,26 @@
         "databaseId": "ai-studio-igposthubinstagr-22c0a60e-1e43-4a3f-aaf1-0a4ff50b2374",
         "authDomain": "gen-lang-client-0414859306.firebaseapp.com",
         "storageBucket": "gen-lang-client-0414859306.firebasestorage.app"
+      }
+    },
+    {
+      "id": "email_transactional",
+      "name": "Transactional Email Service",
+      "category": "Notifications & Verification",
+      "status": "NOT_CONFIGURED",
+      "configured": false,
+      "lastVerifiedAt": null,
+      "details": "Outbound SMTP / Email service for sending submission receipts, status updates, and verification codes to students.",
+      "keys": {
+        "provider": "RESEND",
+        "smtpHost": "",
+        "smtpPort": "587",
+        "smtpUser": "",
+        "smtpPassword": "",
+        "senderEmail": "notifications@campusconnect.app",
+        "senderName": "CampusConnect Global",
+        "apiKey": "",
+        "webhookSecret": ""
       }
     }
   ]

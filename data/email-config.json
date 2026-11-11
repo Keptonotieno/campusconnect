@@ -1,5 +1,5 @@
 {
-  "provider": "SMTP",
+  "provider": "RESEND",
   "senderEmail": "notifications@campusconnect.app",
   "senderName": "CampusConnect Global",
   "replyTo": "support@campusconnect.app",
@@ -8,7 +8,7 @@
   "smtpPort": 587,
   "smtpUser": "postmaster@campusconnect.app",
   "smtpPass": "",
-  "apiKey": "",
+  "apiKey": "re_test_dummy_key_1234567890",
   "tlsEnabled": true,
   "status": "OPERATIONAL",
   "sendingEnabled": true,
@@ -16,5 +16,5 @@
   "spfVerified": true,
   "dkimVerified": true,
   "dmarcVerified": true,
-  "updatedAt": "2026-11-09T21:24:16.388Z"
+  "updatedAt": "2026-11-11T11:35:27.593Z"
 }

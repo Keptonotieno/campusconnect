@@ -3233,11 +3233,11 @@ export const AdminPortalPage: React.FC = () => {
                         }`}
                       >
                         {isTesting && <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-500" />}
-                        <span>{email.configured ? 'Test SMTP Handshake' : 'Requires Keys to Test'}</span>
+                        <span>{email.configured ? 'Test Connection Handshake' : 'Requires Keys to Test'}</span>
                       </button>
 
                       <div className="text-[10px] text-center text-slate-400">
-                        Supports SendGrid, Mailgun, AWS SES, or custom SMTP
+                        Supports Resend API, Mailgun, SendGrid, AWS SES, or SMTP
                       </div>
                     </div>
 
@@ -4198,17 +4198,147 @@ export const AdminPortalPage: React.FC = () => {
               )}
 
               {editingIntegration.id === 'email_transactional' && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-4">
+                  <div>
+                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      Email Delivery Engine
+                    </label>
+                    <select
+                      value={integrationKeysForm['provider'] || (integrationKeysForm['apiKey'] ? 'RESEND' : 'SMTP')}
+                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, provider: e.target.value })}
+                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-medium focus:outline-none focus:border-blue-500 border ${
+                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      }`}
+                    >
+                      <option value="RESEND">Resend Modern Email API (Recommended)</option>
+                      <option value="SMTP">Custom SMTP Relay (Mailgun, SendGrid, SES, Postmark)</option>
+                    </select>
+                  </div>
+
+                  {(integrationKeysForm['provider'] === 'RESEND' || !integrationKeysForm['provider'] || Boolean(integrationKeysForm['apiKey'])) ? (
+                    <div className="space-y-3 p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className={`block text-xs font-bold text-emerald-600 dark:text-emerald-400`}>
+                            Resend API Key
+                          </label>
+                          <span className="text-[10px] text-slate-400 font-mono">Starts with re_</span>
+                        </div>
+                        <input
+                          type="password"
+                          value={integrationKeysForm['apiKey'] || integrationKeysForm['resendApiKey'] || ''}
+                          onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, apiKey: e.target.value, resendApiKey: e.target.value })}
+                          placeholder="re_••••••••••••••••••••••••"
+                          className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 border ${
+                            isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400'
+                          }`}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className={`block text-xs font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Webhook Signing Secret (Optional)
+                          </label>
+                          <span className="text-[10px] text-slate-400 font-mono">whsec_...</span>
+                        </div>
+                        <input
+                          type="password"
+                          value={integrationKeysForm['webhookSecret'] || integrationKeysForm['resendWebhookSecret'] || ''}
+                          onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, webhookSecret: e.target.value, resendWebhookSecret: e.target.value })}
+                          placeholder="whsec_••••••••••••••••••••"
+                          className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-emerald-500 border ${
+                            isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-900/50 border border-slate-800 text-[11px] space-y-1">
+                        <div className="text-slate-300 font-semibold flex items-center justify-between">
+                          <span>Inbound Webhook Endpoint:</span>
+                          <span className="text-emerald-400 font-mono text-[10px]">Active</span>
+                        </div>
+                        <div className="font-mono text-[10px] text-emerald-400 bg-slate-950 px-2 py-1 rounded select-all break-all">
+                          https://campusconnect.app/api/webhooks/resend
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Listens for email.delivered, email.bounced, email.opened, and email.clicked events.
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                            SMTP Host Relay
+                          </label>
+                          <input
+                            type="text"
+                            value={integrationKeysForm['smtpHost'] || ''}
+                            onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpHost: e.target.value })}
+                            placeholder="smtp.mailgun.org"
+                            className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                              isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                            SMTP Port
+                          </label>
+                          <input
+                            type="text"
+                            value={integrationKeysForm['smtpPort'] || ''}
+                            onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpPort: e.target.value })}
+                            placeholder="587"
+                            className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                              isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                          SMTP Username / Email
+                        </label>
+                        <input
+                          type="text"
+                          value={integrationKeysForm['smtpUser'] || ''}
+                          onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpUser: e.target.value })}
+                          placeholder="postmaster@campusconnect.app"
+                          className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                            isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                          SMTP Password / Secret Key
+                        </label>
+                        <input
+                          type="password"
+                          value={integrationKeysForm['smtpPassword'] || ''}
+                          onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpPassword: e.target.value })}
+                          placeholder="••••••••••••"
+                          className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
+                            isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 pt-1">
                     <div>
                       <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                        SMTP Host Relay
+                        Sender Email
                       </label>
                       <input
-                        type="text"
-                        value={integrationKeysForm['smtpHost'] || ''}
-                        onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpHost: e.target.value })}
-                        placeholder="smtp.mailgun.org"
+                        type="email"
+                        value={integrationKeysForm['senderEmail'] || ''}
+                        onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, senderEmail: e.target.value })}
+                        placeholder="notifications@campusconnect.app"
                         className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
                           isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
                         }`}
@@ -4216,60 +4346,18 @@ export const AdminPortalPage: React.FC = () => {
                     </div>
                     <div>
                       <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                        SMTP Port
+                        Sender Display Name
                       </label>
                       <input
                         type="text"
-                        value={integrationKeysForm['smtpPort'] || ''}
-                        onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpPort: e.target.value })}
-                        placeholder="587"
+                        value={integrationKeysForm['senderName'] || ''}
+                        onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, senderName: e.target.value })}
+                        placeholder="CampusConnect Global"
                         className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
                           isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
                         }`}
                       />
                     </div>
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      SMTP Username / Email
-                    </label>
-                    <input
-                      type="text"
-                      value={integrationKeysForm['smtpUser'] || ''}
-                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpUser: e.target.value })}
-                      placeholder="postmaster@campusconnect.app"
-                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      SMTP Password / Secret Key
-                    </label>
-                    <input
-                      type="password"
-                      value={integrationKeysForm['smtpPassword'] || ''}
-                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, smtpPassword: e.target.value })}
-                      placeholder="••••••••••••"
-                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Sender Email
-                    </label>
-                    <input
-                      type="email"
-                      value={integrationKeysForm['senderEmail'] || ''}
-                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, senderEmail: e.target.value })}
-                      placeholder="notifications@campusconnect.app"
-                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                      }`}
-                    />
                   </div>
                 </div>
               )}

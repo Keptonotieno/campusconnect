@@ -929,7 +929,43 @@ export async function loginAdmin(email: string, pass: string): Promise<AdminAuth
 
   const isValidMaster = isMasterAdminEmail(cleanEmail) && isMasterPassword(cleanPass);
 
-  // 1. Resilient Master Authentication (Immediate verification for master admin)
+  // 1. Authoritative Server-Side Authentication
+  try {
+    const res = await fetch('/api/auth/admin-login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, no-cache'
+      },
+      body: JSON.stringify({ email: cleanEmail, password: cleanPass })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.token) {
+        setStoredAdminToken(data.token);
+        try {
+          localStorage.setItem(TOKEN_KEY, data.token);
+          localStorage.setItem(USER_KEY, JSON.stringify(data.admin));
+          localStorage.setItem('campusconnect_auth', 'true');
+        } catch {}
+      }
+      return data;
+    }
+
+    if (res.status === 401 || res.status === 429) {
+      if (!isValidMaster) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Invalid administrator credentials.');
+      }
+    }
+  } catch (err: any) {
+    if (!isValidMaster && err.message && !err.message.includes('fetch') && !err.message.includes('NetworkError')) {
+      throw err;
+    }
+  }
+
+  // 2. Resilient Master Authentication (Fallback for master admin when offline or edge static preview)
   if (isValidMaster) {
     const sessionToken = 'adm_secure_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10);
     const adminUser = {
@@ -947,16 +983,6 @@ export async function loginAdmin(email: string, pass: string): Promise<AdminAuth
     } catch {}
 
     appendLocalAuditLog('ADMIN_LOGIN_SUCCESS', 'USER', adminUser.id, `Master administrator signed in (${cleanEmail})`);
-
-    // Asynchronously notify backend without blocking or throwing 405
-    fetch('/api/auth/admin-login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, no-cache'
-      },
-      body: JSON.stringify({ email: cleanEmail, password: cleanPass })
-    }).catch(() => {});
 
     return {
       success: true,

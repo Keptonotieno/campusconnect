@@ -594,6 +594,11 @@ export class SQLiteStorage {
     this.backupToJson('admins.json', this.getAdmins());
   }
 
+  public updateAdminPassword(id: string, hash: string, salt: string): void {
+    this.db.prepare('UPDATE admins SET password_hash = ?, salt = ? WHERE id = ?').run(hash, salt, id);
+    this.backupToJson('admins.json', this.getAdmins());
+  }
+
   // --- SESSIONS ---
   public createSession(session: AdminSession): AdminSession {
     this.db.prepare(`
@@ -919,16 +924,56 @@ export class SQLiteStorage {
   // --- INTEGRATIONS ---
   public getAllIntegrations(): IntegrationConfig[] {
     const rows = this.db.prepare('SELECT * FROM integrations').all() as any[];
-    return rows.map(r => ({
-      id: r.id,
-      name: r.name,
-      category: r.category || 'General',
-      status: r.status,
-      configured: Boolean(r.configured),
-      lastVerifiedAt: r.last_verified_at,
-      details: r.details || '',
-      keys: JSON.parse(r.keys_json || '{}')
-    }));
+    return rows.map(r => {
+      const keys = JSON.parse(r.keys_json || '{}');
+      let status = r.status;
+      let configured = Boolean(r.configured);
+
+      if (r.id === 'email_transactional') {
+        const resendKey = (
+          process.env.RESEND_API_KEY ||
+          process.env.RESEND_KEY ||
+          process.env.RESEND_APIKEY ||
+          process.env.RESEND_SECRET ||
+          process.env.RESEND_TOKEN ||
+          process.env.EMAIL_API_KEY ||
+          process.env.TRANSACTIONAL_EMAIL_API_KEY ||
+          keys.apiKey ||
+          keys.resendApiKey ||
+          ''
+        ).trim();
+
+        const webhookSec = (
+          process.env.RESEND_WEBHOOK_SECRET ||
+          process.env.EMAIL_WEBHOOK_SECRET ||
+          process.env.WEBHOOK_SECRET ||
+          keys.webhookSecret ||
+          keys.resendWebhookSecret ||
+          ''
+        ).trim();
+
+        if (resendKey) {
+          configured = true;
+          if (status === 'NOT_CONFIGURED') status = 'CONNECTED';
+          keys.apiKey = resendKey;
+          keys.provider = 'RESEND';
+        }
+        if (webhookSec) {
+          keys.webhookSecret = webhookSec;
+        }
+      }
+
+      return {
+        id: r.id,
+        name: r.name,
+        category: r.category || 'General',
+        status,
+        configured,
+        lastVerifiedAt: r.last_verified_at,
+        details: r.details || '',
+        keys
+      };
+    });
   }
 
   public upsertIntegration(config: IntegrationConfig): IntegrationConfig {
@@ -975,15 +1020,53 @@ export class SQLiteStorage {
     return log;
   }
 
+  public updateEmailLogStatus(
+    messageIdOrId: string, 
+    status: 'BOUNCED' | 'DELIVERED' | 'FAILED' | 'QUEUED', 
+    errorMessage?: string, 
+    extraMetadata?: Record<string, any>
+  ): EmailDeliveryLog | null {
+    if (!messageIdOrId) return null;
+    const cleanId = messageIdOrId.trim();
+
+    const row = this.db.prepare(`
+      SELECT id, raw_json FROM email_logs 
+      WHERE id = ? 
+         OR message_id = ? 
+         OR message_id LIKE ? 
+         OR message_id LIKE ?
+      LIMIT 1
+    `).get(cleanId, cleanId, `%${cleanId}%`, `<%${cleanId}%>`) as { id: string; raw_json: string } | undefined;
+
+    if (!row || !row.raw_json) return null;
+
+    try {
+      const parsed = JSON.parse(row.raw_json) as EmailDeliveryLog;
+      parsed.status = status;
+      if (errorMessage !== undefined) {
+        parsed.errorMessage = errorMessage;
+      }
+      if (extraMetadata) {
+        parsed.metadata = { ...(parsed.metadata || {}), ...extraMetadata };
+      }
+
+      const updatedJson = JSON.stringify(parsed);
+
+      this.db.prepare(`
+        UPDATE email_logs 
+        SET status = ?, raw_json = ? 
+        WHERE id = ?
+      `).run(status, updatedJson, row.id);
+
+      this.backupToJson('email-logs.json', this.getAllEmailLogs());
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
   // --- CENTRAL EMAIL CONFIGURATION ---
   public getCentralEmailConfig(): CentralEmailConfig {
-    const row = this.db.prepare('SELECT raw_json FROM central_email_config WHERE id = ?').get('central') as { raw_json: string } | undefined;
-    if (row && row.raw_json) {
-      try {
-        return JSON.parse(row.raw_json) as CentralEmailConfig;
-      } catch {}
-    }
-
     const defaultConfig: CentralEmailConfig = {
       provider: 'SMTP',
       senderEmail: 'notifications@campusconnect.app',
@@ -1005,7 +1088,48 @@ export class SQLiteStorage {
       updatedAt: new Date().toISOString()
     };
 
-    return this.saveCentralEmailConfig(defaultConfig);
+    let config: CentralEmailConfig;
+    const row = this.db.prepare('SELECT raw_json FROM central_email_config WHERE id = ?').get('central') as { raw_json: string } | undefined;
+    if (row && row.raw_json) {
+      try {
+        config = JSON.parse(row.raw_json) as CentralEmailConfig;
+      } catch {
+        config = { ...defaultConfig };
+      }
+    } else {
+      config = { ...defaultConfig };
+    }
+
+    // Auto-detect and overlay Resend API key or SMTP from environment secrets
+    const resendKey = (
+      process.env.RESEND_API_KEY ||
+      process.env.RESEND_KEY ||
+      process.env.RESEND_APIKEY ||
+      process.env.RESEND_SECRET ||
+      process.env.RESEND_TOKEN ||
+      process.env.EMAIL_API_KEY ||
+      process.env.TRANSACTIONAL_EMAIL_API_KEY ||
+      ''
+    ).trim();
+    if (resendKey) {
+      config.apiKey = resendKey;
+      config.provider = 'RESEND';
+      config.status = 'OPERATIONAL';
+    }
+    if (process.env.SMTP_HOST) {
+      config.smtpHost = process.env.SMTP_HOST;
+      if (process.env.SMTP_PORT) config.smtpPort = parseInt(process.env.SMTP_PORT, 10);
+      if (process.env.SMTP_USER) config.smtpUser = process.env.SMTP_USER;
+      if (process.env.SMTP_PASSWORD) config.smtpPass = process.env.SMTP_PASSWORD;
+    }
+    if (process.env.SMTP_SENDER_EMAIL) {
+      config.senderEmail = process.env.SMTP_SENDER_EMAIL;
+    }
+    if (process.env.SMTP_SENDER_NAME) {
+      config.senderName = process.env.SMTP_SENDER_NAME;
+    }
+
+    return config;
   }
 
   public saveCentralEmailConfig(updates: Partial<CentralEmailConfig>): CentralEmailConfig {

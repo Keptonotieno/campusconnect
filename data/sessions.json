@@ -1,5 +1,13 @@
 [
   {
+    "token": "sess_55d451a0d902faaf53da977fe33e94e3795255604371f5a1c11a32e0bde889c0",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-11T11:35:08.173Z",
+    "expiresAt": "2026-11-11T15:35:08.173Z"
+  },
+  {
     "token": "sess_7021d805963f9cbb268891795f4407fa957a7ba719ae7393d7bf3ae6df046c79",
     "adminId": "admin_secondary_campusconnect",
     "email": "campusconnect@gmail.com",
