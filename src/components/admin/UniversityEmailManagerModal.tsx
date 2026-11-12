@@ -261,7 +261,11 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
         universityId: university.id,
         eventType: selectedEventType
       });
-      onSuccessToast?.('Test Email Sent', res.message || `Dispatched to ${testEmailRecipient}`);
+      if (res.success === false) {
+        alert(`Email delivery notice: ${res.message || 'Delivery failed'}`);
+      } else {
+        onSuccessToast?.('Test Email Sent', res.message || `Dispatched to ${testEmailRecipient}`);
+      }
     } catch (err: any) {
       alert(`Failed to send test email: ${err.message}`);
     } finally {

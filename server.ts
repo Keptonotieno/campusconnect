@@ -4,6 +4,7 @@ dotenv.config();
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
+import crypto from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
 import { dbInstance } from './server/db';
 import type { AdminSession } from './server/db';
@@ -176,6 +177,75 @@ app.get('/api/auth/admin-me', requireAdminAuth, (req: AuthenticatedAdminRequest,
       expiresAt: req.admin?.expiresAt
     }
   });
+});
+
+// Password Reset Request (Dispatches branded PASSWORD_RESET email)
+app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+  try {
+    const { email, universityId } = req.body;
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'BadRequest', message: 'A valid email address is required.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const token = crypto.randomBytes(24).toString('hex');
+    const targetUni = universityId || 'general';
+
+    const log = await dbInstance.sendUniversityEmail({
+      universityId: targetUni,
+      eventType: 'PASSWORD_RESET',
+      recipient: cleanEmail,
+      variables: {
+        student_name: cleanEmail.split('@')[0],
+        student_email: cleanEmail,
+        continuation_link: `https://campusconnect.app/reset-password?token=${token}&email=${encodeURIComponent(cleanEmail)}`
+      },
+      idempotencyKey: `pwd_reset_${cleanEmail}_${Math.floor(Date.now() / 60000)}`
+    });
+
+    return res.json({
+      success: true,
+      message: `Password reset instructions have been dispatched to ${cleanEmail}.`,
+      logId: log.id
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'ResetFailed', message: err.message || 'Failed to dispatch password reset email.' });
+  }
+});
+
+// Student Email Verification Request (Dispatches branded ACCOUNT_VERIFICATION email)
+app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
+  try {
+    const { email, universityId, studentName } = req.body;
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'BadRequest', message: 'A valid email address is required.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const targetUni = universityId || 'general';
+
+    const log = await dbInstance.sendUniversityEmail({
+      universityId: targetUni,
+      eventType: 'ACCOUNT_VERIFICATION',
+      recipient: cleanEmail,
+      variables: {
+        student_name: studentName || cleanEmail.split('@')[0],
+        student_email: cleanEmail,
+        verification_code: code,
+        continuation_link: `https://campusconnect.app/verify?code=${code}&email=${encodeURIComponent(cleanEmail)}`
+      },
+      idempotencyKey: `email_verif_${cleanEmail}_${Math.floor(Date.now() / 60000)}`
+    });
+
+    return res.json({
+      success: true,
+      message: `Verification code dispatched to ${cleanEmail}.`,
+      logId: log.id
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'VerificationFailed', message: err.message || 'Failed to dispatch verification email.' });
+  }
 });
 
 // -----------------------------------------------------------------------------
@@ -438,9 +508,12 @@ app.post('/api/admin/email/test-template', requireAdminAuth, async (req: Authent
       }
     });
 
-    return res.json({
-      success: true,
-      message: `Test ${targetEvent} email sent to ${targetRecipient}`,
+    const isSuccess = log.status !== 'FAILED';
+    return res.status(isSuccess ? 200 : 400).json({
+      success: isSuccess,
+      message: isSuccess 
+        ? `Test ${targetEvent} email sent to ${targetRecipient}`
+        : `Email delivery failed: ${log.errorMessage || 'Unable to deliver message.'}`,
       log
     });
   } catch (err: any) {
@@ -474,9 +547,10 @@ app.post('/api/admin/email/send-test', requireAdminAuth, async (req: Authenticat
       }
     });
 
-    return res.json({
-      success: true,
-      message: `Test email sent to ${recipient}`,
+    const isSuccess = log.status !== 'FAILED';
+    return res.status(isSuccess ? 200 : 400).json({
+      success: isSuccess,
+      message: isSuccess ? `Test email sent to ${recipient}` : `Email delivery failed: ${log.errorMessage || 'Unable to deliver message.'}`,
       log
     });
   } catch (err: any) {

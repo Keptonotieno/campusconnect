@@ -773,7 +773,7 @@ class Database {
 
   public updateEmailLogStatus(
     messageIdOrId: string, 
-    status: string, 
+    status: 'BOUNCED' | 'DELIVERED' | 'FAILED' | 'QUEUED', 
     errorMessage?: string, 
     extraMetadata?: Record<string, any>
   ): EmailDeliveryLog | null {

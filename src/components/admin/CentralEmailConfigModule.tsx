@@ -163,7 +163,11 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
         universityId: testUniversityId,
         eventType: testEventType
       });
-      onToast('Test Email Dispatched', res.message, 'success');
+      if (res.success === false) {
+        onToast('Delivery Notice', res.message || 'Email delivery failed.', 'error');
+      } else {
+        onToast('Test Email Dispatched', res.message, 'success');
+      }
       onRefresh();
     } catch (err: any) {
       onToast('Dispatch Failed', err.message || 'Failed to dispatch test email.', 'error');

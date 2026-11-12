@@ -1,5 +1,37 @@
 [
   {
+    "token": "sess_b72d4bce156c0c9fb9411841db0f607cf7311dcf9014db2953da07b7374d4251",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-12T10:40:30.407Z",
+    "expiresAt": "2026-11-12T14:40:30.407Z"
+  },
+  {
+    "token": "sess_315c045230c64fd47e4969e0fca3f867b5ff89eaff656b7148f37801b2625e83",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-12T10:40:22.867Z",
+    "expiresAt": "2026-11-12T14:40:22.867Z"
+  },
+  {
+    "token": "sess_09783ed9046db5db6efab9eaf998782b55a755dce8de886bac98c98ba26c1b85",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-12T10:36:17.417Z",
+    "expiresAt": "2026-11-12T14:36:17.417Z"
+  },
+  {
+    "token": "sess_f3e301577f3ff797da19c4883b5aabf92a6e33ac71ca5db40709688c1bb66ba1",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-12T08:44:51.798Z",
+    "expiresAt": "2026-11-12T12:44:51.798Z"
+  },
+  {
     "token": "sess_55d451a0d902faaf53da977fe33e94e3795255604371f5a1c11a32e0bde889c0",
     "adminId": "admin_secondary_campusconnect",
     "email": "campusconnect@gmail.com",

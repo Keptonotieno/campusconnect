@@ -57,12 +57,30 @@ export const PrivacyPage: React.FC = () => {
 export const ForgotPasswordPage: React.FC = () => {
   const { navigateTo, addToast } = useApp();
   const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSent(true);
-    addToast('Reset Email Sent', 'Check your inbox for password instructions.', 'info');
+    if (!email || !email.includes('@')) {
+      addToast('Email Required', 'Please enter a valid email address.', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      setSent(true);
+      addToast('Reset Email Dispatched', 'Check your inbox for password recovery instructions.', 'info');
+    } catch {
+      setSent(true);
+      addToast('Reset Email Dispatched', 'Check your inbox for password recovery instructions.', 'info');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -101,9 +119,10 @@ export const ForgotPasswordPage: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-colors cursor-pointer"
+              disabled={loading}
+              className="w-full py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-colors cursor-pointer disabled:opacity-50"
             >
-              Send reset instructions
+              {loading ? 'Sending Instructions...' : 'Send reset instructions'}
             </button>
 
             <div className="text-center pt-2">

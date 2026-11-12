@@ -1,5 +1,69 @@
 [
   {
+    "actorUid": "email_webhook",
+    "actorRole": "System",
+    "action": "EMAIL_WEBHOOK_PROCESSED",
+    "targetType": "SYSTEM",
+    "targetId": "re_sys_audit_777",
+    "details": "Processed email.delivered webhook for message re_sys_audit_777 (Recipient: student@miamioh.edu, Status: DELIVERED)",
+    "id": "log_9406b3e6afd8",
+    "timestamp": "2026-11-12T10:40:30.493Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_3a420cc52ed1",
+    "timestamp": "2026-11-12T10:40:30.408Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_19b475558c52",
+    "timestamp": "2026-11-12T10:40:22.868Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_533e1806272b",
+    "timestamp": "2026-11-12T10:36:17.418Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_400d7f7a2f64",
+    "timestamp": "2026-11-12T08:44:51.799Z"
+  },
+  {
+    "actorUid": "email_webhook",
+    "actorRole": "System",
+    "action": "EMAIL_WEBHOOK_PROCESSED",
+    "targetType": "SYSTEM",
+    "targetId": "re_verify_msg_444",
+    "details": "Processed email.delivered webhook for message re_verify_msg_444 (Recipient: student@virginia.edu, Status: DELIVERED)",
+    "id": "log_c04da9691314",
+    "timestamp": "2026-11-12T08:44:51.776Z"
+  },
+  {
     "actorUid": "admin",
     "actorEmail": "campusconnect@gmail.com",
     "actorRole": "Admin",

@@ -560,12 +560,19 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
         ? `"${identity.senderName}" <${identity.senderEmail}>`
         : `"${identity.senderName}" <onboarding@resend.dev>`;
 
+      const plainText = renderedHtml
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
       const resendPayload = {
         from: verifiedSender,
         to: [params.recipient],
         reply_to: identity.replyTo || centralConfig.replyTo || identity.senderEmail,
         subject: finalSubject,
-        html: renderedHtml
+        html: renderedHtml,
+        text: plainText
       };
 
       console.log(`[EmailEngine] Dispatched real transactional email via Resend API to ${params.recipient}...`);
@@ -600,16 +607,17 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
       if (res.ok && resData?.id) {
         messageId = resData.id;
         deliveryStatus = 'DELIVERED';
+        deliveryError = undefined;
         console.log(`[EmailEngine] Successfully dispatched via Resend API. ID: ${messageId}`);
       } else {
         const errorMsg = resData?.message || resData?.error || `Resend API returned status ${res.status}`;
-        console.warn(`[EmailEngine] Resend API dispatch notice:`, errorMsg);
-        deliveryStatus = 'DELIVERED';
+        console.warn(`[EmailEngine] Resend API dispatch error:`, errorMsg);
+        deliveryStatus = 'FAILED';
         deliveryError = errorMsg;
       }
     } catch (err: any) {
       console.warn(`[EmailEngine] Resend API error:`, err?.message || err);
-      deliveryStatus = 'DELIVERED';
+      deliveryStatus = 'FAILED';
       deliveryError = err?.message || String(err);
     }
   } else if (
