@@ -415,6 +415,7 @@ function escapeHtmlSafe(val: string): string {
 export function resolveResendApiKey(centralConfig?: CentralEmailConfig): string {
   const envKey = (
     process.env.RESEND_API_KEY ||
+    process.env.VITE_RESEND_API_KEY ||
     process.env.RESEND_KEY ||
     process.env.RESEND_APIKEY ||
     process.env.RESEND_SECRET ||
@@ -505,6 +506,34 @@ export async function getResendDomainStatus(apiKeyOverride?: string, forceRefres
 
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) {
+      const msg = String(data?.message || '').toLowerCase();
+      // Sending-only Resend keys cannot call GET /domains (401/403 restricted_api_key),
+      // yet can still send from any verified custom domain configured in Central Email Config.
+      if ((res.status === 401 || res.status === 403) && (msg.includes('restrict') || msg.includes('only send'))) {
+        const extVerified = sqliteStorage.hasVerifiedExternalResendDelivery();
+        const inferredDomain =
+          (centralConfig.senderEmail?.includes('@') ? centralConfig.senderEmail.split('@')[1] : '') ||
+          centralConfig.senderDomain ||
+          fallbackDomain;
+        const restrictedStatus: ResendDomainStatus = {
+          connected: true,
+          mode: extVerified ? 'PRODUCTION' : 'SANDBOX',
+          verifiedDomains: inferredDomain ? [inferredDomain.toLowerCase()] : [],
+          domains: inferredDomain ? [{ name: inferredDomain.toLowerCase(), status: 'configured' }] : [],
+          ownerEmail: previousOwnerEmail,
+          externalDeliveryVerified: extVerified,
+          productionReady: extVerified,
+          authorizedDomain: inferredDomain || fallbackDomain,
+          checkedAt: new Date().toISOString()
+        };
+        resendStatusCache = {
+          keyHash,
+          expiresAt: Date.now() + 15_000,
+          status: restrictedStatus
+        };
+        return restrictedStatus;
+      }
+
       return {
         connected: false,
         mode: 'UNCONFIGURED',
@@ -550,7 +579,7 @@ export async function getResendDomainStatus(apiKeyOverride?: string, forceRefres
 
     resendStatusCache = {
       keyHash,
-      expiresAt: Date.now() + 60_000,
+      expiresAt: Date.now() + (verifiedDomains.length > 0 ? 60_000 : 3_000),
       status
     };
     return status;
@@ -816,7 +845,8 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
   if (resendApiKey) {
     activeProvider = 'RESEND';
     try {
-      const domainStatus = await getResendDomainStatus(resendApiKey);
+      const cachedMode = getCachedResendStatus(resendApiKey)?.mode;
+      const domainStatus = await getResendDomainStatus(resendApiKey, cachedMode !== 'PRODUCTION');
       const identityParts = identity.senderEmail.split('@');
       const identityLocal = (identityParts[0] || uniSlug || 'notifications').replace(/[^a-z0-9._+-]/gi, '');
       const identityDomain = (identityParts[1] || '').toLowerCase();
@@ -993,13 +1023,17 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
             const ownerData: any = await ownerRes.json().catch(() => ({}));
             if (ownerRes.ok && ownerData?.id) {
               messageId = ownerData.id;
-              deliveryStatus = 'DELIVERED';
-              deliveryError = undefined;
+              const sameAsOwner = params.recipient.trim().toLowerCase() === ownerEmail.toLowerCase();
+              deliveryStatus = sameAsOwner ? 'DELIVERED' : 'QUEUED';
+              deliveryError = sameAsOwner
+                ? undefined
+                : `Resend Sandbox Mode blocked direct delivery to ${params.recipient} because no custom domain is verified at resend.com/domains. A preview copy was sent to your Resend owner inbox (${ownerEmail}) instead.`;
               metadataPayload.sandboxMode = true;
+              metadataPayload.sandboxRestriction = !sameAsOwner;
               metadataPayload.intendedRecipient = params.recipient;
               metadataPayload.routedViaSandboxTo = ownerEmail;
               handled = true;
-              console.log(`[EmailEngine] Sandbox test copy delivered to verified owner ${ownerEmail}. ID: ${messageId}`);
+              console.log(`[EmailEngine] Sandbox test copy delivered to verified owner ${ownerEmail} (intended: ${params.recipient}). ID: ${messageId}`);
             }
           }
 
@@ -1035,9 +1069,10 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
       deliveryError = smtpRes.error;
     }
   } else {
-    // Transactional simulation for development/demo when no live provider secret is configured
-    console.log(`[EmailEngine] Transactional simulation dispatch via ${centralConfig.provider} to ${params.recipient} from "${identity.senderName}" <${identity.senderEmail}>`);
-    deliveryStatus = 'DELIVERED';
+    console.warn(`[EmailEngine] Cannot dispatch email to ${params.recipient}: no active Resend API key or SMTP credentials configured.`);
+    deliveryStatus = 'FAILED';
+    deliveryError = 'No active email provider credentials found on the server. Add your RESEND_API_KEY in Secrets or configure Resend / SMTP credentials in Central Email Infrastructure.';
+    metadataPayload.unconfiguredProvider = true;
   }
 
   // 8. Log delivery in SQLite

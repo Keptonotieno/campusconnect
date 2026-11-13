@@ -169,10 +169,10 @@ export const CampusesDirectoryPage: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCampuses.map((campus) => {
-              const primaryColor = campus.primaryColor || '#004B87';
-              const accentColor = campus.accentColor || '#0284C7';
-              const classYear = campus.classYear || '2031';
+            {filteredCampuses.filter(Boolean).map((campus) => {
+              const primaryColor = campus?.primaryColor || '#004B87';
+              const accentColor = campus?.accentColor || '#0284C7';
+              const classYear = campus?.classYear || '2031';
 
               return (
                 <div

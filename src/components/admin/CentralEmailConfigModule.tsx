@@ -113,7 +113,9 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
 
   // Sync props changes
   useEffect(() => {
-    setConfig(initialConfig);
+    if (initialConfig) {
+      setConfig(initialConfig);
+    }
   }, [initialConfig]);
 
   useEffect(() => {
@@ -126,7 +128,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
     setCheckingDomains(true);
     try {
       const res = await fetchCentralEmailConfig(force);
-      if (res.resendStatus) {
+      if (res?.resendStatus) {
         setResendStatus(res.resendStatus);
       }
     } catch {
@@ -141,7 +143,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
     setLoadingIdentities(true);
     try {
       const res = await fetchAllUniversityEmailIdentities();
-      if (res.identities && Array.isArray(res.identities)) {
+      if (res?.identities && Array.isArray(res.identities)) {
         const map: Record<string, UniversityEmailIdentity> = {};
         res.identities.forEach(item => {
           if (item && item.universityId) {
@@ -170,8 +172,10 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
     setSaving(true);
     try {
       const res = await updateCentralEmailConfig(config);
-      setConfig(res.config);
-      if (res.resendStatus) {
+      if (res?.config) {
+        setConfig(res.config);
+      }
+      if (res?.resendStatus) {
         setResendStatus(res.resendStatus);
       }
       if (res.config.provider === 'RESEND' && !res.resendStatus?.productionReady) {
@@ -207,12 +211,14 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
       if (res.resendStatus) {
         setResendStatus(res.resendStatus);
       }
-      if (res.success === false) {
-        onToast('Delivery Notice', res.message || 'Email delivery failed.', 'error');
+      if (res.success === false && res.sandboxMode) {
+        onToast('External Inbox Blocked (Sandbox Mode)', res.message || 'Blocked by Resend Sandbox until a domain is verified.', 'error');
+      } else if (res.success === false) {
+        onToast('Delivery Failed', res.message || 'Email delivery failed.', 'error');
       } else if (res.sandboxMode) {
-        onToast('Sandbox Test Dispatched', res.message, 'info');
+        onToast('Sandbox Test Delivered', res.message, 'info');
       } else {
-        onToast('Test Email Dispatched', res.message, 'success');
+        onToast('Test Email Delivered', res.message, 'success');
       }
       onRefresh();
     } catch (err: any) {
@@ -266,12 +272,13 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
 
   // Filtered Logs
   const filteredLogs = useMemo(() => {
-    return logs.filter(l => {
-      const q = searchQuery.toLowerCase().trim();
+    return (logs || []).filter(l => {
+      if (!l) return false;
+      const q = (searchQuery || '').toLowerCase().trim();
       const matchesSearch = !q || 
-        l.recipient.toLowerCase().includes(q) ||
-        l.subject.toLowerCase().includes(q) ||
-        l.messageId.toLowerCase().includes(q) ||
+        (l.recipient || '').toLowerCase().includes(q) ||
+        (l.subject || '').toLowerCase().includes(q) ||
+        (l.messageId || '').toLowerCase().includes(q) ||
         (l.universityName && l.universityName.toLowerCase().includes(q));
 
       const matchesUni = filterUniversity === 'ALL' || l.universityId === filterUniversity;
@@ -284,15 +291,16 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
 
   // Filtered Campuses for Identities Tab
   const filteredCampuses = useMemo(() => {
-    return campuses.filter(c => {
-      const q = campusSearch.toLowerCase().trim();
+    return (campuses || []).filter(c => {
+      if (!c || !c.id) return false;
+      const q = (campusSearch || '').toLowerCase().trim();
       const matchesSearch = !q || 
-        c.name.toLowerCase().includes(q) ||
-        c.slug.toLowerCase().includes(q) ||
-        c.instagramHandle.toLowerCase().includes(q) ||
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.slug || '').toLowerCase().includes(q) ||
+        (c.instagramHandle || '').toLowerCase().includes(q) ||
         (c.location && c.location.toLowerCase().includes(q));
 
-      const hasCustom = !!identities[c.id];
+      const hasCustom = !!identities?.[c.id];
       if (customFilter === 'CUSTOM' && !hasCustom) return false;
       if (customFilter === 'DEFAULT' && hasCustom) return false;
 
@@ -1029,12 +1037,15 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
           {/* University Email Identities Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredCampuses.map((c) => {
-              const customId = identities[c.id];
-              const senderDisplayName = customId?.senderName || `${c.name} Campus Portal`;
-              const senderEmailAddress = customId?.senderEmail || `${c.slug}@notifications.${config.senderDomain || 'campusconnect.app'}`;
-              const replyToAddress = customId?.replyTo || `admissions@${c.slug}.edu`;
-              const primaryColor = customId?.primaryColor || c.primaryColor || '#1D64EC';
-              const secondaryColor = customId?.secondaryColor || c.secondaryColor || c.accentColor || '#38BDF8';
+              if (!c) return null;
+              const customId = identities?.[c.id];
+              const campusName = c?.name || 'University';
+              const campusSlug = c?.slug || c?.id || 'campus';
+              const senderDisplayName = customId?.senderName || `${campusName} Campus Portal`;
+              const senderEmailAddress = customId?.senderEmail || `${campusSlug}@notifications.${config?.senderDomain || 'campusconnect.app'}`;
+              const replyToAddress = customId?.replyTo || `admissions@${campusSlug}.edu`;
+              const primaryColor = customId?.primaryColor || c?.primaryColor || '#1D64EC';
+              const secondaryColor = customId?.secondaryColor || c?.secondaryColor || c?.accentColor || '#38BDF8';
               const isEnabled = customId ? customId.isEnabled : true;
 
               return (
@@ -1049,16 +1060,16 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <img 
-                          src={c.logoUrl} 
-                          alt={c.name}
+                          src={c?.logoUrl} 
+                          alt={campusName}
                           className="w-10 h-10 rounded-xl object-cover border border-slate-200 dark:border-slate-700 p-0.5 shrink-0 bg-white"
                         />
                         <div className="min-w-0">
                           <h4 className={`text-sm font-black truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                            {c.name}
+                            {campusName}
                           </h4>
                           <div className="text-[11px] text-slate-400 font-medium truncate">
-                            {c.location || 'United States'} • {c.instagramHandle}
+                            {c?.location || 'United States'} • {c?.instagramHandle || '@campus'}
                           </div>
                         </div>
                       </div>

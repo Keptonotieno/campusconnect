@@ -129,10 +129,10 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   const [completedSubId, setCompletedSubId] = useState('');
 
   // Primary brand colors for this specific university
-  const primaryColor = university.primaryColor || '#004B87';
-  const accentColor = university.accentColor || '#0284C7';
-  const tagline = university.tagline || `${university.name} forever.`;
-  const classYear = university.classYear || '2031';
+  const primaryColor = university?.primaryColor || '#004B87';
+  const accentColor = university?.accentColor || '#0284C7';
+  const tagline = university?.tagline || `${university?.name || 'University'} forever.`;
+  const classYear = university?.classYear || '2031';
 
   // Check if a post was promoted via Stripe payment integration ($6 feature)
   const isStripePromoted = (s: FeaturedSubmission) => {
@@ -2097,7 +2097,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                 <Instagram className="w-4.5 h-4.5 text-white" />
               </div>
               <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">
-                Campus<span style={{ color: university.primaryColor || '#1D64EC' }}>Connect</span>
+                Campus<span style={{ color: university?.primaryColor || '#1D64EC' }}>Connect</span>
               </span>
             </button>
 

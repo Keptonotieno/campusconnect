@@ -227,9 +227,9 @@ const AppContent: React.FC = () => {
               <div className="w-full bg-white rounded-2xl border border-slate-200 p-4 text-left space-y-3">
                 <div className="text-xs font-bold text-slate-800">Registered Universities ({universities.length}):</div>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {universities.map(u => (
+                  {universities.filter((u): u is NonNullable<typeof u> => Boolean(u && (u.id || u.slug))).map(u => (
                     <button
-                      key={u.id}
+                      key={u.id || u.slug}
                       type="button"
                       onClick={() => navigateTo(`/ig/${u.slug}`)}
                       className="w-full p-2.5 rounded-xl border border-slate-100 hover:border-blue-500 hover:bg-blue-50/50 flex items-center justify-between transition-all cursor-pointer text-left"
@@ -237,7 +237,7 @@ const AppContent: React.FC = () => {
                       <div className="flex items-center gap-2.5">
                         <span 
                           className="w-3 h-3 rounded-full shrink-0" 
-                          style={{ backgroundColor: u.primaryColor || '#004B87' }} 
+                          style={{ backgroundColor: u?.primaryColor || '#004B87' }} 
                         />
                         <div>
                           <div className="text-xs font-bold text-slate-900">{u.name}</div>

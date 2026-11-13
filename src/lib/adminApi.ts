@@ -358,6 +358,7 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
 
   try {
     res = await fetch(endpoint, {
+      credentials: 'include',
       ...options,
       headers
     });
@@ -376,27 +377,35 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
           return data as T;
         }
       } catch {
-        // Corrupt or non-JSON payload; fall through to resilient fallback below
+        // Corrupt or non-JSON payload; fall through to error/fallback handling below
       }
     }
-    // If response was HTML or not JSON, fall through to handleLocalFallbackRoute
   }
 
-  // Determine fallback conditions (Workers, Pages, static preview, or offline)
   const status = res?.status || 0;
   const contentType = res ? (res.headers.get('content-type') || '') : '';
-  const isResilientToken = Boolean(token && token.startsWith('adm_resilient_'));
-  const isClientMasterAdmin = isMasterAdminEmail(getLocalAdminEmail());
-  const isAuthorized = Boolean(token || isResilientToken || isClientMasterAdmin);
   const isSpaHtmlResponse = Boolean(res && res.ok && !contentType.includes('application/json'));
+  const cleanPath = endpoint.split('?')[0];
 
+  // Never mask authentication failures (401/403) with fake local mock data
+  if (status === 401) {
+    setStoredAdminToken(null);
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem('campusconnect_auth');
+    } catch {}
+  }
+
+  const isCriticalTransactionalRoute =
+    cleanPath.startsWith('/api/admin/email') ||
+    cleanPath.startsWith('/api/admin/integrations');
+
+  // Only allow static fallback when no Express backend route exists (404/405/SPA HTML/network offline)
+  // and NEVER fake transactional email sends or credential saves.
   if (
-    isBackendError ||
-    isSpaHtmlResponse ||
-    status === 405 ||
-    status === 404 ||
-    status >= 500 ||
-    ((status === 401 || status === 403) && isAuthorized)
+    !isCriticalTransactionalRoute &&
+    (isBackendError || isSpaHtmlResponse || status === 405 || status === 404)
   ) {
     const fallbackData = handleLocalFallbackRoute<T>(endpoint, options);
     if (fallbackData !== null) {
@@ -688,144 +697,9 @@ function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}
     } catch {}
   }
 
-  // 11. Test Integration Handshake
-  if (cleanEndpoint.startsWith('/api/admin/integrations/') && cleanEndpoint.endsWith('/test') && method === 'POST') {
-    try {
-      const id = decodeURIComponent(cleanEndpoint.replace('/api/admin/integrations/', '').replace('/test', ''));
-      const integrations = getLocalIntegrations();
-      const idx = integrations.findIndex(i => i.id === id);
-      const verifiedAt = new Date().toISOString();
-      if (idx !== -1) {
-        integrations[idx].status = 'CONNECTED';
-        integrations[idx].lastVerifiedAt = verifiedAt;
-        saveLocalIntegrations(integrations);
-      }
-      return {
-        success: true,
-        message: `API connection verified successfully.`,
-        verifiedAt
-      } as unknown as T;
-    } catch {}
-  }
-
-  // 12. Email Infrastructure & Config Fallbacks
-  if (cleanEndpoint === '/api/admin/email' && method === 'GET') {
-    const configData: EmailConfigData = {
-      config: {
-        senderEmail: 'notifications@campusconnect.app',
-        senderName: 'CampusConnect Global',
-        smtpHost: 'smtp.mailgun.org',
-        smtpPort: 587,
-        tlsEnabled: true,
-        dkimVerified: true,
-        spfVerified: true,
-        status: 'OPERATIONAL'
-      },
-      logs: []
-    };
-    return configData as unknown as T;
-  }
-
-  if (cleanEndpoint === '/api/admin/email/config' && method === 'GET') {
-    return {
-      config: {
-        provider: 'SMTP',
-        senderEmail: 'notifications@campusconnect.app',
-        senderName: 'CampusConnect Global',
-        replyTo: 'support@campusconnect.app',
-        senderDomain: 'campusconnect.app',
-        smtpHost: 'smtp.mailgun.org',
-        smtpPort: 587,
-        smtpUser: 'postmaster@campusconnect.app',
-        smtpPass: '',
-        apiKey: '',
-        tlsEnabled: true,
-        status: 'OPERATIONAL',
-        sendingEnabled: true,
-        dailyLimit: 5000,
-        spfVerified: true,
-        dkimVerified: true,
-        dmarcVerified: true,
-        updatedAt: new Date().toISOString()
-      }
-    } as unknown as T;
-  }
-
-  if (cleanEndpoint === '/api/admin/email/config' && method === 'POST') {
-    try {
-      const updates = JSON.parse(options.body as string || '{}');
-      return {
-        success: true,
-        config: {
-          ...updates,
-          updatedAt: new Date().toISOString()
-        }
-      } as unknown as T;
-    } catch {}
-  }
-
-  if (cleanEndpoint === '/api/admin/email/identities' && method === 'GET') {
-    return { identities: [] } as unknown as T;
-  }
-
-  if (cleanEndpoint.startsWith('/api/admin/email/identities/')) {
-    const uniId = decodeURIComponent(cleanEndpoint.replace('/api/admin/email/identities/', ''));
-    if (method === 'GET') return { identity: null } as unknown as T;
-    try {
-      const body = JSON.parse(options.body as string || '{}');
-      return { success: true, identity: { ...body, universityId: uniId } } as unknown as T;
-    } catch {}
-  }
-
-  if (cleanEndpoint.startsWith('/api/admin/email/templates/')) {
-    if (method === 'GET') return { templates: [] } as unknown as T;
-    if (method === 'DELETE') return { success: true, message: 'Template reset to system default.' } as unknown as T;
-    try {
-      const body = JSON.parse(options.body as string || '{}');
-      return { success: true, template: body } as unknown as T;
-    } catch {}
-  }
-
-  if (cleanEndpoint === '/api/admin/email/preview-template' && method === 'POST') {
-    return {
-      success: true,
-      subject: 'CampusConnect Email Preview',
-      html: '<p>Email template preview rendered.</p>'
-    } as unknown as T;
-  }
-
-  // 13. Send Test Email
-  if ((cleanEndpoint === '/api/admin/email/send-test' || cleanEndpoint === '/api/admin/email/test-template') && method === 'POST') {
-    try {
-      const { recipient, eventType } = JSON.parse(options.body as string || '{}');
-      return {
-        success: true,
-        message: `Test ${eventType || 'WELCOME'} email successfully queued and delivered to ${recipient || 'administrator'}.`,
-        log: {
-          id: 'email_' + Date.now(),
-          recipient: recipient || 'campusconnect@gmail.com',
-          subject: `[TEST] CampusConnect ${eventType || 'Email'} Verification`,
-          template: eventType || 'WELCOME',
-          status: 'DELIVERED',
-          sentAt: new Date().toISOString(),
-          messageId: `<${Date.now()}@smtp.campusconnect.app>`,
-          provider: 'SMTP'
-        }
-      } as unknown as T;
-    } catch {}
-  }
-
-  // 13b. Retry Email Log
-  if (cleanEndpoint.startsWith('/api/admin/email/logs/') && cleanEndpoint.endsWith('/retry') && method === 'POST') {
-    return {
-      success: true,
-      message: 'Retry dispatched.',
-      log: {
-        id: 'email_retry_' + Date.now(),
-        status: 'DELIVERED',
-        sentAt: new Date().toISOString()
-      }
-    } as unknown as T;
+  // Critical email & integration routes must never be mocked or simulated in the browser.
+  if (cleanEndpoint.startsWith('/api/admin/email') || cleanEndpoint.startsWith('/api/admin/integrations')) {
+    return null;
   }
 
   // 14. Audit Logs List
@@ -1009,185 +883,37 @@ export async function loginAdmin(email: string, pass: string): Promise<AdminAuth
   const cleanEmail = (email || '').trim().toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '');
   const cleanPass = (pass || '').trim().replace(/[\u200B-\u200D\uFEFF]/g, '');
 
-  const isValidMaster = isMasterAdminEmail(cleanEmail) && isMasterPassword(cleanPass);
+  const res = await fetch('/api/auth/admin-login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, no-cache'
+    },
+    body: JSON.stringify({ email: cleanEmail, password: cleanPass })
+  });
 
-  // 1. Authoritative Server-Side Authentication
-  try {
-    const res = await fetch('/api/auth/admin-login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, no-cache'
-      },
-      body: JSON.stringify({ email: cleanEmail, password: cleanPass })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.token) {
-        setStoredAdminToken(data.token);
-        try {
-          localStorage.setItem(TOKEN_KEY, data.token);
-          localStorage.setItem(USER_KEY, JSON.stringify(data.admin));
-          localStorage.setItem('campusconnect_auth', 'true');
-        } catch {}
-      }
-      return data;
-    }
-
-    if (res.status === 401 || res.status === 429) {
-      if (!isValidMaster) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || 'Invalid administrator credentials.');
-      }
-    }
-  } catch (err: any) {
-    if (!isValidMaster && err.message && !err.message.includes('fetch') && !err.message.includes('NetworkError')) {
-      throw err;
-    }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || 'Invalid administrator credentials.');
   }
 
-  // 2. Resilient Master Authentication (Fallback for master admin when offline or edge static preview)
-  if (isValidMaster) {
-    const sessionToken = 'adm_secure_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10);
-    const adminUser = {
-      id: 'admin_' + cleanEmail.replace(/[^a-z0-9]/g, '_'),
-      email: cleanEmail,
-      role: 'Admin' as const,
-      expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-    };
-
-    setStoredAdminToken(sessionToken);
+  if (data.token) {
+    setStoredAdminToken(data.token);
     try {
-      localStorage.setItem(TOKEN_KEY, sessionToken);
-      localStorage.setItem(USER_KEY, JSON.stringify(adminUser));
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.admin));
       localStorage.setItem('campusconnect_auth', 'true');
     } catch {}
-
-    appendLocalAuditLog('ADMIN_LOGIN_SUCCESS', 'USER', adminUser.id, `Master administrator signed in (${cleanEmail})`);
-
-    return {
-      success: true,
-      message: 'Administrator authenticated successfully.',
-      admin: adminUser,
-      token: sessionToken,
-      expiresAt: adminUser.expiresAt
-    };
   }
-
-  // 2. Server-side login for custom administrative credentials
-  try {
-    const res = await fetch('/api/auth/admin-login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, no-cache'
-      },
-      body: JSON.stringify({ email: cleanEmail, password: cleanPass })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.token) {
-        setStoredAdminToken(data.token);
-        try {
-          localStorage.setItem(TOKEN_KEY, data.token);
-          localStorage.setItem(USER_KEY, JSON.stringify(data.admin));
-          localStorage.setItem('campusconnect_auth', 'true');
-        } catch {}
-      }
-      return data;
-    }
-
-    if (res.status === 401 || res.status === 429) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || 'Invalid administrator credentials.');
-    }
-
-    // If edge worker or static site returns 405 / 404 / 500
-    if (res.status === 405 || res.status === 404 || res.status >= 500) {
-      if (isMasterAdminEmail(cleanEmail)) {
-        const sessionToken = 'adm_resilient_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-        const adminUser = {
-          id: 'admin_' + cleanEmail.replace(/[^a-z0-9]/g, '_'),
-          email: cleanEmail,
-          role: 'Admin' as const,
-          expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-        };
-        setStoredAdminToken(sessionToken);
-        try {
-          localStorage.setItem(TOKEN_KEY, sessionToken);
-          localStorage.setItem(USER_KEY, JSON.stringify(adminUser));
-          localStorage.setItem('campusconnect_auth', 'true');
-        } catch {}
-        return {
-          success: true,
-          message: 'Administrator verified in resilient mode.',
-          admin: adminUser,
-          token: sessionToken,
-          expiresAt: adminUser.expiresAt
-        };
-      }
-    }
-  } catch (err: any) {
-    if (isMasterAdminEmail(cleanEmail)) {
-      const sessionToken = 'adm_resilient_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-      const adminUser = {
-        id: 'admin_' + cleanEmail.replace(/[^a-z0-9]/g, '_'),
-        email: cleanEmail,
-        role: 'Admin' as const,
-        expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-      };
-      setStoredAdminToken(sessionToken);
-      try {
-        localStorage.setItem(TOKEN_KEY, sessionToken);
-        localStorage.setItem(USER_KEY, JSON.stringify(adminUser));
-        localStorage.setItem('campusconnect_auth', 'true');
-      } catch {}
-      return {
-        success: true,
-        message: 'Administrator verified in resilient mode.',
-        admin: adminUser,
-        token: sessionToken,
-        expiresAt: adminUser.expiresAt
-      };
-    }
-    if (err?.message && !err.message.includes('405') && !err.message.includes('404')) {
-      throw err;
-    }
-  }
-
-  // Edge / mobile fallback if email matches master admin
-  if (isMasterAdminEmail(cleanEmail)) {
-    const sessionToken = 'adm_resilient_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-    const adminUser = {
-      id: 'admin_' + cleanEmail.replace(/[^a-z0-9]/g, '_'),
-      email: cleanEmail,
-      role: 'Admin' as const,
-      expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-    };
-    setStoredAdminToken(sessionToken);
-    try {
-      localStorage.setItem(TOKEN_KEY, sessionToken);
-      localStorage.setItem(USER_KEY, JSON.stringify(adminUser));
-      localStorage.setItem('campusconnect_auth', 'true');
-    } catch {}
-    return {
-      success: true,
-      message: 'Administrator verified.',
-      admin: adminUser,
-      token: sessionToken,
-      expiresAt: adminUser.expiresAt
-    };
-  }
-
-  throw new Error('Invalid administrator credentials. Please check your email and master password.');
+  return data;
 }
 
 export async function logoutAdmin(): Promise<{ success: boolean }> {
   try {
     await fetch('/api/auth/admin-logout', {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Authorization': `Bearer ${getStoredAdminToken() || ''}`
       }
@@ -1207,19 +933,19 @@ export async function logoutAdmin(): Promise<{ success: boolean }> {
 
 export async function checkAdminSession(): Promise<{ authenticated: boolean; admin?: any }> {
   const token = getStoredAdminToken();
-  if (!token) {
+  if (!token || token.startsWith('adm_secure_') || token.startsWith('adm_resilient_')) {
+    setStoredAdminToken(null);
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem('campusconnect_auth');
+    } catch {}
     return { authenticated: false };
   }
 
-  // Check stored user profile
-  let storedUser: any = null;
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    if (raw) storedUser = JSON.parse(raw);
-  } catch {}
-
   try {
     const res = await fetch('/api/auth/admin-me', {
+      credentials: 'include',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Cache-Control': 'no-store'
@@ -1230,16 +956,18 @@ export async function checkAdminSession(): Promise<{ authenticated: boolean; adm
       const data = await res.json();
       return data;
     }
-  } catch {
-    // Network or static host
-  }
 
-  // If server responded with 405/404 or network failed, but valid admin session is stored locally:
-  if (storedUser && (storedUser.role === 'Admin' || isMasterAdminEmail(storedUser.email))) {
-    return {
-      authenticated: true,
-      admin: storedUser
-    };
+    if (res.status === 401 || res.status === 403) {
+      setStoredAdminToken(null);
+      try {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem('campusconnect_auth');
+      } catch {}
+      return { authenticated: false };
+    }
+  } catch {
+    // Network error
   }
 
   return { authenticated: false };

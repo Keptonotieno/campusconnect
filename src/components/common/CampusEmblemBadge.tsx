@@ -48,10 +48,11 @@ export const CampusEmblemBadge: React.FC<CampusEmblemBadgeProps> = ({
   size = 'md',
   className = ''
 }) => {
-  const primaryColor = university.primaryColor || '#004B87';
-  const accentColor = university.accentColor || '#0284C7';
-  const classYear = university.classYear || '2031';
-  const monogram = getCampusMonogram(university);
+  if (!university) return null;
+  const primaryColor = university?.primaryColor || '#004B87';
+  const accentColor = university?.accentColor || '#0284C7';
+  const classYear = university?.classYear || '2031';
+  const monogram = getCampusMonogram({ name: university?.name || 'Campus', slug: university?.slug || '' });
 
   const sizeClasses = {
     sm: {

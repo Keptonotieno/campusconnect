@@ -1,5 +1,21 @@
 [
   {
+    "token": "adm_secure_123456",
+    "adminId": "admin_resilient_master",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-13T13:12:20.614Z",
+    "expiresAt": "2026-11-13T17:12:20.615Z"
+  },
+  {
+    "token": "verify_sess_fa99e95892062540a69e74b3",
+    "adminId": "admin_secondary_campusconnect",
+    "email": "campusconnect@gmail.com",
+    "role": "Admin",
+    "createdAt": "2026-11-13T12:47:43.841Z",
+    "expiresAt": "2026-11-13T13:47:43.841Z"
+  },
+  {
     "token": "sess_0c91ad1b7fc45dccdb56667abe13d88e8bb3685757716e96c33096774e7fa830",
     "adminId": "admin_secondary_campusconnect",
     "email": "campusconnect@gmail.com",

@@ -95,11 +95,12 @@ app.post('/api/auth/bootstrap-admin', (req: Request, res: Response) => {
     const { email, password } = req.body;
     const { admin, session } = dbInstance.bootstrapAdmin(email, password);
 
-    // Set secure HTTP-only cookie
+    // Set secure HTTP-only cookie compatible with HTTPS preview iframes
+    const isHttps = Boolean(req.secure || req.headers['x-forwarded-proto'] === 'https' || isProduction);
     res.cookie('admin_session_token', session.token, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
+      secure: isHttps,
+      sameSite: isHttps ? 'none' : 'lax',
       maxAge: 4 * 60 * 60 * 1000 // 4 hours
     });
 
@@ -127,10 +128,11 @@ app.post('/api/auth/admin-login', (req: Request, res: Response) => {
 
     const { admin, session } = dbInstance.loginAdmin(email, password, clientIp);
 
+    const isHttps = Boolean(req.secure || req.headers['x-forwarded-proto'] === 'https' || isProduction);
     res.cookie('admin_session_token', session.token, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
+      secure: isHttps,
+      sameSite: isHttps ? 'none' : 'lax',
       maxAge: 4 * 60 * 60 * 1000
     });
 
@@ -588,19 +590,19 @@ app.post('/api/admin/email/test-template', requireAdminAuth, async (req: Authent
       }
     });
 
-    const isSuccess = log.status !== 'FAILED';
+    const isDeliveredToTarget = log.status === 'DELIVERED' && !log.metadata?.sandboxRestriction;
     const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
-    let responseMessage = `Test ${targetEvent} email sent to ${targetRecipient}`;
-    if (!isSuccess) {
+    let responseMessage = `Test ${targetEvent} email delivered to ${targetRecipient}`;
+    if (log.status === 'FAILED') {
       responseMessage = `Email delivery failed: ${log.errorMessage || 'Unable to deliver message.'}`;
-    } else if (log.metadata?.sandboxMode && log.metadata?.routedViaSandboxTo) {
-      responseMessage = `Sandbox test copy for ${targetRecipient} delivered to verified Resend owner inbox (${log.metadata.routedViaSandboxTo}). Verify a custom domain at resend.com/domains for direct external delivery.`;
+    } else if (log.metadata?.sandboxMode && log.metadata?.routedViaSandboxTo && log.metadata?.sandboxRestriction) {
+      responseMessage = `Not delivered to ${targetRecipient}: Resend Sandbox only permits direct delivery to ${log.metadata.routedViaSandboxTo} until a domain is verified at resend.com/domains. A preview copy was sent to ${log.metadata.routedViaSandboxTo} instead.`;
     } else if (log.metadata?.sandboxRestriction) {
       responseMessage = log.errorMessage || `Email queued in Resend Sandbox Mode. Verify a custom domain at resend.com/domains to deliver to ${targetRecipient}.`;
     }
 
-    return res.status(isSuccess ? 200 : 400).json({
-      success: isSuccess,
+    return res.status(log.status === 'FAILED' ? 400 : 200).json({
+      success: isDeliveredToTarget,
       sandboxMode: Boolean(log.metadata?.sandboxMode || log.metadata?.sandboxRestriction),
       message: responseMessage,
       log,
@@ -646,19 +648,19 @@ app.post('/api/admin/email/send-test', requireAdminAuth, async (req: Authenticat
       }
     });
 
-    const isSuccess = log.status !== 'FAILED';
+    const isDeliveredToTarget = log.status === 'DELIVERED' && !log.metadata?.sandboxRestriction;
     const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
-    let responseMessage = `Test email sent to ${recipient}`;
-    if (!isSuccess) {
+    let responseMessage = `Test email delivered to ${recipient}`;
+    if (log.status === 'FAILED') {
       responseMessage = `Email delivery failed: ${log.errorMessage || 'Unable to deliver message.'}`;
-    } else if (log.metadata?.sandboxMode && log.metadata?.routedViaSandboxTo) {
-      responseMessage = `Sandbox test copy for ${recipient} delivered to verified Resend owner inbox (${log.metadata.routedViaSandboxTo}).`;
+    } else if (log.metadata?.sandboxMode && log.metadata?.routedViaSandboxTo && log.metadata?.sandboxRestriction) {
+      responseMessage = `Not delivered to ${recipient}: Resend Sandbox only permits direct delivery to ${log.metadata.routedViaSandboxTo} until a domain is verified at resend.com/domains. A preview copy was sent to ${log.metadata.routedViaSandboxTo} instead.`;
     } else if (log.metadata?.sandboxRestriction) {
       responseMessage = log.errorMessage || `Email queued in Resend Sandbox Mode.`;
     }
 
-    return res.status(isSuccess ? 200 : 400).json({
-      success: isSuccess,
+    return res.status(log.status === 'FAILED' ? 400 : 200).json({
+      success: isDeliveredToTarget,
       sandboxMode: Boolean(log.metadata?.sandboxMode || log.metadata?.sandboxRestriction),
       message: responseMessage,
       log,

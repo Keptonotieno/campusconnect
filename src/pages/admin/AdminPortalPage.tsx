@@ -163,7 +163,11 @@ export const AdminPortalPage: React.FC = () => {
 
   const [campuses, setCampuses] = useState<University[]>(() => {
     const map = new Map<string, University>();
-    VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug.toLowerCase(), u));
+    VERIFIED_UNIVERSITIES.forEach(u => {
+      if (u && (u.slug || u.id)) {
+        map.set((u.slug || u.id).toLowerCase(), u);
+      }
+    });
     try {
       const stored = localStorage.getItem('campusconnect_campuses');
       if (stored) {
@@ -191,23 +195,32 @@ export const AdminPortalPage: React.FC = () => {
       (snapshot) => {
         const firestoreCampuses: University[] = [];
         snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as University;
+          const data = docSnap.data() as University | undefined;
+          if (!data) return;
           firestoreCampuses.push({
             ...data,
             id: docSnap.id,
-            slug: data.slug || docSnap.id
+            slug: data.slug || docSnap.id,
+            name: data.name || docSnap.id,
+            primaryColor: data.primaryColor || '#004B87'
           });
         });
 
         if (firestoreCampuses.length > 0) {
           setCampuses(prev => {
             const map = new Map<string, University>();
-            VERIFIED_UNIVERSITIES.forEach(u => map.set(u.slug.toLowerCase(), u));
+            VERIFIED_UNIVERSITIES.forEach(u => {
+              if (u && (u.slug || u.id)) {
+                map.set((u.slug || u.id).toLowerCase(), u);
+              }
+            });
             (prev || []).forEach(u => {
+              if (!u || (!u.slug && !u.id)) return;
               const key = (u.slug || u.id).toLowerCase();
               map.set(key, { ...(map.get(key) || {}), ...u });
             });
             firestoreCampuses.forEach(u => {
+              if (!u || (!u.slug && !u.id)) return;
               const key = (u.slug || u.id).toLowerCase();
               map.set(key, { ...(map.get(key) || {}), ...u });
             });
@@ -221,25 +234,29 @@ export const AdminPortalPage: React.FC = () => {
         } else {
           // If Firestore returns 0 documents, preserve any local or in-memory campuses and sync them up
           setCampuses(prev => {
-            if (prev && prev.length > 0) {
-              prev.forEach(async (c) => {
+            const validPrev = (prev || []).filter((c): c is University => Boolean(c && c.id));
+            if (validPrev.length > 0) {
+              validPrev.forEach(async (c) => {
                 try {
                   await setDoc(doc(db, 'universities', c.id), c, { merge: true });
                 } catch {}
               });
-              return prev;
+              return validPrev;
             }
             try {
               const stored = localStorage.getItem('campusconnect_campuses');
               if (stored) {
                 const parsed = JSON.parse(stored);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  parsed.forEach(async (c) => {
-                    try {
-                      await setDoc(doc(db, 'universities', c.id), c, { merge: true });
-                    } catch {}
-                  });
-                  return parsed;
+                if (Array.isArray(parsed)) {
+                  const validStored = parsed.filter((c): c is University => Boolean(c && c.id));
+                  if (validStored.length > 0) {
+                    validStored.forEach(async (c) => {
+                      try {
+                        await setDoc(doc(db, 'universities', c.id), c, { merge: true });
+                      } catch {}
+                    });
+                    return validStored;
+                  }
                 }
               }
             } catch {}
@@ -376,17 +393,21 @@ export const AdminPortalPage: React.FC = () => {
     isLoadingDataRef.current = true;
     setLoadingData(true);
     try {
+      const rethrowAuth = <T,>(fallback: T) => (err: any): T => {
+        if (err?.status === 401 || err?.status === 403) throw err;
+        return fallback;
+      };
       const [ov, cp, py, ig, em, al, itg, subsData, usersData, centralEmail] = await Promise.all([
-        fetchAdminOverview().catch(() => null),
-        fetchAdminCampuses().catch(() => ({ campuses: [] })),
-        fetchAdminPayments().catch(() => ({ payments: [], totals: { usd: 0 } })),
-        fetchAdminInstagram().catch(() => ({ accounts: [] })),
-        fetchAdminEmail().catch(() => null),
-        fetchAdminAuditLogs().catch(() => ({ logs: [] })),
-        fetchAdminIntegrations().catch(() => ({ integrations: [] })),
-        fetchAdminSubmissions().catch(() => ({ submissions: [] })),
-        fetchAdminUsers().catch(() => ({ users: [] })),
-        fetchCentralEmailConfig().catch(() => null)
+        fetchAdminOverview().catch(rethrowAuth(null)),
+        fetchAdminCampuses().catch(rethrowAuth({ campuses: [] })),
+        fetchAdminPayments().catch(rethrowAuth({ payments: [], totals: { usd: 0 } })),
+        fetchAdminInstagram().catch(rethrowAuth({ accounts: [] })),
+        fetchAdminEmail().catch(rethrowAuth(null)),
+        fetchAdminAuditLogs().catch(rethrowAuth({ logs: [] })),
+        fetchAdminIntegrations().catch(rethrowAuth({ integrations: [] })),
+        fetchAdminSubmissions().catch(rethrowAuth({ submissions: [] })),
+        fetchAdminUsers().catch(rethrowAuth({ users: [] })),
+        fetchCentralEmailConfig().catch(rethrowAuth(null))
       ]);
 
       if (ov) {
@@ -587,23 +608,7 @@ export const AdminPortalPage: React.FC = () => {
         loadAllAdminData();
       }, 50);
     } catch (err: any) {
-      // Guard against 405 or static edge worker issues on mobile
-      if (isMasterAdminEmail(cleanEmail)) {
-        const fallbackAdmin = {
-          id: 'admin_' + cleanEmail.replace(/[^a-z0-9]/g, '_'),
-          email: cleanEmail,
-          role: 'Admin' as const,
-          expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-        };
-        setIsAdminAuthenticated(true);
-        setAdminUser(fallbackAdmin);
-        addToast('Administrator Verified', 'Secure session initiated.', 'success');
-        setTimeout(() => {
-          loadAllAdminData();
-        }, 50);
-        return;
-      }
-      setAuthError(err.message || 'Authentication failed. Please verify credentials.');
+      setAuthError(err?.message || 'Authentication failed. Please verify credentials.');
     } finally {
       setAuthLoading(false);
     }
@@ -790,21 +795,22 @@ export const AdminPortalPage: React.FC = () => {
   };
 
   const openEditModal = (c: University) => {
+    if (!c) return;
     setEditingCampus(c);
-    setNewCampusName(c.name);
-    setNewCampusSlug(c.slug);
-    setNewCampusHandle(c.instagramHandle);
+    setNewCampusName(c.name || '');
+    setNewCampusSlug(c.slug || '');
+    setNewCampusHandle(c.instagramHandle || '');
     setNewCampusInstagramUrl(c.instagramProfileUrl || '');
     setNewCampusOfficialWebsite(c.officialWebsiteUrl || '');
-    setNewCampusLocation(c.location);
-    setNewCampusDesc(c.description);
-    setNewCampusLogo(c.logoUrl);
+    setNewCampusLocation(c.location || '');
+    setNewCampusDesc(c.description || '');
+    setNewCampusLogo(c.logoUrl || '');
     setNewCampusCover(c.coverUrl || '');
-    setNewCampusPrimaryColor(c.primaryColor || '#004B87');
-    setNewCampusAccentColor(c.accentColor || '#0284C7');
+    setNewCampusPrimaryColor(c?.primaryColor || '#004B87');
+    setNewCampusAccentColor(c?.accentColor || '#0284C7');
     setNewCampusClassYear(c.classYear || '2031');
     setNewCampusTagline(c.tagline || '');
-    setNewCampusEnabled(c.communityEnabled);
+    setNewCampusEnabled(c.communityEnabled !== false);
     setShowCreateCampusModal(true);
   };
 
@@ -1483,11 +1489,12 @@ export const AdminPortalPage: React.FC = () => {
             >
               <option value="ALL">🌐 All Campuses ({(campuses || []).length} institutions)</option>
               {(campuses || [])
+                .filter((u): u is University => Boolean(u && u.id))
                 .slice()
-                .sort((a, b) => a.name.localeCompare(b.name))
+                .sort((a, b) => (a?.name || '').localeCompare(b?.name || ''))
                 .map(u => (
                   <option key={u.id} value={u.id}>
-                    {u.name} — {u.location}
+                    {u.name || 'University'} — {u.location || 'United States'}
                   </option>
                 ))}
             </select>
@@ -2235,7 +2242,7 @@ export const AdminPortalPage: React.FC = () => {
 
             {/* Campuses Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredCampuses.map((c) => (
+              {filteredCampuses.filter(Boolean).map((c) => (
                 <div 
                   key={c.id}
                   className={`p-5 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
@@ -2247,8 +2254,8 @@ export const AdminPortalPage: React.FC = () => {
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <img 
-                        src={c.logoUrl} 
-                        alt={c.name}
+                        src={c?.logoUrl} 
+                        alt={c?.name || 'University'}
                         className={`w-12 h-12 rounded-xl object-cover p-0.5 border shrink-0 ${
                           isDarkMode ? 'bg-[#0A0E1A] border-slate-700' : 'bg-white border-slate-200'
                         }`} 
@@ -2256,8 +2263,8 @@ export const AdminPortalPage: React.FC = () => {
                       <div className="flex items-center gap-1.5">
                         <span 
                           className="w-3.5 h-3.5 rounded-full border border-white/50 shadow-xs" 
-                          style={{ backgroundColor: c.primaryColor || '#004B87' }} 
-                          title={`Brand Color: ${c.primaryColor || '#004B87'}`}
+                          style={{ backgroundColor: c?.primaryColor || '#004B87' }} 
+                          title={`Brand Color: ${c?.primaryColor || '#004B87'}`}
                         />
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           c.communityEnabled 
@@ -2895,20 +2902,20 @@ export const AdminPortalPage: React.FC = () => {
         {activeTab === 'EMAIL' && (
           <CentralEmailConfigModule
             initialConfig={centralEmailConfig || {
-              provider: 'SMTP',
+              provider: 'RESEND',
               senderEmail: 'notifications@campusconnect.app',
               senderName: 'CampusConnect Global',
               senderDomain: 'campusconnect.app',
               replyTo: 'support@campusconnect.app',
-              smtpHost: 'smtp.mailgun.org',
+              smtpHost: '',
               smtpPort: 587,
               tlsEnabled: true,
-              status: 'OPERATIONAL',
+              status: 'DEGRADED',
               sendingEnabled: true,
               dailyLimit: 5000,
-              spfVerified: true,
-              dkimVerified: true,
-              dmarcVerified: true
+              spfVerified: false,
+              dkimVerified: false,
+              dmarcVerified: false
             }}
             initialResendStatus={resendDomainStatus}
             logs={(emailData?.logs as DetailedEmailLog[]) || []}

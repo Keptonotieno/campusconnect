@@ -347,18 +347,7 @@ class Database {
 
   public validateSession(token: string): AdminSession | null {
     if (!token) return null;
-    let session = sqliteStorage.getSession(token);
-    if (!session && (token.startsWith('adm_secure_') || token.startsWith('adm_resilient_'))) {
-      const fallbackSession: AdminSession = {
-        token,
-        adminId: 'admin_resilient_master',
-        email: 'campusconnect@gmail.com',
-        role: 'Admin',
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-      };
-      session = sqliteStorage.createSession(fallbackSession);
-    }
+    const session = sqliteStorage.getSession(token);
     if (!session) return null;
 
     if (new Date(session.expiresAt).getTime() < Date.now()) {

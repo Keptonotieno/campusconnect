@@ -76,22 +76,25 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
 }) => {
   const [activeTab, setActiveTab] = useState<'IDENTITY' | 'TEMPLATES'>('IDENTITY');
   const [loading, setLoading] = useState(true);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const authorizedRootDomain = (verifiedDomains[0] || centralSenderDomain || 'campusconnect.app').toLowerCase();
 
-  // Identity state
-  const [identity, setIdentity] = useState<UniversityEmailIdentity>({
-    universityId: university.id,
-    universitySlug: university.slug,
-    universityName: university.name,
-    senderName: `${university.name} Campus Portal`,
-    senderEmail: `${university.slug}@${authorizedRootDomain}`,
-    replyTo: `admissions@${university.slug}.edu`,
-    logoUrl: university.logoUrl,
-    primaryColor: university.primaryColor || '#1D64EC',
-    secondaryColor: university.secondaryColor || university.accentColor || '#38BDF8',
-    signature: `Warm regards,\n\n**The ${university.name} Student Media Team**`,
+  const buildDefaultIdentity = (uni?: University): UniversityEmailIdentity => ({
+    universityId: uni?.id || '',
+    universitySlug: uni?.slug || '',
+    universityName: uni?.name || 'University',
+    senderName: `${uni?.name || 'University'} Campus Portal`,
+    senderEmail: `${uni?.slug || 'campus'}@${authorizedRootDomain}`,
+    replyTo: `admissions@${uni?.slug || 'campus'}.edu`,
+    logoUrl: uni?.logoUrl || '',
+    primaryColor: uni?.primaryColor || '#1D64EC',
+    secondaryColor: uni?.secondaryColor || uni?.accentColor || '#38BDF8',
+    signature: `Warm regards,\n\n**The ${uni?.name || 'University'} Student Media Team**`,
     isEnabled: true
   });
+
+  // Identity state
+  const [identity, setIdentity] = useState<UniversityEmailIdentity>(() => buildDefaultIdentity(university));
   const [savingIdentity, setSavingIdentity] = useState(false);
 
   // Templates state
@@ -120,19 +123,30 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
 
   // Load initial data
   useEffect(() => {
+    if (!university?.id) {
+      setLoading(false);
+      return;
+    }
     let isCancelled = false;
     setLoading(true);
+    setIdentity(buildDefaultIdentity(university));
 
     Promise.all([
       fetchUniversityEmailIdentity(university.id).catch(() => ({ identity: null })),
       fetchUniversityEmailTemplates(university.id).catch(() => ({ templates: [] }))
     ]).then(([idRes, tplRes]) => {
       if (isCancelled) return;
-      if (idRes.identity) {
-        setIdentity(idRes.identity);
+      if (idRes?.identity) {
+        setIdentity(prev => ({
+          ...buildDefaultIdentity(university),
+          ...(prev || {}),
+          ...idRes.identity,
+          primaryColor: idRes.identity?.primaryColor || prev?.primaryColor || university?.primaryColor || '#1D64EC',
+          secondaryColor: idRes.identity?.secondaryColor || prev?.secondaryColor || university?.secondaryColor || university?.accentColor || '#38BDF8'
+        }));
       }
-      if (tplRes.templates) {
-        setTemplates(tplRes.templates);
+      if (Array.isArray(tplRes?.templates)) {
+        setTemplates(tplRes.templates.filter(Boolean));
       }
       setLoading(false);
     });
@@ -140,11 +154,12 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
     return () => {
       isCancelled = true;
     };
-  }, [university.id]);
+  }, [university?.id]);
 
   // Load active template draft when selectedEventType or templates change
   useEffect(() => {
-    const found = templates.find(t => t.eventType === selectedEventType);
+    setConfirmingReset(false);
+    const found = (templates || []).find(t => t?.eventType === selectedEventType);
     if (found) {
       setCurrentTemplateDraft(found);
     } else {
@@ -155,6 +170,7 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
 
   // Update live HTML preview
   const updatePreview = async (eventType: UniversityEmailEventType, customTemplate: Partial<UniversityEmailTemplate>) => {
+    if (!university?.id) return;
     setLoadingPreview(true);
     try {
       const res = await previewEmailTemplate({
@@ -165,7 +181,7 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
           universityId: university.id
         }
       });
-      if (res.html) {
+      if (res?.html) {
         setPreviewHtml(res.html);
         if (!customTemplate.subject && res.subject) {
           // If draft was empty, populate from default preview
@@ -189,18 +205,27 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
       updatePreview(selectedEventType, currentTemplateDraft);
     }, 400);
     return () => clearTimeout(timer);
-  }, [currentTemplateDraft, selectedEventType, activeTab, identity.primaryColor, identity.secondaryColor]);
+  }, [currentTemplateDraft, selectedEventType, activeTab, identity?.primaryColor, identity?.secondaryColor]);
 
   // Save Identity
   const handleSaveIdentity = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!university?.id) return;
     setSavingIdentity(true);
     try {
       const res = await saveUniversityEmailIdentity(university.id, identity);
-      setIdentity(res.identity);
-      onSuccessToast?.('Email Identity Saved', `Updated sender identity for ${university.name}.`);
+      if (res?.identity) {
+        setIdentity(prev => ({
+          ...buildDefaultIdentity(university),
+          ...(prev || {}),
+          ...res.identity,
+          primaryColor: res.identity?.primaryColor || prev?.primaryColor || university?.primaryColor || '#1D64EC',
+          secondaryColor: res.identity?.secondaryColor || prev?.secondaryColor || university?.secondaryColor || university?.accentColor || '#38BDF8'
+        }));
+      }
+      onSuccessToast?.('Email Identity Saved', `Updated sender identity for ${university?.name || 'University'}.`);
     } catch (err: any) {
-      alert(`Failed to save identity: ${err.message}`);
+      onSuccessToast?.('Save Failed', err?.message || 'Failed to save university email identity.');
     } finally {
       setSavingIdentity(false);
     }
@@ -208,6 +233,7 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
 
   // Save Template
   const handleSaveTemplate = async () => {
+    if (!university?.id) return;
     setSavingTemplate(true);
     try {
       const payload: Partial<UniversityEmailTemplate> = {
@@ -217,13 +243,15 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
         isCustom: true
       };
       const res = await saveUniversityEmailTemplate(university.id, payload);
-      setTemplates(prev => {
-        const filtered = prev.filter(t => t.eventType !== selectedEventType);
-        return [...filtered, res.template];
-      });
-      onSuccessToast?.('Template Saved', `Custom template for ${selectedEventType} saved for ${university.name}.`);
+      if (res?.template) {
+        setTemplates(prev => {
+          const filtered = (prev || []).filter(t => t && t.eventType !== selectedEventType);
+          return [...filtered, res.template];
+        });
+      }
+      onSuccessToast?.('Template Saved', `Custom template for ${selectedEventType} saved for ${university?.name || 'University'}.`);
     } catch (err: any) {
-      alert(`Failed to save template: ${err.message}`);
+      onSuccessToast?.('Save Failed', err?.message || 'Failed to save custom email template.');
     } finally {
       setSavingTemplate(false);
     }
@@ -231,13 +259,15 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
 
   // Reset Template
   const handleResetTemplate = async () => {
-    if (!confirm(`Are you sure you want to reset the "${selectedEventType}" email template to system defaults for ${university.name}?`)) {
+    if (!university?.id) return;
+    if (!confirmingReset) {
+      setConfirmingReset(true);
       return;
     }
     setResettingTemplate(true);
     try {
       await resetUniversityEmailTemplate(university.id, selectedEventType);
-      setTemplates(prev => prev.filter(t => t.eventType !== selectedEventType));
+      setTemplates(prev => (prev || []).filter(t => t && t.eventType !== selectedEventType));
       setCurrentTemplateDraft({
         subject: '',
         preheader: '',
@@ -247,10 +277,11 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
         buttonLink: '',
         footerText: ''
       });
+      setConfirmingReset(false);
       onSuccessToast?.('Template Reset', `Reset to system default template.`);
       updatePreview(selectedEventType, {});
     } catch (err: any) {
-      alert(`Reset failed: ${err.message}`);
+      onSuccessToast?.('Reset Failed', err?.message || 'Could not reset template.');
     } finally {
       setResettingTemplate(false);
     }
@@ -267,12 +298,12 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
         eventType: selectedEventType
       });
       if (res.success === false) {
-        alert(`Email delivery notice: ${res.message || 'Delivery failed'}`);
+        onSuccessToast?.('Delivery Blocked / Notice', res.message || 'Email delivery failed.');
       } else {
-        onSuccessToast?.('Test Email Sent', res.message || `Dispatched to ${testEmailRecipient}`);
+        onSuccessToast?.('Test Email Delivered', res.message || `Dispatched to ${testEmailRecipient}`);
       }
     } catch (err: any) {
-      alert(`Failed to send test email: ${err.message}`);
+      onSuccessToast?.('Dispatch Failed', err.message || 'Failed to dispatch test email.');
     } finally {
       setSendingTest(false);
     }
@@ -286,7 +317,10 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
     }));
   };
 
-  const isCurrentCustom = templates.some(t => t.eventType === selectedEventType && t.isCustom);
+  const isCurrentCustom = (templates || []).some(t => t?.eventType === selectedEventType && t.isCustom);
+  const safeIdentity = identity || buildDefaultIdentity(university);
+
+  if (!university) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in">
@@ -301,8 +335,8 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
         }`}>
           <div className="flex items-center gap-3">
             <img 
-              src={university.logoUrl} 
-              alt={university.name}
+              src={university?.logoUrl} 
+              alt={university?.name || 'University'}
               className={`w-12 h-12 rounded-xl object-cover p-1 border shadow-xs ${
                 isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
               }`}
@@ -312,12 +346,12 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
                   University Email Manager
                 </span>
-                <span className={`text-xs font-semibold ${identity.isEnabled ? 'text-emerald-500' : 'text-slate-400'}`}>
-                  {identity.isEnabled ? '● Active Sending' : '○ Disabled'}
+                <span className={`text-xs font-semibold ${safeIdentity.isEnabled ? 'text-emerald-500' : 'text-slate-400'}`}>
+                  {safeIdentity.isEnabled ? '● Active Sending' : '○ Disabled'}
                 </span>
               </div>
               <h2 className="text-xl font-black tracking-tight mt-0.5">
-                {university.name}
+                {university?.name || 'University'}
               </h2>
               <p className="text-xs text-slate-500">
                 Configure campus-specific sender alias, brand colors, signature, and personalized notification templates.
@@ -388,8 +422,8 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={identity.isEnabled}
-                    onChange={(e) => setIdentity({ ...identity, isEnabled: e.target.checked })}
+                    checked={safeIdentity.isEnabled}
+                    onChange={(e) => setIdentity({ ...safeIdentity, isEnabled: e.target.checked })}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
@@ -402,8 +436,8 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                   <label className="text-xs font-bold text-slate-500">Sender Display Name</label>
                   <input
                     type="text"
-                    value={identity.senderName}
-                    onChange={(e) => setIdentity({ ...identity, senderName: e.target.value })}
+                    value={safeIdentity.senderName || ''}
+                    onChange={(e) => setIdentity({ ...safeIdentity, senderName: e.target.value })}
                     required
                     placeholder="e.g. Miami University"
                     className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:border-blue-500 ${
@@ -417,10 +451,10 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                   <label className="text-xs font-bold text-slate-500">Sender Email / Authorized Alias</label>
                   <input
                     type="email"
-                    value={identity.senderEmail}
-                    onChange={(e) => setIdentity({ ...identity, senderEmail: e.target.value })}
+                    value={safeIdentity.senderEmail || ''}
+                    onChange={(e) => setIdentity({ ...safeIdentity, senderEmail: e.target.value })}
                     required
-                    placeholder={`e.g. ${university.slug}@${authorizedRootDomain}`}
+                    placeholder={`e.g. ${university?.slug || 'campus'}@${authorizedRootDomain}`}
                     className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:border-blue-500 font-mono ${
                       isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
                     }`}
@@ -434,8 +468,8 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                   <label className="text-xs font-bold text-slate-500">Reply-To Address</label>
                   <input
                     type="email"
-                    value={identity.replyTo || ''}
-                    onChange={(e) => setIdentity({ ...identity, replyTo: e.target.value })}
+                    value={safeIdentity.replyTo || ''}
+                    onChange={(e) => setIdentity({ ...safeIdentity, replyTo: e.target.value })}
                     placeholder="e.g. admissions@miamioh.edu"
                     className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:border-blue-500 ${
                       isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
@@ -448,8 +482,8 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                   <label className="text-xs font-bold text-slate-500">University Logo URL</label>
                   <input
                     type="url"
-                    value={identity.logoUrl || ''}
-                    onChange={(e) => setIdentity({ ...identity, logoUrl: e.target.value })}
+                    value={safeIdentity.logoUrl || ''}
+                    onChange={(e) => setIdentity({ ...safeIdentity, logoUrl: e.target.value })}
                     placeholder="https://..."
                     className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:border-blue-500 ${
                       isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
@@ -466,14 +500,14 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                   <div className="flex items-center gap-2">
                     <input
                       type="color"
-                      value={identity.primaryColor || '#1D64EC'}
-                      onChange={(e) => setIdentity({ ...identity, primaryColor: e.target.value })}
+                      value={safeIdentity.primaryColor || '#1D64EC'}
+                      onChange={(e) => setIdentity({ ...safeIdentity, primaryColor: e.target.value })}
                       className="w-10 h-10 rounded-xl cursor-pointer border border-slate-200 p-0.5 shrink-0"
                     />
                     <input
                       type="text"
-                      value={identity.primaryColor || '#1D64EC'}
-                      onChange={(e) => setIdentity({ ...identity, primaryColor: e.target.value })}
+                      value={safeIdentity.primaryColor || '#1D64EC'}
+                      onChange={(e) => setIdentity({ ...safeIdentity, primaryColor: e.target.value })}
                       className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono focus:outline-none focus:border-blue-500 ${
                         isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
                       }`}
@@ -487,14 +521,14 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                   <div className="flex items-center gap-2">
                     <input
                       type="color"
-                      value={identity.secondaryColor || '#38BDF8'}
-                      onChange={(e) => setIdentity({ ...identity, secondaryColor: e.target.value })}
+                      value={safeIdentity.secondaryColor || '#38BDF8'}
+                      onChange={(e) => setIdentity({ ...safeIdentity, secondaryColor: e.target.value })}
                       className="w-10 h-10 rounded-xl cursor-pointer border border-slate-200 p-0.5 shrink-0"
                     />
                     <input
                       type="text"
-                      value={identity.secondaryColor || '#38BDF8'}
-                      onChange={(e) => setIdentity({ ...identity, secondaryColor: e.target.value })}
+                      value={safeIdentity.secondaryColor || '#38BDF8'}
+                      onChange={(e) => setIdentity({ ...safeIdentity, secondaryColor: e.target.value })}
                       className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono focus:outline-none focus:border-blue-500 ${
                         isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
                       }`}
@@ -509,8 +543,8 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                 <label className="text-xs font-bold text-slate-500">Email Signature Block</label>
                 <textarea
                   rows={3}
-                  value={identity.signature || ''}
-                  onChange={(e) => setIdentity({ ...identity, signature: e.target.value })}
+                  value={safeIdentity.signature || ''}
+                  onChange={(e) => setIdentity({ ...safeIdentity, signature: e.target.value })}
                   placeholder="Warm regards,&#10;The Student Media & Community Team"
                   className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:border-blue-500 leading-relaxed ${
                     isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
@@ -714,15 +748,30 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                       </button>
 
                       {isCurrentCustom && (
-                        <button
-                          type="button"
-                          onClick={handleResetTemplate}
-                          disabled={resettingTemplate}
-                          className="px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-950/30 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Reset to Default</span>
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={handleResetTemplate}
+                            disabled={resettingTemplate}
+                            className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                              confirmingReset
+                                ? 'bg-rose-600 text-white border-rose-600 hover:bg-rose-500'
+                                : 'border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-950/30'
+                            }`}
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>{confirmingReset ? 'Confirm Reset' : 'Reset to Default'}</span>
+                          </button>
+                          {confirmingReset && (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingReset(false)}
+                              className="px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -825,7 +874,7 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
           isDarkMode ? 'border-slate-800 bg-[#131B2E]' : 'border-slate-100 bg-slate-50'
         }`}>
           <div className="text-xs text-slate-400">
-            University: <strong className={isDarkMode ? 'text-white' : 'text-slate-800'}>{university.name}</strong> • Slug: <span className="font-mono">/university/{university.slug}</span>
+            University: <strong className={isDarkMode ? 'text-white' : 'text-slate-800'}>{university?.name || 'University'}</strong> • Slug: <span className="font-mono">/university/{university?.slug || ''}</span>
           </div>
 
           <button
