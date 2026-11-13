@@ -1,5 +1,48 @@
 [
   {
+    "actorUid": "admin",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "EMAIL_RETRIED",
+    "targetType": "SYSTEM",
+    "targetId": "email_failed_verify_sess_7ea180f309f53c504f273a15",
+    "details": "Retried PASSWORD_RESET email to retry.student@yahoo.com (Result: DELIVERED)",
+    "id": "log_e53b4c5af590",
+    "timestamp": "2026-11-13T12:48:46.447Z"
+  },
+  {
+    "actorUid": "usr_verify",
+    "actorRole": "System",
+    "action": "PAYMENT_VERIFIED",
+    "targetType": "PAYMENT",
+    "targetId": "pay_9dc38a687b3c",
+    "details": "Payment of $6 USD (USD) verified via Stripe Card Gateway. Ref: ch_gr0mc3gjcv2z",
+    "id": "log_55c7f46eb058",
+    "timestamp": "2026-11-13T11:27:51.300Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_da43c6fb5c0c",
+    "timestamp": "2026-11-13T11:27:51.223Z"
+  },
+  {
+    "actorUid": "admin_secondary_campusconnect",
+    "actorEmail": "campusconnect@gmail.com",
+    "actorRole": "Admin",
+    "action": "ADMIN_LOGIN",
+    "targetType": "USER",
+    "targetId": "admin_secondary_campusconnect",
+    "details": "Administrator logged in from IP 127.0.0.1",
+    "id": "log_93f182a9e481",
+    "timestamp": "2026-11-13T11:27:20.693Z"
+  },
+  {
     "actorUid": "email_webhook",
     "actorRole": "System",
     "action": "EMAIL_WEBHOOK_PROCESSED",
@@ -62,39 +105,6 @@
     "details": "Processed email.delivered webhook for message re_verify_msg_444 (Recipient: student@virginia.edu, Status: DELIVERED)",
     "id": "log_c04da9691314",
     "timestamp": "2026-11-12T08:44:51.776Z"
-  },
-  {
-    "actorUid": "admin",
-    "actorEmail": "campusconnect@gmail.com",
-    "actorRole": "Admin",
-    "action": "INTEGRATION_KEYS_CLEARED",
-    "targetType": "USER",
-    "targetId": "email_transactional",
-    "details": "Admin cleared credentials for Transactional Email Service. Status: NOT_CONFIGURED",
-    "id": "log_acc4fc2dcd16",
-    "timestamp": "2026-11-11T11:35:58.398Z"
-  },
-  {
-    "actorUid": "admin",
-    "actorEmail": "campusconnect@gmail.com",
-    "actorRole": "Admin",
-    "action": "INTEGRATION_HANDSHAKE_VERIFIED",
-    "targetType": "USER",
-    "targetId": "email_transactional",
-    "details": "Verified handshake with external provider for Transactional Email Service: Resend Transactional Email API handshake verified (re_te...7890). Outbound email delivery pipeline and webhook ingestion endpoint (/api/webhooks/resend) operational.",
-    "id": "log_583ee1367de4",
-    "timestamp": "2026-11-11T11:35:35.604Z"
-  },
-  {
-    "actorUid": "admin",
-    "actorEmail": "campusconnect@gmail.com",
-    "actorRole": "Admin",
-    "action": "INTEGRATION_KEYS_CONFIGURED",
-    "targetType": "USER",
-    "targetId": "email_transactional",
-    "details": "Admin entered active API credentials for Transactional Email Service. Status: CONNECTED",
-    "id": "log_232dd767f15b",
-    "timestamp": "2026-11-11T11:35:27.594Z"
   },
   {
     "actorUid": "admin_secondary_campusconnect",

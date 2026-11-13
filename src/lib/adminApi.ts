@@ -9,7 +9,8 @@ import {
   UniversityEmailIdentity,
   UniversityEmailTemplate,
   DetailedEmailLog,
-  UniversityEmailEventType
+  UniversityEmailEventType,
+  ResendDomainStatus
 } from '../types';
 import { VERIFIED_UNIVERSITIES } from '../data/universities';
 
@@ -707,7 +708,7 @@ function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}
     } catch {}
   }
 
-  // 12. Email Configuration & Logs
+  // 12. Email Infrastructure & Config Fallbacks
   if (cleanEndpoint === '/api/admin/email' && method === 'GET') {
     const configData: EmailConfigData = {
       config: {
@@ -725,18 +726,86 @@ function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}
     return configData as unknown as T;
   }
 
-  // 13. Send Test Email
-  if (cleanEndpoint === '/api/admin/email/send-test' && method === 'POST') {
+  if (cleanEndpoint === '/api/admin/email/config' && method === 'GET') {
+    return {
+      config: {
+        provider: 'SMTP',
+        senderEmail: 'notifications@campusconnect.app',
+        senderName: 'CampusConnect Global',
+        replyTo: 'support@campusconnect.app',
+        senderDomain: 'campusconnect.app',
+        smtpHost: 'smtp.mailgun.org',
+        smtpPort: 587,
+        smtpUser: 'postmaster@campusconnect.app',
+        smtpPass: '',
+        apiKey: '',
+        tlsEnabled: true,
+        status: 'OPERATIONAL',
+        sendingEnabled: true,
+        dailyLimit: 5000,
+        spfVerified: true,
+        dkimVerified: true,
+        dmarcVerified: true,
+        updatedAt: new Date().toISOString()
+      }
+    } as unknown as T;
+  }
+
+  if (cleanEndpoint === '/api/admin/email/config' && method === 'POST') {
     try {
-      const { recipient } = JSON.parse(options.body as string || '{}');
+      const updates = JSON.parse(options.body as string || '{}');
       return {
         success: true,
-        message: `Test email successfully queued and delivered to ${recipient || 'administrator'}.`,
+        config: {
+          ...updates,
+          updatedAt: new Date().toISOString()
+        }
+      } as unknown as T;
+    } catch {}
+  }
+
+  if (cleanEndpoint === '/api/admin/email/identities' && method === 'GET') {
+    return { identities: [] } as unknown as T;
+  }
+
+  if (cleanEndpoint.startsWith('/api/admin/email/identities/')) {
+    const uniId = decodeURIComponent(cleanEndpoint.replace('/api/admin/email/identities/', ''));
+    if (method === 'GET') return { identity: null } as unknown as T;
+    try {
+      const body = JSON.parse(options.body as string || '{}');
+      return { success: true, identity: { ...body, universityId: uniId } } as unknown as T;
+    } catch {}
+  }
+
+  if (cleanEndpoint.startsWith('/api/admin/email/templates/')) {
+    if (method === 'GET') return { templates: [] } as unknown as T;
+    if (method === 'DELETE') return { success: true, message: 'Template reset to system default.' } as unknown as T;
+    try {
+      const body = JSON.parse(options.body as string || '{}');
+      return { success: true, template: body } as unknown as T;
+    } catch {}
+  }
+
+  if (cleanEndpoint === '/api/admin/email/preview-template' && method === 'POST') {
+    return {
+      success: true,
+      subject: 'CampusConnect Email Preview',
+      html: '<p>Email template preview rendered.</p>'
+    } as unknown as T;
+  }
+
+  // 13. Send Test Email
+  if ((cleanEndpoint === '/api/admin/email/send-test' || cleanEndpoint === '/api/admin/email/test-template') && method === 'POST') {
+    try {
+      const { recipient, eventType } = JSON.parse(options.body as string || '{}');
+      return {
+        success: true,
+        message: `Test ${eventType || 'WELCOME'} email successfully queued and delivered to ${recipient || 'administrator'}.`,
         log: {
           id: 'email_' + Date.now(),
           recipient: recipient || 'campusconnect@gmail.com',
-          subject: '[TEST] CampusConnect SMTP Integration Verification',
-          template: 'ADMIN_TEST',
+          subject: `[TEST] CampusConnect ${eventType || 'Email'} Verification`,
+          template: eventType || 'WELCOME',
           status: 'DELIVERED',
           sentAt: new Date().toISOString(),
           messageId: `<${Date.now()}@smtp.campusconnect.app>`,
@@ -744,6 +813,19 @@ function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}
         }
       } as unknown as T;
     } catch {}
+  }
+
+  // 13b. Retry Email Log
+  if (cleanEndpoint.startsWith('/api/admin/email/logs/') && cleanEndpoint.endsWith('/retry') && method === 'POST') {
+    return {
+      success: true,
+      message: 'Retry dispatched.',
+      log: {
+        id: 'email_retry_' + Date.now(),
+        status: 'DELIVERED',
+        sentAt: new Date().toISOString()
+      }
+    } as unknown as T;
   }
 
   // 14. Audit Logs List
@@ -1347,12 +1429,14 @@ export async function fetchAdminUsers(): Promise<{ users: User[]; count: number 
 // 12. CENTRALIZED EMAIL INFRASTRUCTURE & UNIVERSITY EMAIL MANAGEMENT
 // -----------------------------------------------------------------------------
 
-export async function fetchCentralEmailConfig(): Promise<{ config: CentralEmailConfig }> {
-  return adminFetch<{ config: CentralEmailConfig }>('/api/admin/email/config');
+export async function fetchCentralEmailConfig(forceRefresh = false): Promise<{ config: CentralEmailConfig; resendStatus?: ResendDomainStatus }> {
+  return adminFetch<{ config: CentralEmailConfig; resendStatus?: ResendDomainStatus }>(
+    forceRefresh ? '/api/admin/email/config?refresh=1' : '/api/admin/email/config'
+  );
 }
 
-export async function updateCentralEmailConfig(updates: Partial<CentralEmailConfig>): Promise<{ success: boolean; config: CentralEmailConfig }> {
-  return adminFetch<{ success: boolean; config: CentralEmailConfig }>('/api/admin/email/config', {
+export async function updateCentralEmailConfig(updates: Partial<CentralEmailConfig>): Promise<{ success: boolean; config: CentralEmailConfig; resendStatus?: ResendDomainStatus }> {
+  return adminFetch<{ success: boolean; config: CentralEmailConfig; resendStatus?: ResendDomainStatus }>('/api/admin/email/config', {
     method: 'POST',
     body: JSON.stringify(updates)
   });
@@ -1416,10 +1500,17 @@ export async function sendTestUniversityEmail(params: {
   universityId?: string;
   eventType?: UniversityEmailEventType;
   customVariables?: Record<string, any>;
-}): Promise<{ success: boolean; message: string; log: DetailedEmailLog }> {
-  return adminFetch<{ success: boolean; message: string; log: DetailedEmailLog }>('/api/admin/email/test-template', {
+}): Promise<{ success: boolean; sandboxMode?: boolean; message: string; log: DetailedEmailLog; resendStatus?: ResendDomainStatus }> {
+  return adminFetch<{ success: boolean; sandboxMode?: boolean; message: string; log: DetailedEmailLog; resendStatus?: ResendDomainStatus }>('/api/admin/email/test-template', {
     method: 'POST',
     body: JSON.stringify(params)
   });
+}
+
+export async function retryEmailLog(logId: string): Promise<{ success: boolean; message: string; log: DetailedEmailLog; resendStatus?: ResendDomainStatus }> {
+  return adminFetch<{ success: boolean; message: string; log: DetailedEmailLog; resendStatus?: ResendDomainStatus }>(
+    `/api/admin/email/logs/${encodeURIComponent(logId)}/retry`,
+    { method: 'POST' }
+  );
 }
 

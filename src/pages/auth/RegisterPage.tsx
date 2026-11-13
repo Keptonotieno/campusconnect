@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 import { Grid, MessageSquare, MessageCircle, BarChart3, Check } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
-  const { register, navigateTo } = useApp();
+  const { register, navigateTo, selectedUniversity, entryUniversityContext } = useApp();
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [universitySlug, setUniversitySlug] = useState(
+    entryUniversityContext?.slug || selectedUniversity?.slug || VERIFIED_UNIVERSITIES[0].slug
+  );
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [loading, setLoading] = useState(false);
   const [isStudentMode, setIsStudentMode] = useState(false);
@@ -15,7 +19,7 @@ export const RegisterPage: React.FC = () => {
     e.preventDefault();
     if (!email.trim() || !businessName.trim()) return;
     setLoading(true);
-    await register(businessName.trim(), email.trim(), password);
+    await register(businessName.trim(), email.trim(), password, isStudentMode ? universitySlug : undefined);
     setLoading(false);
   };
 
@@ -173,6 +177,22 @@ export const RegisterPage: React.FC = () => {
                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1D64EC] focus:ring-1 focus:ring-blue-500 shadow-2xs"
                   />
                 </div>
+
+                {isStudentMode && (
+                  <div>
+                    <select
+                      value={universitySlug}
+                      onChange={(e) => setUniversitySlug(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 focus:outline-none focus:border-[#1D64EC] focus:ring-1 focus:ring-blue-500 shadow-2xs"
+                    >
+                      {VERIFIED_UNIVERSITIES.map((u) => (
+                        <option key={u.id} value={u.slug}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <input

@@ -60,7 +60,8 @@ import {
   CentralEmailConfig,
   DetailedEmailLog,
   UniversityEmailIdentity,
-  UniversityEmailTemplate
+  UniversityEmailTemplate,
+  ResendDomainStatus
 } from '../../types';
 import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 import { 
@@ -95,7 +96,8 @@ import {
   EmailConfigData, 
   getStoredAdminToken,
   fetchCentralEmailConfig,
-  updateCentralEmailConfig
+  updateCentralEmailConfig,
+  retryEmailLog
 } from '../../lib/adminApi';
 import { CentralEmailConfigModule } from '../../components/admin/CentralEmailConfigModule';
 import { EmailLogDetailModal } from '../../components/admin/EmailLogDetailModal';
@@ -262,6 +264,7 @@ export const AdminPortalPage: React.FC = () => {
   const [instagramAccounts, setInstagramAccounts] = useState<InstagramAccount[]>([]);
   const [emailData, setEmailData] = useState<EmailConfigData | null>(null);
   const [centralEmailConfig, setCentralEmailConfig] = useState<CentralEmailConfig | null>(null);
+  const [resendDomainStatus, setResendDomainStatus] = useState<ResendDomainStatus | undefined>(undefined);
   const [selectedCampusForEmailModal, setSelectedCampusForEmailModal] = useState<University | null>(null);
   const [selectedLogForInspectModal, setSelectedLogForInspectModal] = useState<DetailedEmailLog | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
@@ -391,6 +394,9 @@ export const AdminPortalPage: React.FC = () => {
       }
       if (centralEmail?.config) {
         setCentralEmailConfig(centralEmail.config);
+      }
+      if (centralEmail?.resendStatus) {
+        setResendDomainStatus(centralEmail.resendStatus);
       }
       // Campuses are maintained as a dynamic live list fetched directly from Firestore
       if (Array.isArray(py?.payments)) {
@@ -2904,6 +2910,7 @@ export const AdminPortalPage: React.FC = () => {
               dkimVerified: true,
               dmarcVerified: true
             }}
+            initialResendStatus={resendDomainStatus}
             logs={(emailData?.logs as DetailedEmailLog[]) || []}
             campuses={campuses}
             onRefresh={loadAllAdminData}
@@ -3157,11 +3164,17 @@ export const AdminPortalPage: React.FC = () => {
                         </div>
 
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          email.configured
+                          email.status === 'CONNECTED'
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20'
+                            : email.configured
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                            : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20'
                         }`}>
-                          {email.configured ? 'CONFIGURED' : 'NOT CONFIGURED'}
+                          {email.status === 'CONNECTED'
+                            ? 'PRODUCTION READY'
+                            : email.configured
+                            ? 'SANDBOX / VERIFY DOMAIN'
+                            : 'NOT CONFIGURED'}
                         </span>
                       </div>
 
@@ -3179,25 +3192,53 @@ export const AdminPortalPage: React.FC = () => {
                         
                         <div className="space-y-1.5 font-mono text-[11px]">
                           <div className="flex items-center justify-between">
+                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Engine / Provider:</span>
+                            <span className="text-emerald-500 font-semibold">
+                              {(email.keys?.provider === 'RESEND' || (!email.keys?.provider && (email.keys?.apiKey || email.keys?.resendApiKey)))
+                                ? 'Resend API'
+                                : (email.keys?.provider || 'SMTP Relay')}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
                             <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Sender Address:</span>
                             <span className={email.keys?.senderEmail ? 'text-emerald-500 font-semibold truncate max-w-[180px]' : 'text-amber-500 font-medium'}>
                               {email.keys?.senderEmail || 'Not Configured (Required)'}
                             </span>
                           </div>
 
-                          <div className="flex items-center justify-between">
-                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>SMTP Relay:</span>
-                            <span className={email.keys?.smtpHost ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
-                              {email.keys?.smtpHost ? `${email.keys.smtpHost}:${email.keys.smtpPort || 587}` : 'Not Configured (Required)'}
-                            </span>
-                          </div>
+                          {(email.keys?.provider === 'RESEND' || (!email.keys?.smtpHost && (email.keys?.apiKey || email.keys?.resendApiKey))) ? (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Resend API Key:</span>
+                                <span className={(email.keys?.apiKey || email.keys?.resendApiKey) ? 'text-emerald-500 font-semibold' : 'text-amber-500 font-medium'}>
+                                  {(email.keys?.apiKey || email.keys?.resendApiKey) ? '••••••••••••' : 'Not Configured (Required)'}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Webhook Secret:</span>
+                                <span className={(email.keys?.webhookSecret || email.keys?.resendWebhookSecret) ? 'text-slate-300 font-semibold' : 'text-slate-400 font-medium'}>
+                                  {(email.keys?.webhookSecret || email.keys?.resendWebhookSecret) ? '••••••••••••' : 'Optional'}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>SMTP Relay:</span>
+                                <span className={email.keys?.smtpHost ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
+                                  {email.keys?.smtpHost ? `${email.keys.smtpHost}:${email.keys.smtpPort || 587}` : 'Not Configured (Required)'}
+                                </span>
+                              </div>
 
-                          <div className="flex items-center justify-between">
-                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Password / Key:</span>
-                            <span className={email.keys?.smtpPassword ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
-                              {email.keys?.smtpPassword ? '••••••••••••' : 'Not Configured'}
-                            </span>
-                          </div>
+                              <div className="flex items-center justify-between">
+                                <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Password / Key:</span>
+                                <span className={(email.keys?.smtpPassword || email.keys?.apiKey) ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
+                                  {(email.keys?.smtpPassword || email.keys?.apiKey) ? '••••••••••••' : 'Not Configured'}
+                                </span>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -4204,7 +4245,7 @@ export const AdminPortalPage: React.FC = () => {
                       Email Delivery Engine
                     </label>
                     <select
-                      value={integrationKeysForm['provider'] || (integrationKeysForm['apiKey'] ? 'RESEND' : 'SMTP')}
+                      value={integrationKeysForm['provider'] || (integrationKeysForm['smtpHost'] && !integrationKeysForm['apiKey'] ? 'SMTP' : 'RESEND')}
                       onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, provider: e.target.value })}
                       className={`w-full rounded-xl px-3.5 py-2 text-xs font-medium focus:outline-none focus:border-blue-500 border ${
                         isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
@@ -4215,7 +4256,7 @@ export const AdminPortalPage: React.FC = () => {
                     </select>
                   </div>
 
-                  {(integrationKeysForm['provider'] === 'RESEND' || !integrationKeysForm['provider'] || Boolean(integrationKeysForm['apiKey'])) ? (
+                  {(integrationKeysForm['provider'] === 'RESEND' || (!integrationKeysForm['provider'] && Boolean(integrationKeysForm['apiKey'] || !integrationKeysForm['smtpHost']))) ? (
                     <div className="space-y-3 p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20">
                       <div>
                         <div className="flex items-center justify-between mb-1">
@@ -4259,7 +4300,7 @@ export const AdminPortalPage: React.FC = () => {
                           <span className="text-emerald-400 font-mono text-[10px]">Active</span>
                         </div>
                         <div className="font-mono text-[10px] text-emerald-400 bg-slate-950 px-2 py-1 rounded select-all break-all">
-                          https://campusconnect.app/api/webhooks/resend
+                          {typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/resend` : 'https://campusconnect.app/api/webhooks/resend'}
                         </div>
                         <div className="text-[10px] text-slate-400">
                           Listens for email.delivered, email.bounced, email.opened, and email.clicked events.
@@ -4598,6 +4639,8 @@ export const AdminPortalPage: React.FC = () => {
       {selectedCampusForEmailModal && (
         <UniversityEmailManagerModal
           university={selectedCampusForEmailModal}
+          centralSenderDomain={centralEmailConfig?.senderDomain}
+          verifiedDomains={resendDomainStatus?.verifiedDomains}
           onClose={() => setSelectedCampusForEmailModal(null)}
           onSuccessToast={(title, message) => addToast(title, message, 'success')}
           isDarkMode={isDarkMode}
@@ -4609,6 +4652,25 @@ export const AdminPortalPage: React.FC = () => {
         <EmailLogDetailModal
           log={selectedLogForInspectModal}
           onClose={() => setSelectedLogForInspectModal(null)}
+          onRetry={async (logId) => {
+            try {
+              const res = await retryEmailLog(logId);
+              if (res.resendStatus) {
+                setResendDomainStatus(res.resendStatus);
+              }
+              if (res.log) {
+                setSelectedLogForInspectModal(res.log);
+              }
+              addToast(
+                res.success ? 'Retry Dispatched' : 'Retry Notice',
+                res.message || (res.success ? 'Email re-dispatched successfully.' : 'Retry did not complete delivery.'),
+                res.success ? 'success' : 'error'
+              );
+              loadAllAdminData();
+            } catch (err: any) {
+              addToast('Retry Failed', err.message || 'Could not retry email delivery.', 'error');
+            }
+          }}
           isDarkMode={isDarkMode}
         />
       )}

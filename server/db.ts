@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 import { 
   University, 
   PaymentRecord, 
@@ -10,7 +11,8 @@ import {
   UniversityEmailIdentity,
   UniversityEmailTemplate,
   DetailedEmailLog,
-  UniversityEmailEventType
+  UniversityEmailEventType,
+  ResendDomainStatus
 } from '../src/types';
 import { VERIFIED_UNIVERSITIES, findUniversityBySlug } from '../src/data/universities';
 import { sqliteStorage } from './sqlite';
@@ -24,6 +26,8 @@ import type {
 import { 
   sendUniversityEmail, 
   previewUniversityEmail, 
+  getResendDomainStatus,
+  getCachedResendStatus,
   type SendUniversityEmailParams 
 } from './emailService';
 
@@ -717,7 +721,67 @@ class Database {
   }
 
   public saveCentralEmailConfig(updates: Partial<CentralEmailConfig>): CentralEmailConfig {
-    return sqliteStorage.saveCentralEmailConfig(updates);
+    const saved = sqliteStorage.saveCentralEmailConfig(updates);
+
+    // Bidirectional sync with integrations['email_transactional']
+    try {
+      const integrations = sqliteStorage.getAllIntegrations();
+      const target = integrations.find(i => i.id === 'email_transactional');
+      if (target) {
+        const apiKeyVal = (saved.apiKey || '').trim();
+        const smtpPassVal = (saved.smtpPass || '').trim();
+        const smtpHostVal = (saved.smtpHost || '').trim();
+        const senderEmailVal = (saved.senderEmail || '').trim();
+        const envResendKey = (
+          process.env.RESEND_API_KEY ||
+          process.env.RESEND_KEY ||
+          process.env.RESEND_APIKEY ||
+          process.env.RESEND_SECRET ||
+          process.env.RESEND_TOKEN ||
+          process.env.EMAIL_API_KEY ||
+          process.env.TRANSACTIONAL_EMAIL_API_KEY ||
+          ''
+        ).trim();
+
+        const isSmtp = saved.provider === 'SMTP';
+        const isConfigured = Boolean(
+          envResendKey ||
+          (isSmtp ? (senderEmailVal && smtpHostVal && smtpPassVal) : apiKeyVal)
+        );
+
+        target.keys = {
+          ...target.keys,
+          provider: saved.provider,
+          apiKey: apiKeyVal,
+          resendApiKey: saved.provider === 'RESEND' ? apiKeyVal : (target.keys.resendApiKey || ''),
+          smtpHost: smtpHostVal,
+          smtpPort: String(saved.smtpPort || 587),
+          smtpUser: saved.smtpUser || '',
+          smtpPassword: smtpPassVal,
+          senderEmail: senderEmailVal,
+          senderName: saved.senderName || 'CampusConnect Global'
+        };
+        const cachedResend =
+          !isSmtp && saved.provider === 'RESEND' && isConfigured
+            ? getCachedResendStatus(apiKeyVal || envResendKey)
+            : null;
+
+        target.configured = isConfigured;
+        target.status = !isConfigured
+          ? 'NOT_CONFIGURED'
+          : (saved.provider === 'RESEND'
+            ? (cachedResend?.productionReady ? 'CONNECTED' : 'DEGRADED')
+            : 'CONNECTED');
+        if (target.status === 'CONNECTED' && !target.lastVerifiedAt) {
+          target.lastVerifiedAt = new Date().toISOString();
+        }
+        sqliteStorage.upsertIntegration(target);
+      }
+    } catch (syncErr) {
+      console.warn('[Database] Failed syncing central email config to integration:', syncErr);
+    }
+
+    return saved;
   }
 
   public getAllUniversityEmailIdentities(): UniversityEmailIdentity[] {
@@ -729,7 +793,15 @@ class Database {
   }
 
   public saveUniversityEmailIdentity(identity: UniversityEmailIdentity): UniversityEmailIdentity {
-    return sqliteStorage.saveUniversityEmailIdentity(identity);
+    // Requirement 8: Never store per-university Resend accounts or API keys
+    const sanitized = { ...identity } as Record<string, any>;
+    delete sanitized.apiKey;
+    delete sanitized.resendApiKey;
+    delete sanitized.smtpPass;
+    delete sanitized.smtpPassword;
+    delete sanitized.smtpUser;
+    delete sanitized.smtpHost;
+    return sqliteStorage.saveUniversityEmailIdentity(sanitized as UniversityEmailIdentity);
   }
 
   public getUniversityEmailTemplates(uniId: string): UniversityEmailTemplate[] {
@@ -756,8 +828,16 @@ class Database {
     return previewUniversityEmail(params);
   }
 
+  public async getResendDomainStatus(forceRefresh = false): Promise<ResendDomainStatus> {
+    return getResendDomainStatus(undefined, forceRefresh);
+  }
+
   public getEmailLogs(): EmailDeliveryLog[] {
     return sqliteStorage.getAllEmailLogs();
+  }
+
+  public getEmailLogById(id: string): DetailedEmailLog | null {
+    return sqliteStorage.getEmailLogById(id);
   }
 
   public logEmailDelivery(log: Omit<EmailDeliveryLog, 'id' | 'sentAt' | 'messageId'>): EmailDeliveryLog {
@@ -796,8 +876,38 @@ class Database {
   }
 
   // Integrations Management (Stored in SQLite)
+  public maskIntegration(integration: IntegrationConfig): IntegrationConfig {
+    const SECRET_KEYS = new Set([
+      'apiKey',
+      'resendApiKey',
+      'smtpPassword',
+      'secretKey',
+      'webhookSecret',
+      'resendWebhookSecret',
+      'appSecret',
+      'accessToken',
+      'webhookVerifyToken'
+    ]);
+    const maskedKeys: Record<string, string> = {};
+    for (const [k, v] of Object.entries(integration.keys || {})) {
+      if (SECRET_KEYS.has(k) && typeof v === 'string' && v.trim().length > 0) {
+        maskedKeys[k] = '••••••••••••';
+      } else {
+        maskedKeys[k] = v || '';
+      }
+    }
+    return {
+      ...integration,
+      keys: maskedKeys
+    };
+  }
+
   public getIntegrations(): IntegrationConfig[] {
     return sqliteStorage.getAllIntegrations();
+  }
+
+  public getMaskedIntegrations(): IntegrationConfig[] {
+    return sqliteStorage.getAllIntegrations().map(i => this.maskIntegration(i));
   }
 
   public isIntegrationConfigured(id: string): boolean {
@@ -832,7 +942,17 @@ class Database {
       throw new Error(`Integration "${id}" not found.`);
     }
 
-    const mergedKeys = { ...target.keys, ...keys };
+    // Preserve existing stored secrets if the UI submitted back masked placeholders
+    const sanitizedIncoming: Record<string, string> = {};
+    for (const [k, v] of Object.entries(keys || {})) {
+      if (v === '••••••••••••' && target.keys[k]) {
+        sanitizedIncoming[k] = target.keys[k];
+      } else {
+        sanitizedIncoming[k] = v ?? '';
+      }
+    }
+
+    const mergedKeys = { ...target.keys, ...sanitizedIncoming };
     target.keys = mergedKeys;
 
     // Check whether the necessary keys are configured
@@ -849,18 +969,34 @@ class Database {
       }
     } else if (id === 'email_transactional') {
       const sender = (mergedKeys.senderEmail || '').trim();
+      const senderName = (mergedKeys.senderName || '').trim();
       const host = (mergedKeys.smtpHost || '').trim();
+      const port = parseInt(String(mergedKeys.smtpPort || '587'), 10) || 587;
+      const smtpUser = (mergedKeys.smtpUser || '').trim();
+      const smtpPassword = (mergedKeys.smtpPassword || '').trim();
       const apiKey = (mergedKeys.apiKey || mergedKeys.resendApiKey || '').trim();
-      isFullyConfigured = apiKey.length > 0 || (sender.length > 0 && host.length > 0);
+      const chosenProvider = (mergedKeys.provider || (apiKey ? 'RESEND' : 'SMTP')) as CentralEmailConfig['provider'];
 
-      // If Resend API key was provided, automatically configure central email config to RESEND
-      if (apiKey) {
-        sqliteStorage.saveCentralEmailConfig({
-          provider: 'RESEND',
-          apiKey: apiKey,
-          status: 'OPERATIONAL'
-        });
-      }
+      isFullyConfigured = Boolean(
+        process.env.RESEND_API_KEY ||
+        (chosenProvider === 'SMTP' ? (sender.length > 0 && host.length > 0 && smtpPassword.length > 0) : (apiKey.length > 0 || (sender.length > 0 && host.length > 0)))
+      );
+
+      const senderDomain = sender.includes('@') ? sender.split('@')[1] : undefined;
+
+      // Full bidirectional sync with central_email_config
+      sqliteStorage.saveCentralEmailConfig({
+        provider: chosenProvider,
+        apiKey,
+        smtpHost: host,
+        smtpPort: port,
+        smtpUser,
+        smtpPass: smtpPassword,
+        ...(sender ? { senderEmail: sender } : {}),
+        ...(senderName ? { senderName } : {}),
+        ...(senderDomain ? { senderDomain } : {}),
+        status: isFullyConfigured ? 'OPERATIONAL' : 'DEGRADED'
+      });
     } else if (id === 'meta_instagram') {
       const token = (mergedKeys.accessToken || '').trim();
       const appId = (mergedKeys.appId || '').trim();
@@ -893,7 +1029,7 @@ class Database {
     return target;
   }
 
-  public testIntegration(id: string, actorEmail: string): { success: boolean; message: string; verifiedAt: string } {
+  public async testIntegration(id: string, actorEmail: string): Promise<{ success: boolean; message: string; verifiedAt: string }> {
     const integrations = sqliteStorage.getAllIntegrations();
     const target = integrations.find(i => i.id === id);
     if (!target) {
@@ -905,31 +1041,70 @@ class Database {
     }
 
     let handshakeDetail = '';
+    let resolvedStatus: IntegrationConfig['status'] = 'CONNECTED';
     if (id === 'payment_stripe') {
       const pub = target.keys.publishableKey || '';
       const mode = pub.includes('live') ? 'Production Live' : 'Test Sandbox';
       handshakeDetail = `Stripe Gateway API connection verified. Validated key prefix (${pub.substring(0, 10)}...) operating in ${mode} mode.`;
     } else if (id === 'email_transactional') {
-      const resendKey = (
+      const centralCfg = this.getCentralEmailConfig();
+      const envResendKey = (
         process.env.RESEND_API_KEY ||
         process.env.RESEND_KEY ||
         process.env.RESEND_APIKEY ||
         process.env.RESEND_SECRET ||
         process.env.RESEND_TOKEN ||
         process.env.EMAIL_API_KEY ||
-        target.keys.apiKey ||
-        target.keys.resendApiKey ||
+        process.env.TRANSACTIONAL_EMAIL_API_KEY ||
         ''
       ).trim();
+      const dbResendKey = (target.keys.apiKey || target.keys.resendApiKey || centralCfg.apiKey || '').trim();
+      const resendKey = envResendKey || (centralCfg.provider === 'RESEND' ? dbResendKey : '');
 
       if (resendKey) {
+        const res = await fetch('https://api.resend.com/domains', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`
+          }
+        });
+        const data: any = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(`Resend API handshake failed: ${data?.message || data?.error || `HTTP ${res.status}`}`);
+        }
+        const rawDomains: any[] = Array.isArray(data?.data) ? data.data : [];
+        const verifiedCount = rawDomains.filter((d) => String(d?.status || '').toLowerCase() === 'verified').length;
+        const domainCount = rawDomains.length;
         const masked = resendKey.length > 8 ? `${resendKey.substring(0, 5)}...${resendKey.substring(resendKey.length - 4)}` : 're_configured';
-        handshakeDetail = `Resend Transactional Email API handshake verified (${masked}). Outbound email delivery pipeline and webhook ingestion endpoint (/api/webhooks/resend) operational.`;
+        const domainStatus = await getResendDomainStatus(resendKey, true).catch(() => null);
+        const productionReady = Boolean(domainStatus?.productionReady);
+
+        if (verifiedCount === 0) {
+          resolvedStatus = 'DEGRADED';
+          handshakeDetail = `Resend API key verified (${masked}), but 0 custom domains are verified (${domainCount} listed). Not production-ready: verify your domain at resend.com/domains and test external delivery.`;
+        } else if (!productionReady) {
+          resolvedStatus = 'DEGRADED';
+          handshakeDetail = `Resend API handshake succeeded (${masked}) with ${verifiedCount} verified domain(s). Send a live test email to an external recipient to confirm production readiness.`;
+        } else {
+          resolvedStatus = 'CONNECTED';
+          handshakeDetail = `Resend API production-ready (${masked}). Verified ${verifiedCount} domain(s), confirmed external delivery, and active webhook receiver (/api/webhooks/resend).`;
+        }
+      } else if (target.keys.smtpHost && target.keys.smtpUser && target.keys.smtpPassword) {
+        const port = parseInt(String(target.keys.smtpPort || '587'), 10) || 587;
+        const transporter = nodemailer.createTransport({
+          host: target.keys.smtpHost,
+          port,
+          secure: port === 465,
+          auth: {
+            user: target.keys.smtpUser,
+            pass: target.keys.smtpPassword
+          },
+          tls: { rejectUnauthorized: false }
+        });
+        await transporter.verify();
+        handshakeDetail = `Live SMTP TLS handshake with ${target.keys.smtpHost}:${port} verified successfully. Sender: ${target.keys.senderEmail || 'notifications@campusconnect.app'}.`;
       } else {
-        const host = target.keys.smtpHost || 'smtp';
-        const port = target.keys.smtpPort || '587';
-        const sender = target.keys.senderEmail || 'notifications';
-        handshakeDetail = `SMTP TLS handshake with ${host}:${port} successfully established. Sender authorized: ${sender}.`;
+        throw new Error('Cannot verify email handshake: Provide either a Resend API Key or full SMTP Host, Username, and Password.');
       }
     } else if (id === 'meta_instagram') {
       const appId = target.keys.appId || '';
@@ -938,7 +1113,7 @@ class Database {
       handshakeDetail = `Handshake connection with ${target.name} verified successfully.`;
     }
 
-    target.status = 'CONNECTED';
+    target.status = resolvedStatus;
     target.lastVerifiedAt = new Date().toISOString();
     sqliteStorage.upsertIntegration(target);
 

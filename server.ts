@@ -179,6 +179,19 @@ app.get('/api/auth/admin-me', requireAdminAuth, (req: AuthenticatedAdminRequest,
   });
 });
 
+const getBaseUrl = (req: Request): string => {
+  const origin = req.headers.origin;
+  if (typeof origin === 'string' && origin.startsWith('http')) {
+    return origin.replace(/\/+$/, '');
+  }
+  const host = req.get('host');
+  if (host) {
+    const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0] || req.protocol || 'http';
+    return `${proto}://${host}`;
+  }
+  return 'https://campusconnect.app';
+};
+
 // Password Reset Request (Dispatches branded PASSWORD_RESET email)
 app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
   try {
@@ -189,19 +202,40 @@ app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
 
     const cleanEmail = email.trim().toLowerCase();
     const token = crypto.randomBytes(24).toString('hex');
-    const targetUni = universityId || 'general';
+    const matchedUser = dbInstance.getRegisteredUsers().find((u) => u.email?.toLowerCase() === cleanEmail);
+    const targetUni = universityId || matchedUser?.universityId || matchedUser?.universitySlug || 'general';
+    const baseUrl = getBaseUrl(req);
 
     const log = await dbInstance.sendUniversityEmail({
       universityId: targetUni,
       eventType: 'PASSWORD_RESET',
       recipient: cleanEmail,
       variables: {
-        student_name: cleanEmail.split('@')[0],
+        student_name: matchedUser?.name || cleanEmail.split('@')[0],
         student_email: cleanEmail,
-        continuation_link: `https://campusconnect.app/reset-password?token=${token}&email=${encodeURIComponent(cleanEmail)}`
+        base_url: baseUrl,
+        continuation_link: `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(cleanEmail)}`
       },
       idempotencyKey: `pwd_reset_${cleanEmail}_${Math.floor(Date.now() / 60000)}`
     });
+
+    if (log.status === 'FAILED') {
+      return res.status(400).json({
+        success: false,
+        error: 'DispatchFailed',
+        message: log.errorMessage || 'Failed to dispatch password reset email.',
+        logId: log.id
+      });
+    }
+
+    if (log.metadata?.sandboxRestriction) {
+      return res.json({
+        success: true,
+        sandboxQueued: true,
+        message: 'Password reset request logged and queued. External email delivery activates after verifying your sending domain.',
+        logId: log.id
+      });
+    }
 
     return res.json({
       success: true,
@@ -223,20 +257,41 @@ app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
 
     const cleanEmail = email.trim().toLowerCase();
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const targetUni = universityId || 'general';
+    const matchedUser = dbInstance.getRegisteredUsers().find((u) => u.email?.toLowerCase() === cleanEmail);
+    const targetUni = universityId || matchedUser?.universityId || matchedUser?.universitySlug || 'general';
+    const baseUrl = getBaseUrl(req);
 
     const log = await dbInstance.sendUniversityEmail({
       universityId: targetUni,
       eventType: 'ACCOUNT_VERIFICATION',
       recipient: cleanEmail,
       variables: {
-        student_name: studentName || cleanEmail.split('@')[0],
+        student_name: studentName || matchedUser?.name || cleanEmail.split('@')[0],
         student_email: cleanEmail,
         verification_code: code,
-        continuation_link: `https://campusconnect.app/verify?code=${code}&email=${encodeURIComponent(cleanEmail)}`
+        base_url: baseUrl,
+        continuation_link: `${baseUrl}/verify?code=${code}&email=${encodeURIComponent(cleanEmail)}`
       },
       idempotencyKey: `email_verif_${cleanEmail}_${Math.floor(Date.now() / 60000)}`
     });
+
+    if (log.status === 'FAILED') {
+      return res.status(400).json({
+        success: false,
+        error: 'DispatchFailed',
+        message: log.errorMessage || 'Failed to dispatch verification email.',
+        logId: log.id
+      });
+    }
+
+    if (log.metadata?.sandboxRestriction) {
+      return res.json({
+        success: true,
+        sandboxQueued: true,
+        message: 'Verification email queued. External delivery activates after domain verification.',
+        logId: log.id
+      });
+    }
 
     return res.json({
       success: true,
@@ -350,18 +405,24 @@ app.post('/api/admin/instagram/:id/disconnect', requireAdminAuth, (req: Authenti
 // -----------------------------------------------------------------------------
 
 // 1. Get Central Email Configuration
-app.get('/api/admin/email/config', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
+app.get('/api/admin/email/config', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   const config = dbInstance.getCentralEmailConfig();
+  const resendStatus = await dbInstance.getResendDomainStatus(req.query.refresh === '1').catch(() => undefined);
   const safeConfig = {
     ...config,
     smtpPass: config.smtpPass ? '••••••••••••' : '',
-    apiKey: config.apiKey ? '••••••••••••' : ''
+    apiKey: config.apiKey ? '••••••••••••' : '',
+    ...(config.provider === 'RESEND' && resendStatus ? {
+      status: resendStatus.productionReady ? 'OPERATIONAL' as const : 'DEGRADED' as const,
+      spfVerified: resendStatus.verifiedDomains.length > 0,
+      dkimVerified: resendStatus.verifiedDomains.length > 0
+    } : {})
   };
-  return res.json({ config: safeConfig });
+  return res.json({ config: safeConfig, resendStatus });
 });
 
 // 2. Update Central Email Configuration
-app.post('/api/admin/email/config', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+app.post('/api/admin/email/config', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const updates = { ...req.body };
     // Preserve existing sensitive passwords if masked value sent back
@@ -384,12 +445,18 @@ app.post('/api/admin/email/config', requireAdminAuth, (req: AuthenticatedAdminRe
       details: `Updated central email infrastructure configuration (Provider: ${saved.provider}, Domain: ${saved.senderDomain})`
     });
 
+    const resendStatus = await dbInstance.getResendDomainStatus(true).catch(() => undefined);
     const safeConfig = {
       ...saved,
       smtpPass: saved.smtpPass ? '••••••••••••' : '',
-      apiKey: saved.apiKey ? '••••••••••••' : ''
+      apiKey: saved.apiKey ? '••••••••••••' : '',
+      ...(saved.provider === 'RESEND' && resendStatus ? {
+        status: resendStatus.productionReady ? 'OPERATIONAL' as const : 'DEGRADED' as const,
+        spfVerified: resendStatus.verifiedDomains.length > 0,
+        dkimVerified: resendStatus.verifiedDomains.length > 0
+      } : {})
     };
-    return res.json({ success: true, config: safeConfig });
+    return res.json({ success: true, config: safeConfig, resendStatus });
   } catch (err: any) {
     return res.status(400).json({ error: 'ConfigSaveFailed', message: err.message });
   }
@@ -410,8 +477,18 @@ app.get('/api/admin/email/identities/:uniId', requireAdminAuth, (req: Authentica
 // 5. Save/Update University Email Identity
 app.post('/api/admin/email/identities/:uniId', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
+    const { senderEmail, senderName } = req.body || {};
+    if (!senderName || !String(senderName).trim()) {
+      return res.status(400).json({ error: 'InvalidIdentity', message: 'Sender display name is required.' });
+    }
+    if (!senderEmail || !String(senderEmail).includes('@')) {
+      return res.status(400).json({ error: 'InvalidIdentity', message: 'A valid authorized sender email address is required.' });
+    }
+
     const saved = dbInstance.saveUniversityEmailIdentity({
       ...req.body,
+      senderName: String(senderName).trim(),
+      senderEmail: String(senderEmail).trim().toLowerCase(),
       universityId: req.params.uniId
     });
 
@@ -495,26 +572,39 @@ app.post('/api/admin/email/test-template', requireAdminAuth, async (req: Authent
     const targetUni = universityId || 'general';
     const targetEvent = eventType || 'WELCOME';
 
+    const baseUrl = getBaseUrl(req);
     const log = await dbInstance.sendUniversityEmail({
       universityId: targetUni,
       eventType: targetEvent,
       recipient: targetRecipient,
+      sandboxForwardToOwner: true,
       variables: {
         student_name: 'Administrator (Test)',
         student_email: targetRecipient,
         submission_reference: `TEST-${Date.now().toString().slice(-4)}`,
         payment_amount: '6.00',
+        base_url: baseUrl,
         ...customVariables
       }
     });
 
     const isSuccess = log.status !== 'FAILED';
+    const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
+    let responseMessage = `Test ${targetEvent} email sent to ${targetRecipient}`;
+    if (!isSuccess) {
+      responseMessage = `Email delivery failed: ${log.errorMessage || 'Unable to deliver message.'}`;
+    } else if (log.metadata?.sandboxMode && log.metadata?.routedViaSandboxTo) {
+      responseMessage = `Sandbox test copy for ${targetRecipient} delivered to verified Resend owner inbox (${log.metadata.routedViaSandboxTo}). Verify a custom domain at resend.com/domains for direct external delivery.`;
+    } else if (log.metadata?.sandboxRestriction) {
+      responseMessage = log.errorMessage || `Email queued in Resend Sandbox Mode. Verify a custom domain at resend.com/domains to deliver to ${targetRecipient}.`;
+    }
+
     return res.status(isSuccess ? 200 : 400).json({
       success: isSuccess,
-      message: isSuccess 
-        ? `Test ${targetEvent} email sent to ${targetRecipient}`
-        : `Email delivery failed: ${log.errorMessage || 'Unable to deliver message.'}`,
-      log
+      sandboxMode: Boolean(log.metadata?.sandboxMode || log.metadata?.sandboxRestriction),
+      message: responseMessage,
+      log,
+      resendStatus
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'TestSendFailed', message: err.message });
@@ -522,39 +612,114 @@ app.post('/api/admin/email/test-template', requireAdminAuth, async (req: Authent
 });
 
 // 11. Legacy / Overview Email Endpoint
-app.get('/api/admin/email', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
+app.get('/api/admin/email', requireAdminAuth, async (_req: AuthenticatedAdminRequest, res: Response) => {
   const config = dbInstance.getCentralEmailConfig();
   const logs = dbInstance.getEmailLogs();
+  const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
   const safeConfig = {
     ...config,
     smtpPass: config.smtpPass ? '••••••••••••' : '',
-    apiKey: config.apiKey ? '••••••••••••' : ''
+    apiKey: config.apiKey ? '••••••••••••' : '',
+    ...(config.provider === 'RESEND' && resendStatus ? {
+      status: resendStatus.productionReady ? 'OPERATIONAL' as const : 'DEGRADED' as const,
+      spfVerified: resendStatus.verifiedDomains.length > 0,
+      dkimVerified: resendStatus.verifiedDomains.length > 0
+    } : {})
   };
-  return res.json({ config: safeConfig, logs });
+  return res.json({ config: safeConfig, logs, resendStatus });
 });
 
 // 12. Legacy Test Verification
 app.post('/api/admin/email/send-test', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const recipient = req.body.recipient || req.admin?.email || 'admin@campusconnect.app';
+    const baseUrl = getBaseUrl(req);
     const log = await dbInstance.sendUniversityEmail({
       universityId: 'general',
       eventType: 'WELCOME',
       recipient,
+      sandboxForwardToOwner: true,
       variables: {
         student_name: 'Administrator',
-        student_email: recipient
+        student_email: recipient,
+        base_url: baseUrl
       }
     });
 
     const isSuccess = log.status !== 'FAILED';
+    const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
+    let responseMessage = `Test email sent to ${recipient}`;
+    if (!isSuccess) {
+      responseMessage = `Email delivery failed: ${log.errorMessage || 'Unable to deliver message.'}`;
+    } else if (log.metadata?.sandboxMode && log.metadata?.routedViaSandboxTo) {
+      responseMessage = `Sandbox test copy for ${recipient} delivered to verified Resend owner inbox (${log.metadata.routedViaSandboxTo}).`;
+    } else if (log.metadata?.sandboxRestriction) {
+      responseMessage = log.errorMessage || `Email queued in Resend Sandbox Mode.`;
+    }
+
     return res.status(isSuccess ? 200 : 400).json({
       success: isSuccess,
-      message: isSuccess ? `Test email sent to ${recipient}` : `Email delivery failed: ${log.errorMessage || 'Unable to deliver message.'}`,
-      log
+      sandboxMode: Boolean(log.metadata?.sandboxMode || log.metadata?.sandboxRestriction),
+      message: responseMessage,
+      log,
+      resendStatus
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'SendFailed', message: err.message });
+  }
+});
+
+// 13. Manual Retry for Failed / Bounced / Queued Email Delivery
+app.post('/api/admin/email/logs/:id/retry', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const original = dbInstance.getEmailLogById(req.params.id);
+    if (!original) {
+      return res.status(404).json({ error: 'NotFound', message: 'Email delivery log entry not found.' });
+    }
+
+    const baseUrl = getBaseUrl(req);
+    const nextAttempt = (Number(original.metadata?.attemptNumber) || 1) + 1;
+    const savedVars = (original.metadata?.variables && typeof original.metadata.variables === 'object')
+      ? original.metadata.variables
+      : {};
+
+    const retryLog = await dbInstance.sendUniversityEmail({
+      universityId: original.universityId || original.metadata?.universityId || 'general',
+      eventType: (original.template || 'WELCOME') as any,
+      recipient: original.recipient,
+      variables: {
+        ...savedVars,
+        base_url: savedVars.base_url || baseUrl
+      },
+      retryOfLogId: original.id,
+      attemptNumber: nextAttempt,
+      idempotencyKey: `retry_${original.id}_${nextAttempt}_${Date.now()}`
+    });
+
+    dbInstance.logAudit({
+      actorUid: 'admin',
+      actorEmail: req.admin?.email || 'admin',
+      actorRole: 'Admin',
+      action: 'EMAIL_RETRIED',
+      targetType: 'SYSTEM',
+      targetId: original.id,
+      details: `Retried ${original.template} email to ${original.recipient} (Result: ${retryLog.status})`
+    });
+
+    const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
+    const isSuccess = retryLog.status !== 'FAILED';
+    return res.status(isSuccess ? 200 : 400).json({
+      success: isSuccess,
+      message: isSuccess
+        ? (retryLog.status === 'DELIVERED'
+            ? `Retry delivered to ${original.recipient}`
+            : retryLog.errorMessage || `Retry queued for ${original.recipient}`)
+        : (retryLog.errorMessage || 'Retry dispatch failed.'),
+      log: retryLog,
+      resendStatus
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'RetryFailed', message: err.message });
   }
 });
 
@@ -576,7 +741,7 @@ app.get('/api/admin/users', requireAdminAuth, (_req: AuthenticatedAdminRequest, 
 
 // List Production Integrations & Configured Keys
 app.get('/api/admin/integrations', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
-  const integrations = dbInstance.getIntegrations();
+  const integrations = dbInstance.getMaskedIntegrations();
   return res.json({ integrations });
 });
 
@@ -587,7 +752,7 @@ app.post('/api/admin/integrations/:id', requireAdminAuth, (req: AuthenticatedAdm
     return res.json({
       success: true,
       message: `Credentials for ${updated.name} updated successfully.`,
-      integration: updated
+      integration: dbInstance.maskIntegration(updated)
     });
   } catch (err: any) {
     return res.status(400).json({ error: 'ConfigFailed', message: err.message });
@@ -595,9 +760,9 @@ app.post('/api/admin/integrations/:id', requireAdminAuth, (req: AuthenticatedAdm
 });
 
 // Test Production Integration Connection Handshake
-app.post('/api/admin/integrations/:id/test', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+app.post('/api/admin/integrations/:id/test', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
-    const result = dbInstance.testIntegration(req.params.id, req.admin?.email || 'admin');
+    const result = await dbInstance.testIntegration(req.params.id, req.admin?.email || 'admin');
     return res.json(result);
   } catch (err: any) {
     return res.status(400).json({ error: 'HandshakeFailed', message: err.message });
@@ -622,6 +787,7 @@ app.post('/api/admin/submissions/:id/review', requireAdminAuth, (req: Authentica
     // Trigger automated email to student asynchronously
     if (updated.studentEmail) {
       const eventType = decision === 'APPROVE' ? 'SUBMISSION_APPROVED' : 'SUBMISSION_REJECTED';
+      const baseUrl = getBaseUrl(req);
       dbInstance.sendUniversityEmail({
         universityId: updated.universityId || updated.universitySlug || 'general',
         eventType,
@@ -631,7 +797,8 @@ app.post('/api/admin/submissions/:id/review', requireAdminAuth, (req: Authentica
           student_email: updated.studentEmail,
           submission_reference: updated.id,
           rejection_reason: reason || updated.rejectionReason,
-          continuation_link: `https://campusconnect.app/university/${updated.universitySlug || 'general'}`
+          base_url: baseUrl,
+          continuation_link: `${baseUrl}/university/${updated.universitySlug || 'general'}`
         },
         idempotencyKey: `review_${updated.id}_${decision}_${Date.now()}`
       }).catch(err => console.error('[ReviewEmailTrigger]', err));
@@ -656,6 +823,7 @@ app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req:
 
     // Trigger automated email to student asynchronously
     if (sub.studentEmail) {
+      const baseUrl = getBaseUrl(req);
       dbInstance.sendUniversityEmail({
         universityId: sub.universityId || sub.universitySlug || 'general',
         eventType: 'INSTAGRAM_PUBLISHED',
@@ -665,7 +833,9 @@ app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req:
           student_email: sub.studentEmail,
           submission_reference: sub.id,
           instagram_post_url: postUrl,
-          university_instagram: cleanHandle
+          university_instagram: cleanHandle,
+          base_url: baseUrl,
+          continuation_link: `${baseUrl}/university/${sub.universitySlug || 'general'}`
         },
         idempotencyKey: `publish_${sub.id}_${Date.now()}`
       }).catch(err => console.error('[PublishEmailTrigger]', err));
@@ -700,6 +870,7 @@ app.post('/api/submissions', (req: Request, res: Response) => {
 
     // Trigger automated email confirmation to student asynchronously
     if (submission.studentEmail) {
+      const baseUrl = getBaseUrl(req);
       dbInstance.sendUniversityEmail({
         universityId: submission.universityId || submission.universitySlug || 'general',
         eventType: 'SUBMISSION_RECEIVED',
@@ -708,7 +879,8 @@ app.post('/api/submissions', (req: Request, res: Response) => {
           student_name: submission.studentDisplayName,
           student_email: submission.studentEmail,
           submission_reference: submission.id,
-          continuation_link: `https://campusconnect.app/university/${submission.universitySlug || 'general'}`
+          base_url: baseUrl,
+          continuation_link: `${baseUrl}/university/${submission.universitySlug || 'general'}`
         },
         idempotencyKey: `sub_recv_${submission.id}`
       }).catch(err => console.error('[SubmissionReceivedEmailTrigger]', err));
@@ -727,6 +899,7 @@ app.post('/api/users/register', (req: Request, res: Response) => {
 
     // Trigger automated welcome email asynchronously
     if (user.email) {
+      const baseUrl = getBaseUrl(req);
       dbInstance.sendUniversityEmail({
         universityId: user.universityId || user.universitySlug || 'general',
         eventType: 'WELCOME',
@@ -735,7 +908,8 @@ app.post('/api/users/register', (req: Request, res: Response) => {
           student_name: user.name,
           student_email: user.email,
           university_name: user.universityName,
-          continuation_link: user.universitySlug ? `https://campusconnect.app/university/${user.universitySlug}` : 'https://campusconnect.app'
+          base_url: baseUrl,
+          continuation_link: user.universitySlug ? `${baseUrl}/university/${user.universitySlug}` : baseUrl
         },
         idempotencyKey: `welcome_${user.id}`
       }).catch(err => console.error('[WelcomeEmailTrigger]', err));
@@ -813,6 +987,7 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
 
       // Trigger automated payment confirmation email asynchronously
       if (sub.studentEmail) {
+        const baseUrl = getBaseUrl(req);
         dbInstance.sendUniversityEmail({
           universityId: sub.universityId || universityId || 'general',
           eventType: 'PAYMENT_CONFIRMATION',
@@ -823,7 +998,8 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
             submission_reference: txnRef,
             payment_amount: '6.00',
             payment_status: 'CONFIRMED',
-            continuation_link: `https://campusconnect.app/university/${sub.universitySlug || 'general'}`
+            base_url: baseUrl,
+            continuation_link: `${baseUrl}/university/${sub.universitySlug || 'general'}`
           },
           idempotencyKey: `pay_conf_${payment.id}`
         }).catch(err => console.error('[PaymentVerifyEmailTrigger]', err));
@@ -898,6 +1074,7 @@ app.post('/api/payments/webhook', (req: Request, res: Response) => {
         // Trigger automated email asynchronously
         if (sub.studentEmail) {
           const eventType = isFailure ? 'PAYMENT_FAILURE' : 'PAYMENT_CONFIRMATION';
+          const baseUrl = getBaseUrl(req);
           dbInstance.sendUniversityEmail({
             universityId: sub.universityId || universityId || 'general',
             eventType,
@@ -908,7 +1085,8 @@ app.post('/api/payments/webhook', (req: Request, res: Response) => {
               submission_reference: transactionId || payment.providerTransactionReference,
               payment_amount: String(amountUsd || '6.00'),
               payment_status: isFailure ? 'FAILED' : 'CONFIRMED',
-              continuation_link: `https://campusconnect.app/university/${sub.universitySlug || 'general'}`
+              base_url: baseUrl,
+              continuation_link: `${baseUrl}/university/${sub.universitySlug || 'general'}`
             },
             idempotencyKey: `pay_hook_${payment.id}`
           }).catch(err => console.error('[PaymentWebhookEmailTrigger]', err));
@@ -938,12 +1116,44 @@ const handleEmailWebhook = (req: Request, res: Response) => {
     const emailId = emailData.email_id || emailData.id || body.email_id || body.id;
     const recipient = Array.isArray(emailData.to) ? emailData.to[0] : (emailData.to || body.recipient);
 
-    // Optional webhook signature / secret validation
-    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET || process.env.EMAIL_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET;
-    const incomingSignature = req.headers['svix-signature'] || req.headers['x-webhook-secret'] || req.query.secret;
-    if (webhookSecret && incomingSignature) {
-      if (typeof incomingSignature === 'string' && incomingSignature.trim() !== webhookSecret.trim() && !incomingSignature.includes(webhookSecret)) {
-        console.warn('[EmailWebhook] Warning: Webhook signature did not match secret, processing with audit flag');
+    // Resolve webhook secret from environment secrets or configured DB integration
+    const emailIntegration = dbInstance.getIntegrations().find(i => i.id === 'email_transactional');
+    const dbWebhookSecret = emailIntegration?.keys?.webhookSecret || emailIntegration?.keys?.resendWebhookSecret || '';
+    const webhookSecret = (
+      process.env.RESEND_WEBHOOK_SECRET ||
+      process.env.EMAIL_WEBHOOK_SECRET ||
+      process.env.WEBHOOK_SECRET ||
+      dbWebhookSecret ||
+      ''
+    ).trim();
+
+    const svixId = req.headers['svix-id'] as string | undefined;
+    const svixTimestamp = req.headers['svix-timestamp'] as string | undefined;
+    const svixSig = req.headers['svix-signature'] as string | undefined;
+    const headerSecret = (req.headers['x-webhook-secret'] || req.query.secret) as string | undefined;
+
+    let signatureVerified = !webhookSecret;
+    if (webhookSecret && (svixSig || headerSecret)) {
+      if (headerSecret && headerSecret.trim() === webhookSecret) {
+        signatureVerified = true;
+      } else if (svixId && svixTimestamp && svixSig) {
+        try {
+          const cleanSecret = webhookSecret.startsWith('whsec_') ? webhookSecret.slice(6) : webhookSecret;
+          const secretBytes = Buffer.from(cleanSecret, 'base64');
+          const signedContent = `${svixId}.${svixTimestamp}.${JSON.stringify(body)}`;
+          const expectedSig = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
+          const signatures = svixSig.split(' ').map(s => s.replace(/^v1,/, '').trim());
+          signatureVerified = signatures.includes(expectedSig) || signatures.includes(webhookSecret);
+        } catch {
+          signatureVerified = false;
+        }
+      } else if (svixSig && (svixSig.trim() === webhookSecret || svixSig.includes(webhookSecret))) {
+        signatureVerified = true;
+      }
+
+      if (!signatureVerified) {
+        console.warn('[EmailWebhook] Unauthorized: Invalid webhook secret / Svix signature.');
+        return res.status(401).json({ error: 'Unauthorized', message: 'Invalid webhook signature.' });
       }
     }
 
@@ -968,7 +1178,8 @@ const handleEmailWebhook = (req: Request, res: Response) => {
 
     const metadataUpdate: Record<string, any> = {
       lastWebhookEvent: eventType,
-      lastWebhookAt: new Date().toISOString()
+      lastWebhookAt: new Date().toISOString(),
+      signatureVerified
     };
 
     if (eventType === 'email.opened') {
@@ -998,6 +1209,7 @@ const handleEmailWebhook = (req: Request, res: Response) => {
       event: eventType,
       emailId,
       status,
+      signatureVerified,
       logUpdated: !!updated
     });
   } catch (err: any) {

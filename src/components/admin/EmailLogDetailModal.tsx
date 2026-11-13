@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { DetailedEmailLog } from '../../types';
-import { X, CheckCircle2, AlertCircle, Clock, Copy, Eye, Code, Mail, ExternalLink } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle, Clock, Copy, Eye, Code, Mail, RefreshCw } from 'lucide-react';
 
 interface EmailLogDetailModalProps {
   log: DetailedEmailLog | null;
   onClose: () => void;
+  onRetry?: (logId: string) => Promise<void>;
   isDarkMode?: boolean;
 }
 
-export const EmailLogDetailModal: React.FC<EmailLogDetailModalProps> = ({ log, onClose, isDarkMode = false }) => {
+export const EmailLogDetailModal: React.FC<EmailLogDetailModalProps> = ({ log, onClose, onRetry, isDarkMode = false }) => {
   const [activeView, setActiveView] = useState<'PREVIEW' | 'RAW'>('PREVIEW');
   const [copied, setCopied] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   if (!log) return null;
 
@@ -194,16 +196,40 @@ export const EmailLogDetailModal: React.FC<EmailLogDetailModalProps> = ({ log, o
         </div>
 
         {/* Footer */}
-        <div className={`p-4 border-t flex items-center justify-end ${
+        <div className={`p-4 border-t flex items-center justify-between gap-3 ${
           isDarkMode ? 'border-slate-800 bg-[#131B2E]' : 'border-slate-100 bg-slate-50'
         }`}>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold transition-colors cursor-pointer"
-          >
-            Close Details
-          </button>
+          <div className="text-[11px] text-slate-400 font-mono">
+            {log.metadata?.actualFromAddress ? `From: ${log.metadata.actualFromAddress}` : ''}
+            {log.metadata?.attempts ? ` • Attempts: ${log.metadata.attempts}` : ''}
+          </div>
+          <div className="flex items-center gap-2">
+            {onRetry && log.status !== 'DELIVERED' && (
+              <button
+                type="button"
+                disabled={retrying}
+                onClick={async () => {
+                  setRetrying(true);
+                  try {
+                    await onRetry(log.id);
+                  } finally {
+                    setRetrying(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${retrying ? 'animate-spin' : ''}`} />
+                <span>{retrying ? 'Retrying...' : 'Retry Delivery'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Close Details
+            </button>
+          </div>
         </div>
       </div>
     </div>

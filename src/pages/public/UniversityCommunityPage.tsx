@@ -90,6 +90,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Step 2 Form Details
+  const [studentEmailInput, setStudentEmailInput] = useState(currentUser?.email || '');
   const [instagramHandle, setInstagramHandle] = useState('');
   const [snapchatHandle, setSnapchatHandle] = useState('');
   const [tiktokHandle, setTiktokHandle] = useState('');
@@ -103,6 +104,12 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   const [classYearInput, setClassYearInput] = useState(university.classYear || '2031');
   const [semesterInput, setSemesterInput] = useState('Fall 2026');
   const [bioText, setBioText] = useState('');
+
+  useEffect(() => {
+    if (currentUser?.email && !studentEmailInput) {
+      setStudentEmailInput(currentUser.email);
+    }
+  }, [currentUser?.email]);
 
   // Step 3 Payment Details
   const [cardName, setCardName] = useState(currentUser?.name || '');
@@ -214,6 +221,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
               if (Array.isArray(saved.photos) && saved.photos.length > 0) {
                 setPhotos(saved.photos);
               }
+              if (saved.studentEmail) setStudentEmailInput(saved.studentEmail);
               if (saved.instagramHandle) setInstagramHandle(saved.instagramHandle);
               if (saved.snapchatHandle) setSnapchatHandle(saved.snapchatHandle);
               if (saved.tiktokHandle) setTiktokHandle(saved.tiktokHandle);
@@ -249,6 +257,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     if (Array.isArray(savedDraftForCampus.photos) && savedDraftForCampus.photos.length > 0) {
       setPhotos(savedDraftForCampus.photos);
     }
+    if (savedDraftForCampus.studentEmail) setStudentEmailInput(savedDraftForCampus.studentEmail);
     if (savedDraftForCampus.instagramHandle) setInstagramHandle(savedDraftForCampus.instagramHandle);
     if (savedDraftForCampus.snapchatHandle) setSnapchatHandle(savedDraftForCampus.snapchatHandle);
     if (savedDraftForCampus.tiktokHandle) setTiktokHandle(savedDraftForCampus.tiktokHandle);
@@ -315,6 +324,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
         photos: photos.map(p => ({ id: p.id, url: p.url, isCover: p.isCover })),
         photosCount: photos.length,
         builderStep,
+        studentEmail: studentEmailInput,
         instagramHandle,
         snapchatHandle,
         tiktokHandle,
@@ -336,6 +346,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   }, [
     hasInitializedDraft,
     photos, 
+    studentEmailInput,
     instagramHandle, 
     snapchatHandle, 
     tiktokHandle, 
@@ -607,7 +618,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
 
       const submissionId = 'sub_' + Math.random().toString(36).substring(2, 9);
       const studentUid = currentUser?.id || `usr_${cleanHandle}_${Date.now().toString(36)}`;
-      const studentEmail = currentUser?.email || `${cleanHandle.toLowerCase()}@student.${university.slug}.edu`;
+      const studentEmail = (studentEmailInput || '').trim() || currentUser?.email || `${cleanHandle.toLowerCase()}@student.${university.slug}.edu`;
 
       const newSubmission: FeaturedSubmission = {
         id: submissionId,
@@ -1348,6 +1359,21 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                   </div>
 
                   <div className="space-y-3">
+                    {/* Student Contact Email (for receipts & approval alerts) */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        EMAIL ADDRESS FOR RECEIPT &amp; APPROVAL ALERTS <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={studentEmailInput}
+                        onChange={(e) => setStudentEmailInput(e.target.value)}
+                        placeholder="you@university.edu"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-blue-500 focus:bg-white transition-colors"
+                      />
+                    </div>
+
                     {/* Instagram Handle (Required) */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">

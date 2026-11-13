@@ -68,16 +68,20 @@ export const ForgotPasswordPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      await fetch('/api/auth/forgot-password', {
+      const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim() })
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        addToast('Dispatch Issue', data.message || 'Could not dispatch password reset email.', 'error');
+        return;
+      }
       setSent(true);
-      addToast('Reset Email Dispatched', 'Check your inbox for password recovery instructions.', 'info');
+      addToast('Reset Email Dispatched', data.message || 'Check your inbox for password recovery instructions.', 'info');
     } catch {
-      setSent(true);
-      addToast('Reset Email Dispatched', 'Check your inbox for password recovery instructions.', 'info');
+      addToast('Network Issue', 'Could not reach password reset service. Please try again.', 'error');
     } finally {
       setLoading(false);
     }

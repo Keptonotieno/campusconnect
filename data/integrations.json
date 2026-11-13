@@ -54,15 +54,16 @@
       "lastVerifiedAt": null,
       "details": "Outbound SMTP / Email service for sending submission receipts, status updates, and verification codes to students.",
       "keys": {
-        "provider": "RESEND",
-        "smtpHost": "",
+        "provider": "SMTP",
+        "smtpHost": "smtp.mailgun.org",
         "smtpPort": "587",
-        "smtpUser": "",
+        "smtpUser": "postmaster@campusconnect.app",
         "smtpPassword": "",
         "senderEmail": "notifications@campusconnect.app",
-        "senderName": "CampusConnect Global",
+        "senderName": "CampusConnect Verify Test",
         "apiKey": "",
-        "webhookSecret": ""
+        "webhookSecret": "",
+        "resendApiKey": ""
       }
     }
   ]

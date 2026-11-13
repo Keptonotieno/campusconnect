@@ -1114,7 +1114,6 @@ export class SQLiteStorage {
     if (resendKey) {
       config.apiKey = resendKey;
       config.provider = 'RESEND';
-      config.status = 'OPERATIONAL';
     }
     if (process.env.SMTP_HOST) {
       config.smtpHost = process.env.SMTP_HOST;
@@ -1305,10 +1304,46 @@ export class SQLiteStorage {
     return true;
   }
 
+  public getEmailLogById(id: string): DetailedEmailLog | null {
+    if (!id) return null;
+    const row = this.db.prepare('SELECT raw_json FROM email_logs WHERE id = ?').get(id) as { raw_json: string } | undefined;
+    if (row && row.raw_json) {
+      try {
+        return JSON.parse(row.raw_json) as DetailedEmailLog;
+      } catch {}
+    }
+    return null;
+  }
+
   public findEmailLogByIdempotency(key: string): DetailedEmailLog | null {
     if (!key) return null;
-    const all = this.getAllEmailLogs();
-    return all.find(l => l.idempotencyKey === key) || null;
+    const rows = this.db
+      .prepare('SELECT raw_json FROM email_logs WHERE raw_json LIKE ? ORDER BY sent_at DESC LIMIT 20')
+      .all(`%${key}%`) as { raw_json: string }[];
+    for (const r of rows) {
+      try {
+        const parsed = JSON.parse(r.raw_json) as DetailedEmailLog;
+        if (parsed.idempotencyKey === key) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  public hasVerifiedExternalResendDelivery(): boolean {
+    const rows = this.db
+      .prepare("SELECT raw_json FROM email_logs WHERE provider = 'RESEND' AND status = 'DELIVERED' ORDER BY sent_at DESC LIMIT 100")
+      .all() as { raw_json: string }[];
+    for (const r of rows) {
+      try {
+        const log = JSON.parse(r.raw_json) as DetailedEmailLog;
+        if (log?.metadata?.verifiedDomainUsed === true && !log?.metadata?.sandboxMode) {
+          return true;
+        }
+      } catch {}
+    }
+    return false;
   }
 
   // --- AUDIT LOGS ---

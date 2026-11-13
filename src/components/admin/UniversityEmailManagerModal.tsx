@@ -34,6 +34,8 @@ import {
 
 interface UniversityEmailManagerModalProps {
   university: University;
+  centralSenderDomain?: string;
+  verifiedDomains?: string[];
   onClose: () => void;
   onSuccessToast?: (title: string, message: string) => void;
   isDarkMode?: boolean;
@@ -66,12 +68,15 @@ const VARIABLE_TAGS = [
 
 export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalProps> = ({
   university,
+  centralSenderDomain,
+  verifiedDomains = [],
   onClose,
   onSuccessToast,
   isDarkMode = false
 }) => {
   const [activeTab, setActiveTab] = useState<'IDENTITY' | 'TEMPLATES'>('IDENTITY');
   const [loading, setLoading] = useState(true);
+  const authorizedRootDomain = (verifiedDomains[0] || centralSenderDomain || 'campusconnect.app').toLowerCase();
 
   // Identity state
   const [identity, setIdentity] = useState<UniversityEmailIdentity>({
@@ -79,7 +84,7 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
     universitySlug: university.slug,
     universityName: university.name,
     senderName: `${university.name} Campus Portal`,
-    senderEmail: `${university.slug}@notifications.campusconnect.app`,
+    senderEmail: `${university.slug}@${authorizedRootDomain}`,
     replyTo: `admissions@${university.slug}.edu`,
     logoUrl: university.logoUrl,
     primaryColor: university.primaryColor || '#1D64EC',
@@ -409,18 +414,20 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500">Sender Email / Verified Alias</label>
+                  <label className="text-xs font-bold text-slate-500">Sender Email / Authorized Alias</label>
                   <input
                     type="email"
                     value={identity.senderEmail}
                     onChange={(e) => setIdentity({ ...identity, senderEmail: e.target.value })}
                     required
-                    placeholder="e.g. miami@notifications.campusconnect.app"
+                    placeholder={`e.g. ${university.slug}@${authorizedRootDomain}`}
                     className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:border-blue-500 font-mono ${
                       isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
                     }`}
                   />
-                  <p className="text-[10px] text-slate-400">Must be on the central platform's verified sender domain.</p>
+                  <p className="text-[10px] text-slate-400">
+                    Uses the central Resend domain (<span className="font-mono font-semibold">{authorizedRootDomain}</span>). No separate API key needed.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">

@@ -1,0 +1,16 @@
+[
+  {
+    "universityId": "harvard",
+    "universityName": "Harvard University",
+    "universitySlug": "harvard",
+    "isEnabled": true,
+    "senderName": "Harvard Admissions Portal",
+    "senderEmail": "admissions@old-unverified.edu",
+    "replyTo": "reply-admissions@harvard.edu",
+    "logoUrl": "https://cdn.example.com/harvard-logo.png",
+    "signature": "Warm regards,\n\n**Harvard Admissions Team**",
+    "primaryColor": "#A51C30",
+    "secondaryColor": "#1E293B",
+    "updatedAt": "2026-11-13T12:48:45.969Z"
+  }
+]

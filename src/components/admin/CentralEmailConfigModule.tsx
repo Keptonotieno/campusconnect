@@ -4,12 +4,15 @@ import {
   DetailedEmailLog, 
   University, 
   UniversityEmailIdentity,
-  UniversityEmailEventType 
+  UniversityEmailEventType,
+  ResendDomainStatus
 } from '../../types';
 import { 
+  fetchCentralEmailConfig,
   updateCentralEmailConfig, 
   sendTestUniversityEmail,
-  fetchAllUniversityEmailIdentities
+  fetchAllUniversityEmailIdentities,
+  retryEmailLog
 } from '../../lib/adminApi';
 import { 
   Mail, 
@@ -34,6 +37,7 @@ import {
 
 interface CentralEmailConfigModuleProps {
   initialConfig: CentralEmailConfig;
+  initialResendStatus?: ResendDomainStatus;
   logs: DetailedEmailLog[];
   campuses: University[];
   onRefresh: () => void;
@@ -67,6 +71,7 @@ const EVENT_TYPES: Array<{ type: UniversityEmailEventType; label: string }> = [
 
 export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> = ({
   initialConfig,
+  initialResendStatus,
   logs,
   campuses,
   onRefresh,
@@ -80,6 +85,8 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
 
   // Form State
   const [config, setConfig] = useState<CentralEmailConfig>(initialConfig);
+  const [resendStatus, setResendStatus] = useState<ResendDomainStatus | undefined>(initialResendStatus);
+  const [checkingDomains, setCheckingDomains] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -96,6 +103,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
   const [testUniversityId, setTestUniversityId] = useState('general');
   const [testEventType, setTestEventType] = useState<UniversityEmailEventType>('WELCOME');
   const [sendingTest, setSendingTest] = useState(false);
+  const [retryingLogId, setRetryingLogId] = useState<string | null>(null);
 
   // Log Filtering & Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,6 +115,26 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
   useEffect(() => {
     setConfig(initialConfig);
   }, [initialConfig]);
+
+  useEffect(() => {
+    if (initialResendStatus) {
+      setResendStatus(initialResendStatus);
+    }
+  }, [initialResendStatus]);
+
+  const refreshDomainStatus = async (force = false) => {
+    setCheckingDomains(true);
+    try {
+      const res = await fetchCentralEmailConfig(force);
+      if (res.resendStatus) {
+        setResendStatus(res.resendStatus);
+      }
+    } catch {
+      // Keep current status on transient error
+    } finally {
+      setCheckingDomains(false);
+    }
+  };
 
   // Load university email identities from backend
   const loadIdentities = async () => {
@@ -131,6 +159,9 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
 
   useEffect(() => {
     loadIdentities();
+    if (!initialResendStatus) {
+      refreshDomainStatus(false);
+    }
   }, []);
 
   // Handle Save
@@ -140,7 +171,17 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
     try {
       const res = await updateCentralEmailConfig(config);
       setConfig(res.config);
-      onToast('Email Infrastructure Saved', 'Central email configuration updated and operational.', 'success');
+      if (res.resendStatus) {
+        setResendStatus(res.resendStatus);
+      }
+      if (res.config.provider === 'RESEND' && !res.resendStatus?.productionReady) {
+        const notice = res.resendStatus?.mode === 'PRODUCTION'
+          ? 'Settings saved with verified Resend domain. Send a live test to an external student address to confirm production readiness.'
+          : 'Settings saved, but Resend is in Sandbox Mode until a custom domain is verified at resend.com/domains.';
+        onToast('Email Configuration Saved', notice, 'info');
+      } else {
+        onToast('Email Infrastructure Saved', 'Central email configuration updated and operational.', 'success');
+      }
       onRefresh();
       loadIdentities();
     } catch (err: any) {
@@ -163,8 +204,13 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
         universityId: testUniversityId,
         eventType: testEventType
       });
+      if (res.resendStatus) {
+        setResendStatus(res.resendStatus);
+      }
       if (res.success === false) {
         onToast('Delivery Notice', res.message || 'Email delivery failed.', 'error');
+      } else if (res.sandboxMode) {
+        onToast('Sandbox Test Dispatched', res.message, 'info');
       } else {
         onToast('Test Email Dispatched', res.message, 'success');
       }
@@ -173,6 +219,27 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
       onToast('Dispatch Failed', err.message || 'Failed to dispatch test email.', 'error');
     } finally {
       setSendingTest(false);
+    }
+  };
+
+  // Handle Manual Retry for Queued / Failed / Bounced Logs
+  const handleRetryLog = async (logId: string) => {
+    setRetryingLogId(logId);
+    try {
+      const res = await retryEmailLog(logId);
+      if (res.resendStatus) {
+        setResendStatus(res.resendStatus);
+      }
+      onToast(
+        res.success ? 'Retry Dispatched' : 'Retry Notice',
+        res.message || (res.success ? 'Email re-dispatched successfully.' : 'Retry did not complete delivery.'),
+        res.success ? 'success' : 'error'
+      );
+      onRefresh();
+    } catch (err: any) {
+      onToast('Retry Failed', err.message || 'Could not retry email delivery.', 'error');
+    } finally {
+      setRetryingLogId(null);
     }
   };
 
@@ -261,6 +328,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
           onClick={() => {
             onRefresh();
             loadIdentities();
+            refreshDomainStatus(true);
           }}
           className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors self-start sm:self-center shadow-2xs"
         >
@@ -628,10 +696,12 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
               {/* DNS Verification Badges */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                 <div className={`p-3.5 rounded-xl border flex items-center justify-between text-xs ${
-                  config.spfVerified ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 border-slate-200 text-slate-500'
+                  config.spfVerified
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                    : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500')
                 }`}>
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    <ShieldCheck className={`w-4 h-4 ${config.spfVerified ? 'text-emerald-500' : 'text-amber-500'}`} />
                     <div>
                       <div className="font-bold">SPF Record</div>
                       <div className="text-[10px] text-slate-400">v=spf1 include:{config.senderDomain} ~all</div>
@@ -641,10 +711,12 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                 </div>
 
                 <div className={`p-3.5 rounded-xl border flex items-center justify-between text-xs ${
-                  config.dkimVerified ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 border-slate-200 text-slate-500'
+                  config.dkimVerified
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                    : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500')
                 }`}>
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    <ShieldCheck className={`w-4 h-4 ${config.dkimVerified ? 'text-emerald-500' : 'text-amber-500'}`} />
                     <div>
                       <div className="font-bold">DKIM 2048-bit</div>
                       <div className="text-[10px] text-slate-400">RSA Key Pair Signed</div>
@@ -654,10 +726,12 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                 </div>
 
                 <div className={`p-3.5 rounded-xl border flex items-center justify-between text-xs ${
-                  config.dmarcVerified ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 border-slate-200 text-slate-500'
+                  config.dmarcVerified
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                    : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500')
                 }`}>
                   <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    <ShieldCheck className={`w-4 h-4 ${config.dmarcVerified ? 'text-emerald-500' : 'text-amber-500'}`} />
                     <div>
                       <div className="font-bold">DMARC Policy</div>
                       <div className="text-[10px] text-slate-400">Policy: quarantine/reject</div>
@@ -688,17 +762,107 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                     <span className="font-semibold text-slate-500">Live Webhook URL for Resend / Email Provider:</span>
                     <span className="text-[10px] text-slate-400">POST endpoint</span>
                   </div>
-                  <div className={`p-2.5 rounded-xl font-mono text-xs flex items-center justify-between border select-all ${
-                    isDarkMode ? 'bg-[#070B14] border-slate-800 text-emerald-400' : 'bg-white border-slate-200 text-slate-800'
-                  }`}>
-                    <span>https://campusconnect.app/api/webhooks/resend</span>
-                    <span className="text-[10px] text-slate-400 font-sans ml-2">Click to copy</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const webhookUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://campusconnect.app'}/api/webhooks/resend`;
+                      if (navigator?.clipboard?.writeText) {
+                        navigator.clipboard.writeText(webhookUrl).then(() => {
+                          onToast('Webhook URL Copied', webhookUrl, 'success');
+                        }).catch(() => {});
+                      }
+                    }}
+                    className={`w-full p-2.5 rounded-xl font-mono text-xs flex items-center justify-between border select-all text-left cursor-pointer transition-colors ${
+                      isDarkMode ? 'bg-[#070B14] border-slate-800 text-emerald-400 hover:border-emerald-500/40' : 'bg-white border-slate-200 text-slate-800 hover:border-blue-400'
+                    }`}
+                  >
+                    <span className="truncate">{typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/resend` : 'https://campusconnect.app/api/webhooks/resend'}</span>
+                    <span className="text-[10px] text-slate-400 font-sans ml-2 shrink-0">Click to copy</span>
+                  </button>
                   <div className="text-[11px] text-slate-400 leading-relaxed">
                     Automatically ingests <span className="font-mono text-emerald-500">email.delivered</span>, <span className="font-mono text-rose-500">email.bounced</span>, <span className="font-mono text-blue-500">email.opened</span>, and <span className="font-mono text-purple-500">email.clicked</span> events into audit and delivery logs with optional signature verification.
                   </div>
                 </div>
               </div>
+
+              {/* Resend Domain Verification & Sending Mode Status */}
+              {resendStatus && resendStatus.connected && (
+                <div className={`p-4 rounded-2xl border space-y-2.5 ${
+                  resendStatus.productionReady
+                    ? (isDarkMode ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-emerald-50/70 border-emerald-200')
+                    : resendStatus.mode === 'PRODUCTION'
+                    ? (isDarkMode ? 'bg-blue-950/20 border-blue-500/30' : 'bg-blue-50/80 border-blue-200')
+                    : (isDarkMode ? 'bg-amber-950/20 border-amber-500/30' : 'bg-amber-50/80 border-amber-200')
+                }`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {resendStatus.productionReady ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      ) : resendStatus.mode === 'PRODUCTION' ? (
+                        <AlertCircle className="w-4 h-4 text-blue-500 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                      )}
+                      <span className={`text-xs font-black ${
+                        resendStatus.productionReady
+                          ? (isDarkMode ? 'text-emerald-300' : 'text-emerald-900')
+                          : resendStatus.mode === 'PRODUCTION'
+                          ? (isDarkMode ? 'text-blue-300' : 'text-blue-900')
+                          : (isDarkMode ? 'text-amber-300' : 'text-amber-900')
+                      }`}>
+                        {resendStatus.productionReady
+                          ? `Production-Ready — Verified Domain (${resendStatus.verifiedDomains.join(', ')}) & External Delivery Confirmed`
+                          : resendStatus.mode === 'PRODUCTION'
+                          ? `Domain Verified (${resendStatus.verifiedDomains.join(', ')}) — Send Live Test to External Student Email`
+                          : 'Not Production-Ready — Resend Sandbox Mode (Unverified Custom Domain)'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => refreshDomainStatus(true)}
+                        disabled={checkingDomains}
+                        className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                          isDarkMode
+                            ? 'bg-[#0F172A] border-slate-700 text-slate-200 hover:bg-slate-800'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <RefreshCw className={`w-3 h-3 ${checkingDomains ? 'animate-spin' : ''}`} />
+                        <span>{checkingDomains ? 'Checking...' : 'Re-check Domains'}</span>
+                      </button>
+
+                      {resendStatus.mode !== 'PRODUCTION' && (
+                        <a
+                          href="https://resend.com/domains"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
+                        >
+                          <span>Verify Domain</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {resendStatus.productionReady ? (
+                    <p className={`text-[11px] leading-relaxed ${isDarkMode ? 'text-emerald-200/80' : 'text-emerald-800'}`}>
+                      Verified external delivery confirmed via central Resend domain ({resendStatus.verifiedDomains[0]}). All universities automatically send using this domain with institutional display names and reply-to headers.
+                    </p>
+                  ) : resendStatus.mode === 'PRODUCTION' ? (
+                    <p className={`text-[11px] leading-relaxed ${isDarkMode ? 'text-blue-200/80' : 'text-blue-900'}`}>
+                      Your domain ({resendStatus.verifiedDomains[0]}) is verified in Resend. Dispatch a real test message in the Live Dispatch Sandbox below to an external student email address to confirm live delivery before marking production-ready.
+                    </p>
+                  ) : (
+                    <p className={`text-[11px] leading-relaxed ${isDarkMode ? 'text-amber-200/80' : 'text-amber-900'}`}>
+                      No verified sending domain was found on your Resend account yet. Resend allows direct test emails only to{' '}
+                      <span className="font-mono font-bold">{resendStatus.ownerEmail || 'your Resend account email'}</span>. External student emails remain safely queued until a custom domain is verified at resend.com/domains.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Form Actions */}
               <div className="pt-2 flex justify-end">
@@ -730,6 +894,15 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
               <p className="text-xs text-slate-500">
                 Dispatch an end-to-end transactional test applying any university's real sender identity and branded template.
               </p>
+              {resendStatus?.mode === 'SANDBOX' && resendStatus.ownerEmail && (
+                <button
+                  type="button"
+                  onClick={() => setTestRecipient(resendStatus.ownerEmail || '')}
+                  className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-300 text-[10px] font-bold cursor-pointer transition-colors"
+                >
+                  <span>Use {resendStatus.ownerEmail}</span>
+                </button>
+              )}
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 max-w-3xl">
@@ -762,7 +935,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                 type="email"
                 value={testRecipient}
                 onChange={(e) => setTestRecipient(e.target.value)}
-                placeholder="Recipient email address"
+                placeholder={resendStatus?.ownerEmail ? resendStatus.ownerEmail : 'Recipient email address'}
                 className={`flex-1 px-3 py-2 rounded-xl border text-xs focus:outline-none focus:border-blue-500 ${
                   isDarkMode ? 'bg-[#0F172A] border-slate-700 text-white placeholder-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 shadow-2xs'
                 }`}
@@ -1096,7 +1269,12 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                       {log.messageId}
                     </td>
                     <td className={`px-4 py-3 font-semibold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                      {log.recipient}
+                      <div>{log.recipient}</div>
+                      {log.metadata?.actualFromAddress && (
+                        <div className="text-[10px] font-mono font-normal text-slate-400 truncate max-w-[180px]" title={`From: ${log.metadata.actualFromAddress}`}>
+                          From: {log.metadata.actualFromAddress}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-500">
                       {log.universityName || 'CampusConnect Global'}
@@ -1110,27 +1288,48 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                       {log.subject}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                        log.status === 'DELIVERED'
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                          : log.status === 'QUEUED'
-                          ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
-                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-                      }`}>
-                        {log.status}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          log.status === 'DELIVERED'
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            : log.status === 'QUEUED'
+                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                        }`}>
+                          {log.status}
+                        </span>
+                        {log.errorMessage && (
+                          <span className="text-[10px] text-rose-500 truncate max-w-[160px]" title={log.errorMessage}>
+                            {log.errorMessage}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-[11px] whitespace-nowrap">
                       {new Date(log.sentAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => onInspectLog(log)}
-                        className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400 dark:hover:bg-blue-900/60 text-xs font-bold cursor-pointer transition-colors"
-                      >
-                        Inspect
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        {log.status !== 'DELIVERED' && (
+                          <button
+                            type="button"
+                            onClick={() => handleRetryLog(log.id)}
+                            disabled={retryingLogId === log.id}
+                            className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-900/60 text-xs font-bold cursor-pointer transition-colors disabled:opacity-50 inline-flex items-center gap-1"
+                            title="Retry email delivery using active verified Resend domain"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${retryingLogId === log.id ? 'animate-spin' : ''}`} />
+                            <span>{retryingLogId === log.id ? 'Retrying...' : 'Retry'}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onInspectLog(log)}
+                          className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400 dark:hover:bg-blue-900/60 text-xs font-bold cursor-pointer transition-colors"
+                        >
+                          Inspect
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

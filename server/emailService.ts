@@ -6,7 +6,8 @@ import {
   UniversityEmailTemplate, 
   DetailedEmailLog, 
   UniversityEmailEventType, 
-  University 
+  University,
+  ResendDomainStatus
 } from '../src/types';
 import { sqliteStorage } from './sqlite';
 import { findUniversityBySlug, VERIFIED_UNIVERSITIES } from '../src/data/universities';
@@ -199,11 +200,14 @@ export function generateBrandedEmailHtml(params: {
   buttonText?: string;
   buttonLink?: string;
   footerText?: string;
+  signatureHtml?: string;
 }): string {
-  const { identity, preheader, headline, bodyHtml, buttonText, buttonLink, footerText } = params;
+  const { identity, preheader, headline, bodyHtml, buttonText, buttonLink, footerText, signatureHtml } = params;
   const primaryColor = identity.primaryColor || '#1D64EC';
   const secondaryColor = identity.secondaryColor || '#0284C7';
-  const signature = identity.signature || `Warm regards,<br />The ${identity.universityName} Student Media Team`;
+  const rawSignature = identity.signature || `Warm regards,<br />The ${identity.universityName} Student Media Team`;
+  const hasHtmlTags = /<(?:br|p|strong|em|div|span|a)\b/i.test(rawSignature);
+  const signature = signatureHtml || (hasHtmlTags ? rawSignature : parseSimpleMarkdownToHtml(rawSignature));
 
   const logoHtml = identity.logoUrl
     ? `<img src="${identity.logoUrl}" alt="${identity.universityName}" style="max-height: 48px; max-width: 180px; display: block;" />`
@@ -333,39 +337,238 @@ export function interpolateVariables(templateStr: string, variables: Record<stri
 
 export function parseSimpleMarkdownToHtml(markdown: string): string {
   if (!markdown) return '';
-  let html = markdown
-    // Bold
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    // Italic
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    // Blockquote
-    .replace(/^>\s*(.*?)$/gm, '<blockquote>$1</blockquote>')
-    // Clean bullet points
-    .replace(/^\*\s*(.*?)$/gm, '<li>$1</li>');
 
-  // Wrap contiguous <li> with <ul>
-  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, (match) => {
-    return `<ul>${match}</ul>`;
-  });
+  const formatInline = (text: string) =>
+    text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-  // Paragraphs
-  const paragraphs = html
-    .split(/\n\s*\n/)
-    .map(p => p.trim())
-    .filter(Boolean)
-    .map(p => {
-      if (p.startsWith('<ul>') || p.startsWith('<blockquote>') || p.startsWith('<h')) {
-        return p;
-      }
-      return `<p>${p.replace(/\n/g, '<br />')}</p>`;
-    });
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const blocks: string[] = [];
+  let listItems: string[] = [];
+  let paragraphLines: string[] = [];
 
-  return paragraphs.join('\n');
+  const flushParagraph = () => {
+    if (paragraphLines.length > 0) {
+      blocks.push(`<p>${paragraphLines.map(formatInline).join('<br />')}</p>`);
+      paragraphLines = [];
+    }
+  };
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      blocks.push(`<ul>${listItems.map(item => `<li>${formatInline(item)}</li>`).join('')}</ul>`);
+      listItems = [];
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const bulletMatch = trimmed.match(/^\*\s+(.*)$/);
+    if (bulletMatch) {
+      flushParagraph();
+      listItems.push(bulletMatch[1]);
+      continue;
+    }
+
+    const quoteMatch = trimmed.match(/^>\s*(.*)$/);
+    if (quoteMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<blockquote>${formatInline(quoteMatch[1])}</blockquote>`);
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+
+  return blocks.join('\n');
 }
 
 // -----------------------------------------------------------------------------
-// 4. CENTRAL SENDING ENGINE
+// 4. RESEND DOMAIN STATUS CACHE & CENTRAL SENDING ENGINE
 // -----------------------------------------------------------------------------
+let resendStatusCache: {
+  keyHash: string;
+  expiresAt: number;
+  status: ResendDomainStatus;
+} | null = null;
+
+function escapeHtmlSafe(val: string): string {
+  return String(val || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export function resolveResendApiKey(centralConfig?: CentralEmailConfig): string {
+  const envKey = (
+    process.env.RESEND_API_KEY ||
+    process.env.RESEND_KEY ||
+    process.env.RESEND_APIKEY ||
+    process.env.RESEND_SECRET ||
+    process.env.RESEND_TOKEN ||
+    process.env.EMAIL_API_KEY ||
+    process.env.TRANSACTIONAL_EMAIL_API_KEY ||
+    ''
+  ).trim();
+  if (envKey) return envKey;
+  const cfg = centralConfig || sqliteStorage.getCentralEmailConfig();
+  return cfg.provider === 'RESEND' ? (cfg.apiKey || '').trim() : '';
+}
+
+function hashKeyPrefix(apiKey: string): string {
+  return crypto.createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
+}
+
+export function getCachedResendStatus(apiKeyOverride?: string): ResendDomainStatus | null {
+  const key = (apiKeyOverride || resolveResendApiKey()).trim();
+  const centralConfig = sqliteStorage.getCentralEmailConfig();
+  if (!key) {
+    return {
+      connected: false,
+      mode: 'UNCONFIGURED',
+      verifiedDomains: [],
+      domains: [],
+      externalDeliveryVerified: false,
+      productionReady: false,
+      authorizedDomain: centralConfig.senderDomain || 'campusconnect.app'
+    };
+  }
+  const keyHash = hashKeyPrefix(key);
+  if (resendStatusCache && resendStatusCache.keyHash === keyHash) {
+    const extVerified = sqliteStorage.hasVerifiedExternalResendDelivery();
+    return {
+      ...resendStatusCache.status,
+      externalDeliveryVerified: extVerified,
+      productionReady: resendStatusCache.status.mode === 'PRODUCTION' && extVerified
+    };
+  }
+  return null;
+}
+
+export async function getResendDomainStatus(apiKeyOverride?: string, forceRefresh = false): Promise<ResendDomainStatus> {
+  const apiKey = (apiKeyOverride || resolveResendApiKey()).trim();
+  const centralConfig = sqliteStorage.getCentralEmailConfig();
+  const fallbackDomain = centralConfig.senderDomain || 'campusconnect.app';
+
+  if (!apiKey) {
+    return {
+      connected: false,
+      mode: 'UNCONFIGURED',
+      verifiedDomains: [],
+      domains: [],
+      externalDeliveryVerified: false,
+      productionReady: false,
+      authorizedDomain: fallbackDomain,
+      checkedAt: new Date().toISOString()
+    };
+  }
+
+  const keyHash = hashKeyPrefix(apiKey);
+  if (!forceRefresh && resendStatusCache && resendStatusCache.keyHash === keyHash && resendStatusCache.expiresAt > Date.now()) {
+    const extVerified = sqliteStorage.hasVerifiedExternalResendDelivery();
+    return {
+      ...resendStatusCache.status,
+      externalDeliveryVerified: extVerified,
+      productionReady: resendStatusCache.status.mode === 'PRODUCTION' && extVerified
+    };
+  }
+
+  const previousOwnerEmail =
+    resendStatusCache && resendStatusCache.keyHash === keyHash
+      ? resendStatusCache.status.ownerEmail
+      : undefined;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch('https://api.resend.com/domains', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      signal: controller.signal
+    }).finally(() => clearTimeout(timer));
+
+    const data: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        connected: false,
+        mode: 'UNCONFIGURED',
+        verifiedDomains: [],
+        domains: [],
+        ownerEmail: previousOwnerEmail,
+        externalDeliveryVerified: false,
+        productionReady: false,
+        authorizedDomain: fallbackDomain,
+        checkedAt: new Date().toISOString()
+      };
+    }
+
+    const rawDomains: any[] = Array.isArray(data?.data) ? data.data : [];
+    const domains = rawDomains
+      .filter((d) => d && typeof d.name === 'string')
+      .map((d) => ({
+        name: String(d.name).toLowerCase(),
+        status: String(d.status || 'unknown').toLowerCase()
+      }));
+
+    const verifiedDomains = domains
+      .filter((d) => d.status === 'verified')
+      .map((d) => d.name);
+
+    const extVerified = verifiedDomains.length > 0 && sqliteStorage.hasVerifiedExternalResendDelivery();
+    const authorizedDomain =
+      verifiedDomains.find((d) => d === (centralConfig.senderDomain || '').toLowerCase()) ||
+      verifiedDomains[0] ||
+      fallbackDomain;
+
+    const status: ResendDomainStatus = {
+      connected: true,
+      mode: verifiedDomains.length > 0 ? 'PRODUCTION' : 'SANDBOX',
+      verifiedDomains,
+      domains,
+      ownerEmail: verifiedDomains.length === 0 ? previousOwnerEmail : undefined,
+      externalDeliveryVerified: extVerified,
+      productionReady: verifiedDomains.length > 0 && extVerified,
+      authorizedDomain,
+      checkedAt: new Date().toISOString()
+    };
+
+    resendStatusCache = {
+      keyHash,
+      expiresAt: Date.now() + 60_000,
+      status
+    };
+    return status;
+  } catch {
+    return {
+      connected: false,
+      mode: 'UNCONFIGURED',
+      verifiedDomains: [],
+      domains: [],
+      ownerEmail: previousOwnerEmail,
+      externalDeliveryVerified: false,
+      productionReady: false,
+      authorizedDomain: fallbackDomain,
+      checkedAt: new Date().toISOString()
+    };
+  }
+}
+
 export interface SendUniversityEmailParams {
   universityId: string;
   eventType: UniversityEmailEventType;
@@ -386,6 +589,9 @@ export interface SendUniversityEmailParams {
     [key: string]: any;
   };
   idempotencyKey?: string;
+  sandboxForwardToOwner?: boolean;
+  retryOfLogId?: string;
+  attemptNumber?: number;
 }
 
 export async function sendUniversityEmail(params: SendUniversityEmailParams): Promise<DetailedEmailLog> {
@@ -412,10 +618,10 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
   }
 
   // 2. Check idempotency guard to prevent duplicate notifications
-  if (params.idempotencyKey) {
+  if (params.idempotencyKey && !params.retryOfLogId) {
     const existing = sqliteStorage.findEmailLogByIdempotency(params.idempotencyKey);
-    if (existing) {
-      console.log(`[EmailEngine] Idempotency match for key "${params.idempotencyKey}". Returning existing log.`);
+    if (existing && (existing.status === 'DELIVERED' || existing.status === 'QUEUED')) {
+      console.log(`[EmailEngine] Idempotency match for key "${params.idempotencyKey}". Preventing duplicate send.`);
       return existing;
     }
   }
@@ -427,7 +633,8 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
   }
   const uniName = university ? university.name : params.variables.university_name || 'University';
   const uniSlug = university ? university.slug : params.universityId.toLowerCase().replace(/[^a-z0-9]/g, '-');
-  const uniInstagram = university?.instagramHandle || params.variables.university_instagram || `${uniSlug}class`;
+  const rawUniInstagram = university?.instagramHandle || params.variables.university_instagram || `${uniSlug}class`;
+  const uniInstagram = String(rawUniInstagram).replace(/^@+/, '');
 
   // 4. Resolve university email identity
   let identity = sqliteStorage.getUniversityEmailIdentity(params.universityId);
@@ -494,6 +701,7 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
   }
 
   // 6. Merge template variables
+  const baseOrigin = params.variables.base_url || 'https://campusconnect.app';
   const mergedVariables: Record<string, any> = {
     university_name: uniName,
     university_instagram: uniInstagram,
@@ -503,13 +711,14 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
     payment_amount: params.variables.payment_amount != null ? String(params.variables.payment_amount) : '6.00',
     payment_status: params.variables.payment_status || 'CONFIRMED',
     submission_status: params.variables.submission_status || 'UNDER_REVIEW',
-    continuation_link: params.variables.continuation_link || `https://campusconnect.app/university/${uniSlug}`,
+    continuation_link: params.variables.continuation_link || `${baseOrigin}/university/${uniSlug}`,
     instagram_post_url: params.variables.instagram_post_url || `https://instagram.com/${uniInstagram}`,
     rejection_reason: params.variables.rejection_reason || 'Image resolution was too low or did not meet portrait standards.',
     support_email: centralConfig.replyTo || `support@${centralConfig.senderDomain || 'campusconnect.app'}`,
     year: new Date().getFullYear().toString(),
     ...params.variables
   };
+  mergedVariables.university_instagram = String(mergedVariables.university_instagram || uniInstagram).replace(/^@+/, '');
 
   const finalSubject = interpolateVariables(tpl.subject, mergedVariables);
   const finalPreheader = interpolateVariables(tpl.preheader || '', mergedVariables);
@@ -518,6 +727,14 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
   const finalButtonText = interpolateVariables(tpl.buttonText || '', mergedVariables);
   const finalButtonLink = interpolateVariables(tpl.buttonLink || '', mergedVariables);
   const finalFooter = interpolateVariables(tpl.footerText || '', mergedVariables);
+
+  const rawSignature = interpolateVariables(
+    identity.signature || `Warm regards,\n\n**The ${identity.universityName} Student Media Team**`,
+    mergedVariables
+  );
+  const signatureHtml = /<(?:br|p|strong|em|div|span|a)\b/i.test(rawSignature)
+    ? rawSignature
+    : parseSimpleMarkdownToHtml(rawSignature);
 
   const bodyHtml = parseSimpleMarkdownToHtml(finalMarkdown);
 
@@ -529,7 +746,8 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
     bodyHtml,
     buttonText: finalButtonText,
     buttonLink: finalButtonLink,
-    footerText: finalFooter
+    footerText: finalFooter,
+    signatureHtml
   });
 
   // 7. Dispatch via configured central provider
@@ -537,96 +755,32 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
   let messageId = `<msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}@${centralConfig.senderDomain || 'campusconnect.app'}>`;
   let deliveryError: string | undefined = undefined;
   let activeProvider = centralConfig.provider;
+  const metadataPayload: Record<string, any> = {
+    eventType: params.eventType,
+    universityId: identity.universityId,
+    senderEmail: identity.senderEmail,
+    senderName: identity.senderName,
+    attemptNumber: params.attemptNumber || 1,
+    ...(params.retryOfLogId ? { retryOfLogId: params.retryOfLogId } : {}),
+    variables: mergedVariables
+  };
 
-  // Resolve Resend API Key from environment secrets or central database configuration
-  const resendApiKey = (
-    process.env.RESEND_API_KEY ||
-    process.env.RESEND_KEY ||
-    process.env.RESEND_APIKEY ||
-    process.env.RESEND_SECRET ||
-    process.env.RESEND_TOKEN ||
-    process.env.EMAIL_API_KEY ||
-    process.env.TRANSACTIONAL_EMAIL_API_KEY ||
-    (centralConfig.provider === 'RESEND' ? centralConfig.apiKey : '') ||
-    centralConfig.apiKey ||
-    ''
-  ).trim();
+  const resendApiKey = resolveResendApiKey(centralConfig);
 
-  // Prioritize real Resend API delivery if API key is available
-  if (resendApiKey) {
-    activeProvider = 'RESEND';
-    try {
-      const verifiedSender = (identity.senderEmail.includes('@') && !identity.senderEmail.endsWith('@campusconnect.app'))
-        ? `"${identity.senderName}" <${identity.senderEmail}>`
-        : `"${identity.senderName}" <onboarding@resend.dev>`;
-
-      const plainText = renderedHtml
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      const resendPayload = {
-        from: verifiedSender,
-        to: [params.recipient],
-        reply_to: identity.replyTo || centralConfig.replyTo || identity.senderEmail,
-        subject: finalSubject,
-        html: renderedHtml,
-        text: plainText
-      };
-
-      console.log(`[EmailEngine] Dispatched real transactional email via Resend API to ${params.recipient}...`);
-      let res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(resendPayload)
-      });
-
-      let resData: any = await res.json().catch(() => ({}));
-
-      // If custom domain is unverified, fallback to onboarding@resend.dev
-      if (!res.ok && (resData?.name === 'validation_error' || resData?.message?.includes('domain')) && verifiedSender !== `"${identity.senderName}" <onboarding@resend.dev>`) {
-        console.warn(`[EmailEngine] Custom domain not verified in Resend, retrying via onboarding@resend.dev...`);
-        res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            ...resendPayload,
-            from: `"${identity.senderName}" <onboarding@resend.dev>`
-          })
-        });
-        resData = await res.json().catch(() => ({}));
-      }
-
-      if (res.ok && resData?.id) {
-        messageId = resData.id;
-        deliveryStatus = 'DELIVERED';
-        deliveryError = undefined;
-        console.log(`[EmailEngine] Successfully dispatched via Resend API. ID: ${messageId}`);
-      } else {
-        const errorMsg = resData?.message || resData?.error || `Resend API returned status ${res.status}`;
-        console.warn(`[EmailEngine] Resend API dispatch error:`, errorMsg);
-        deliveryStatus = 'FAILED';
-        deliveryError = errorMsg;
-      }
-    } catch (err: any) {
-      console.warn(`[EmailEngine] Resend API error:`, err?.message || err);
-      deliveryStatus = 'FAILED';
-      deliveryError = err?.message || String(err);
-    }
-  } else if (
-    centralConfig.provider === 'SMTP' &&
+  const hasSmtpCredentials = Boolean(
     centralConfig.smtpHost &&
     centralConfig.smtpUser &&
     centralConfig.smtpPass &&
     centralConfig.smtpPass !== '••••••••••••'
-  ) {
+  );
+
+  const plainText = renderedHtml
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const trySmtpDelivery = async (): Promise<{ ok: boolean; messageId?: string; error?: string }> => {
     try {
       const transporter = nodemailer.createTransport({
         host: centralConfig.smtpHost,
@@ -646,20 +800,243 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
         to: params.recipient,
         replyTo: identity.replyTo || centralConfig.replyTo || identity.senderEmail,
         subject: finalSubject,
-        html: renderedHtml
+        html: renderedHtml,
+        text: plainText
       });
 
-      messageId = info.messageId || messageId;
-      deliveryStatus = 'DELIVERED';
-      console.log(`[EmailEngine] Successfully sent real SMTP email via ${centralConfig.smtpHost} to ${params.recipient}. ID: ${messageId}`);
+      return { ok: true, messageId: info.messageId };
     } catch (err: any) {
-      console.warn(`[EmailEngine] SMTP delivery attempt encountered error:`, err?.message || err);
-      deliveryStatus = 'DELIVERED';
+      return { ok: false, error: err?.message || String(err) };
+    }
+  };
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Prioritize real Resend API delivery if API key is available
+  if (resendApiKey) {
+    activeProvider = 'RESEND';
+    try {
+      const domainStatus = await getResendDomainStatus(resendApiKey);
+      const identityParts = identity.senderEmail.split('@');
+      const identityLocal = (identityParts[0] || uniSlug || 'notifications').replace(/[^a-z0-9._+-]/gi, '');
+      const identityDomain = (identityParts[1] || '').toLowerCase();
+      const centralEmailParts = (centralConfig.senderEmail || '').split('@');
+      const centralEmailDomain = (centralEmailParts[1] || '').toLowerCase();
+      const centralRootDomain = (centralConfig.senderDomain || '').toLowerCase();
+      const preferredVerifiedDomain =
+        (centralRootDomain && domainStatus.verifiedDomains.includes(centralRootDomain) ? centralRootDomain : '') ||
+        domainStatus.verifiedDomains[0] ||
+        '';
+
+      let selectedFromEmail = 'onboarding@resend.dev';
+      if (identity.senderEmail.includes('@') && domainStatus.verifiedDomains.includes(identityDomain)) {
+        selectedFromEmail = identity.senderEmail;
+      } else if (preferredVerifiedDomain) {
+        if (identity.universityId === 'general' && centralConfig.senderEmail.includes('@') && domainStatus.verifiedDomains.includes(centralEmailDomain)) {
+          selectedFromEmail = centralConfig.senderEmail;
+        } else {
+          selectedFromEmail = `${identityLocal}@${preferredVerifiedDomain}`;
+        }
+      }
+
+      const verifiedSender = `"${identity.senderName}" <${selectedFromEmail}>`;
+      const isVerifiedCustomDomainSend = selectedFromEmail !== 'onboarding@resend.dev' && domainStatus.verifiedDomains.length > 0;
+      metadataPayload.actualFromAddress = verifiedSender;
+      metadataPayload.verifiedDomainUsed = isVerifiedCustomDomainSend;
+
+      const resendPayload = {
+        from: verifiedSender,
+        to: [params.recipient],
+        reply_to: identity.replyTo || centralConfig.replyTo || identity.senderEmail,
+        subject: finalSubject,
+        html: renderedHtml,
+        text: plainText
+      };
+
+      const dispatchResendWithRetry = async (payload: Record<string, any>) => {
+        const maxAttempts = 3;
+        let lastRes: globalThis.Response | null = null;
+        let lastData: any = {};
+        let lastErr: any = null;
+        let attemptsUsed = 0;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          attemptsUsed = attempt;
+          try {
+            const response = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${resendApiKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
+            });
+            const jsonData = await response.json().catch(() => ({}));
+            lastRes = response;
+            lastData = jsonData;
+
+            const isTransient = response.status === 429 || response.status >= 500;
+            if (response.ok || !isTransient || attempt === maxAttempts) {
+              return { res: response, resData: jsonData, attemptsUsed };
+            }
+            console.warn(`[EmailEngine] Transient Resend status ${response.status} on attempt ${attempt}/${maxAttempts}, retrying...`);
+          } catch (fetchErr: any) {
+            lastErr = fetchErr;
+            if (attempt === maxAttempts) {
+              throw fetchErr;
+            }
+            console.warn(`[EmailEngine] Network error on Resend attempt ${attempt}/${maxAttempts}, retrying...`);
+          }
+          await sleep(400 * attempt);
+        }
+
+        if (!lastRes) {
+          throw lastErr || new Error('Resend request failed after retries.');
+        }
+        return { res: lastRes, resData: lastData, attemptsUsed };
+      };
+
+      console.log(`[EmailEngine] Dispatched real transactional email via Resend API (${selectedFromEmail}) to ${params.recipient}...`);
+      let { res, resData, attemptsUsed } = await dispatchResendWithRetry(resendPayload);
+      metadataPayload.attempts = attemptsUsed;
+
+      // If custom domain is unverified, retry via onboarding@resend.dev
+      if (!res.ok && (resData?.name === 'validation_error' || String(resData?.message || '').toLowerCase().includes('domain')) && selectedFromEmail !== 'onboarding@resend.dev') {
+        console.warn(`[EmailEngine] Sender domain not verified in Resend, retrying via onboarding@resend.dev...`);
+        selectedFromEmail = 'onboarding@resend.dev';
+        metadataPayload.actualFromAddress = `"${identity.senderName}" <onboarding@resend.dev>`;
+        metadataPayload.verifiedDomainUsed = false;
+        const fallbackAttempt = await dispatchResendWithRetry({
+          ...resendPayload,
+          from: `"${identity.senderName}" <onboarding@resend.dev>`
+        });
+        res = fallbackAttempt.res;
+        resData = fallbackAttempt.resData;
+        metadataPayload.attempts = attemptsUsed + fallbackAttempt.attemptsUsed;
+      }
+
+      if (res.ok && resData?.id) {
+        messageId = resData.id;
+        deliveryStatus = 'DELIVERED';
+        deliveryError = undefined;
+        if (metadataPayload.verifiedDomainUsed && resendStatusCache) {
+          resendStatusCache.status.externalDeliveryVerified = true;
+          resendStatusCache.status.productionReady = resendStatusCache.status.mode === 'PRODUCTION';
+        }
+        console.log(`[EmailEngine] Successfully dispatched via Resend API. ID: ${messageId}`);
+      } else {
+        const errorMsg = resData?.message || resData?.error || `Resend API returned status ${res.status}`;
+        const sandboxMatch = typeof errorMsg === 'string'
+          ? errorMsg.match(/only send testing emails to your own email address\s*\(([^)]+)\)/i)
+          : null;
+        const isSandboxRestriction = Boolean(sandboxMatch) || /verify a domain at resend\.com\/domains/i.test(String(errorMsg));
+
+        if (isSandboxRestriction) {
+          const ownerEmail = (sandboxMatch?.[1] || domainStatus.ownerEmail || '').trim();
+          const keyHash = hashKeyPrefix(resendApiKey);
+          if (ownerEmail) {
+            const nextStatus: ResendDomainStatus = {
+              ...(resendStatusCache?.keyHash === keyHash ? resendStatusCache.status : domainStatus),
+              connected: true,
+              mode: 'SANDBOX',
+              ownerEmail,
+              checkedAt: new Date().toISOString()
+            };
+            resendStatusCache = {
+              keyHash,
+              expiresAt: Date.now() + 60_000,
+              status: nextStatus
+            };
+          }
+
+          console.info(
+            `[EmailEngine] Resend sandbox active${ownerEmail ? ` (owner: ${ownerEmail})` : ''}. Handling dispatch to ${params.recipient} cleanly.`
+          );
+
+          // 1. Try SMTP fallback if full SMTP credentials exist
+          let handled = false;
+          if (hasSmtpCredentials) {
+            const smtpRes = await trySmtpDelivery();
+            if (smtpRes.ok) {
+              activeProvider = 'SMTP';
+              messageId = smtpRes.messageId || messageId;
+              deliveryStatus = 'DELIVERED';
+              deliveryError = undefined;
+              metadataPayload.smtpFallback = true;
+              handled = true;
+              console.log(`[EmailEngine] Dispatched via SMTP fallback to ${params.recipient}. ID: ${messageId}`);
+            }
+          }
+
+          // 2. For Admin sandbox tests, route a clearly labeled copy to the verified Resend owner inbox
+          if (!handled && params.sandboxForwardToOwner && ownerEmail) {
+            const bannerHtml = `<div style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:12px 16px;border-radius:8px;margin:0 0 16px 0;font-family:sans-serif;font-size:13px;"><strong>Resend Sandbox Test Copy:</strong> Intended recipient was <strong>${escapeHtmlSafe(params.recipient)}</strong>. Delivered to your verified Resend owner inbox (<strong>${escapeHtmlSafe(ownerEmail)}</strong>) because no custom domain is verified yet at <code>resend.com/domains</code>.</div>`;
+            const forwardedHtml = renderedHtml.includes('<body')
+              ? renderedHtml.replace(/(<body[^>]*>)/i, `$1\n${bannerHtml}`)
+              : `${bannerHtml}\n${renderedHtml}`;
+
+            const ownerRes = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${resendApiKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                from: `"${identity.senderName}" <onboarding@resend.dev>`,
+                to: [ownerEmail],
+                reply_to: identity.replyTo || centralConfig.replyTo || identity.senderEmail,
+                subject: `[Sandbox Copy -> ${params.recipient}] ${finalSubject}`,
+                html: forwardedHtml,
+                text: `Resend Sandbox Test Copy (Intended recipient: ${params.recipient})\n\n${plainText}`
+              })
+            });
+            const ownerData: any = await ownerRes.json().catch(() => ({}));
+            if (ownerRes.ok && ownerData?.id) {
+              messageId = ownerData.id;
+              deliveryStatus = 'DELIVERED';
+              deliveryError = undefined;
+              metadataPayload.sandboxMode = true;
+              metadataPayload.intendedRecipient = params.recipient;
+              metadataPayload.routedViaSandboxTo = ownerEmail;
+              handled = true;
+              console.log(`[EmailEngine] Sandbox test copy delivered to verified owner ${ownerEmail}. ID: ${messageId}`);
+            }
+          }
+
+          // 3. Otherwise record cleanly as QUEUED with clear domain-verification guidance
+          if (!handled) {
+            deliveryStatus = 'QUEUED';
+            deliveryError = `Resend Sandbox Mode: External delivery to ${params.recipient} requires verifying a domain at resend.com/domains${ownerEmail ? ` (testing limited to ${ownerEmail})` : ''}.`;
+            metadataPayload.sandboxRestriction = true;
+            if (ownerEmail) {
+              metadataPayload.sandboxOwnerEmail = ownerEmail;
+            }
+          }
+        } else {
+          console.warn(`[EmailEngine] Resend API dispatch error:`, errorMsg);
+          deliveryStatus = 'FAILED';
+          deliveryError = errorMsg;
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[EmailEngine] Resend API error:`, err?.message || err);
+      deliveryStatus = 'FAILED';
       deliveryError = err?.message || String(err);
     }
+  } else if (centralConfig.provider === 'SMTP' && hasSmtpCredentials) {
+    const smtpRes = await trySmtpDelivery();
+    if (smtpRes.ok) {
+      messageId = smtpRes.messageId || messageId;
+      deliveryStatus = 'DELIVERED';
+      console.log(`[EmailEngine] Successfully sent real SMTP email via ${centralConfig.smtpHost} to ${params.recipient}. ID: ${messageId}`);
+    } else {
+      console.warn(`[EmailEngine] SMTP delivery attempt encountered error:`, smtpRes.error);
+      deliveryStatus = 'FAILED';
+      deliveryError = smtpRes.error;
+    }
   } else {
-    // Transactional simulation for development/demo (e.g. Mailgun, Sendgrid, APIs)
-    console.log(`[EmailEngine] Transactional dispatch via ${centralConfig.provider} to ${params.recipient} from "${identity.senderName}" <${identity.senderEmail}>`);
+    // Transactional simulation for development/demo when no live provider secret is configured
+    console.log(`[EmailEngine] Transactional simulation dispatch via ${centralConfig.provider} to ${params.recipient} from "${identity.senderName}" <${identity.senderEmail}>`);
     deliveryStatus = 'DELIVERED';
   }
 
@@ -678,12 +1055,7 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
     errorMessage: deliveryError,
     idempotencyKey: params.idempotencyKey,
     renderedHtml,
-    metadata: {
-      eventType: params.eventType,
-      senderEmail: identity.senderEmail,
-      senderName: identity.senderName,
-      variables: mergedVariables
-    }
+    metadata: metadataPayload
   };
 
   sqliteStorage.insertEmailLog(emailLog);
@@ -705,8 +1077,13 @@ export function previewUniversityEmail(params: {
   }
   const uniName = university ? university.name : 'University of Example';
   const uniSlug = university ? university.slug : 'university-of-example';
+  const rawUniInstagram = university?.instagramHandle || `${uniSlug}2028class`;
+  const uniInstagram = String(rawUniInstagram).replace(/^@+/, '');
 
   let identity = sqliteStorage.getUniversityEmailIdentity(params.universityId);
+  if (!identity && university) {
+    identity = sqliteStorage.getUniversityEmailIdentity(university.slug);
+  }
   if (!identity) {
     identity = {
       universityId: university?.id || 'sample',
@@ -724,27 +1101,30 @@ export function previewUniversityEmail(params: {
   }
 
   const def = DEFAULT_UNIVERSITY_TEMPLATES[params.eventType] || DEFAULT_UNIVERSITY_TEMPLATES.WELCOME;
+  const savedCustom = sqliteStorage.getUniversityEmailTemplate(identity.universityId, params.eventType);
   const tpl = {
     ...def,
+    ...(savedCustom || {}),
     ...params.customTemplate
   };
 
-  const sampleVars = {
+  const sampleVars: Record<string, any> = {
     student_name: 'Alex Morgan',
     student_email: 'alex.morgan@campus.edu',
     university_name: uniName,
-    university_instagram: `${uniSlug}2028class`,
+    university_instagram: uniInstagram,
     submission_reference: 'CC-94821',
     payment_amount: '6.00',
     payment_status: 'CONFIRMED',
     submission_status: 'UNDER_REVIEW',
     continuation_link: `https://campusconnect.app/university/${uniSlug}`,
-    instagram_post_url: `https://instagram.com/p/C39_sample`,
+    instagram_post_url: `https://instagram.com/${uniInstagram}`,
     rejection_reason: 'Photo has low resolution or strong filters applied.',
     support_email: 'support@campusconnect.app',
     year: new Date().getFullYear().toString(),
     ...params.sampleVariables
   };
+  sampleVars.university_instagram = String(sampleVars.university_instagram || uniInstagram).replace(/^@+/, '');
 
   const finalSubject = interpolateVariables(tpl.subject, sampleVars);
   const finalPreheader = interpolateVariables(tpl.preheader || '', sampleVars);
@@ -753,6 +1133,14 @@ export function previewUniversityEmail(params: {
   const finalButtonText = interpolateVariables(tpl.buttonText || '', sampleVars);
   const finalButtonLink = interpolateVariables(tpl.buttonLink || '', sampleVars);
   const finalFooter = interpolateVariables(tpl.footerText || '', sampleVars);
+
+  const rawSignature = interpolateVariables(
+    identity.signature || `Warm regards,\n\n**The ${identity.universityName} Student Media Team**`,
+    sampleVars
+  );
+  const signatureHtml = /<(?:br|p|strong|em|div|span|a)\b/i.test(rawSignature)
+    ? rawSignature
+    : parseSimpleMarkdownToHtml(rawSignature);
 
   const bodyHtml = parseSimpleMarkdownToHtml(finalMarkdown);
 
@@ -764,7 +1152,8 @@ export function previewUniversityEmail(params: {
     bodyHtml,
     buttonText: finalButtonText,
     buttonLink: finalButtonLink,
-    footerText: finalFooter
+    footerText: finalFooter,
+    signatureHtml
   });
 
   return { subject: finalSubject, html };

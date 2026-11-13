@@ -86,6 +86,8 @@ export const StudentDashboardPage: React.FC = () => {
   const [email, setEmail] = useState(currentUser?.email || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSendingVerification, setIsSendingVerification] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
@@ -262,6 +264,37 @@ export const StudentDashboardPage: React.FC = () => {
       setIsSavingProfile(false);
       addToast('Profile Updated', 'Your profile details have been saved.', 'success');
     }, 400);
+  };
+
+  const handleSendVerificationEmail = async () => {
+    const cleanEmail = (email || currentUser?.email || '').trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      addToast('Valid Email Required', 'Please enter your student email address before verifying.', 'error');
+      return;
+    }
+    setIsSendingVerification(true);
+    try {
+      const res = await fetch('/api/auth/send-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          studentName: fullName || currentUser?.name || 'Student',
+          universityId: currentUser?.universityId || 'general'
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        addToast('Verification Failed', data.message || 'Unable to send verification email.', 'error');
+        return;
+      }
+      setVerificationSent(true);
+      addToast('Verification Email Sent', data.message || `Verification email sent to ${cleanEmail}.`, 'success');
+    } catch {
+      addToast('Network Issue', 'Could not reach verification email service.', 'error');
+    } finally {
+      setIsSendingVerification(false);
+    }
   };
 
   const handleUpdatePassword = (e: React.FormEvent) => {
@@ -963,39 +996,67 @@ export const StudentDashboardPage: React.FC = () => {
           <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xs overflow-hidden">
             
             {/* Top Avatar & Identity */}
-            <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-[#F3E8D3] text-[#97641E] font-bold text-xl flex items-center justify-center border-2 border-[#E4D1B2] shrink-0">
-                S
-              </div>
-              <div className="space-y-0.5">
-                <h2 className="text-lg font-bold text-slate-950 leading-tight">
-                  {fullName}
-                </h2>
-                <div className="text-xs text-slate-500">
-                  {email}
+            <div className="p-6 sm:p-8 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-[#F3E8D3] text-[#97641E] font-bold text-xl flex items-center justify-center border-2 border-[#E4D1B2] shrink-0">
+                  {userInitials}
                 </div>
-                <div className="text-[11px] text-slate-400 pt-0.5">
-                  Member since October 2026
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-slate-950 leading-tight">
+                      {fullName || userDisplayName}
+                    </h2>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                      currentUser?.studentVerificationStatus === 'VERIFIED'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}>
+                      {currentUser?.studentVerificationStatus === 'VERIFIED' ? 'Verified' : 'Unverified'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {email || currentUser?.email || 'No email saved'}
+                  </div>
+                  <div className="text-[11px] text-slate-400 pt-0.5">
+                    {currentUser?.universityName || 'CampusConnect Student Portal'}
+                  </div>
                 </div>
               </div>
+
+              {currentUser?.studentVerificationStatus !== 'VERIFIED' && (
+                <button
+                  type="button"
+                  onClick={handleSendVerificationEmail}
+                  disabled={isSendingVerification}
+                  className="px-4 py-2 rounded-xl border border-[#E4D1B2] bg-[#FDF9F2] hover:bg-[#F3E8D3]/60 text-[#97641E] font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  {isSendingVerification
+                    ? 'Sending...'
+                    : verificationSent
+                      ? 'Resend Verification Email'
+                      : 'Send Verification Email'}
+                </button>
+              )}
             </div>
 
-            {/* 4-Stat Metrics Row: 1 Total | 0 Paid | 0 Posted | $0 Spent */}
+            {/* 4-Stat Metrics Row */}
             <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 text-center py-4 bg-slate-50/50">
               <div>
-                <div className="text-base sm:text-lg font-extrabold text-slate-900">1</div>
+                <div className="text-base sm:text-lg font-extrabold text-slate-900">{mySubmissions.length}</div>
                 <div className="text-[11px] text-slate-500 font-medium">Total</div>
               </div>
               <div>
-                <div className="text-base sm:text-lg font-extrabold text-slate-900">0</div>
+                <div className="text-base sm:text-lg font-extrabold text-slate-900">
+                  {mySubmissions.filter(s => s.paymentStatus === 'PAYMENT_CONFIRMED').length}
+                </div>
                 <div className="text-[11px] text-slate-500 font-medium">Paid</div>
               </div>
               <div>
-                <div className="text-base sm:text-lg font-extrabold text-slate-900">0</div>
+                <div className="text-base sm:text-lg font-extrabold text-slate-900">{postedCount}</div>
                 <div className="text-[11px] text-slate-500 font-medium">Posted</div>
               </div>
               <div>
-                <div className="text-base sm:text-lg font-extrabold text-blue-600">$0</div>
+                <div className="text-base sm:text-lg font-extrabold text-blue-600">${totalSpent}</div>
                 <div className="text-[11px] text-slate-500 font-medium">Spent</div>
               </div>
             </div>

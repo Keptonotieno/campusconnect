@@ -365,3 +365,15 @@ export interface DetailedEmailLog {
   renderedHtml?: string;
   metadata?: Record<string, any>;
 }
+
+export interface ResendDomainStatus {
+  connected: boolean;
+  mode: 'PRODUCTION' | 'SANDBOX' | 'UNCONFIGURED';
+  verifiedDomains: string[];
+  domains: Array<{ name: string; status: string }>;
+  ownerEmail?: string;
+  externalDeliveryVerified?: boolean;
+  productionReady?: boolean;
+  authorizedDomain?: string;
+  checkedAt?: string;
+}
