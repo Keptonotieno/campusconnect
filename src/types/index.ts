@@ -376,4 +376,58 @@ export interface ResendDomainStatus {
   productionReady?: boolean;
   authorizedDomain?: string;
   checkedAt?: string;
+  lastError?: string;
 }
+
+export interface SmtpConnectionDiagnostic {
+  configured: boolean;
+  status: 'CONNECTED' | 'FAILED' | 'NOT_CONFIGURED';
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  tlsEnabled?: boolean;
+  latencyMs?: number;
+  message: string;
+  error?: string;
+  errorCode?: string;
+}
+
+export interface ResendSendDiagnosticResponse {
+  attempted: boolean;
+  ok: boolean;
+  httpStatus?: number;
+  provider: string;
+  fromAddress?: string;
+  recipient?: string;
+  messageId?: string;
+  rawResponse?: Record<string, any> | null;
+  error?: {
+    code: string;
+    name: string;
+    message: string;
+    httpStatus?: number;
+  };
+}
+
+export interface EmailDiagnosticReport {
+  timestamp: string;
+  activeProvider: string;
+  sendingEnabled: boolean;
+  hasResendKey: boolean;
+  hasSmtpCredentials: boolean;
+  smtpConnection: SmtpConnectionDiagnostic;
+  resendApi: {
+    configured: boolean;
+    connected: boolean;
+    mode: 'PRODUCTION' | 'SANDBOX' | 'UNCONFIGURED';
+    httpStatus?: number;
+    latencyMs?: number;
+    verifiedDomains: string[];
+    domains: Array<{ name: string; status: string }>;
+    rawResponse?: any;
+    error?: string;
+  };
+  resendSendResponse?: ResendSendDiagnosticResponse;
+  log?: DetailedEmailLog | null;
+}
+

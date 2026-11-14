@@ -10,7 +10,8 @@ import {
   UniversityEmailTemplate,
   DetailedEmailLog,
   UniversityEmailEventType,
-  ResendDomainStatus
+  ResendDomainStatus,
+  EmailDiagnosticReport
 } from '../types';
 import { VERIFIED_UNIVERSITIES } from '../data/universities';
 
@@ -401,8 +402,22 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
     cleanPath.startsWith('/api/admin/email') ||
     cleanPath.startsWith('/api/admin/integrations');
 
+  // Critical email & integration routes must never be faked in the browser.
+  // If a static host (e.g., Cloudflare Workers static assets) returns SPA HTML, 404, 405, or fails network,
+  // surface a clear error explaining that the Express backend is required.
+  if (
+    isCriticalTransactionalRoute &&
+    (isBackendError || isSpaHtmlResponse || status === 405 || status === 404)
+  ) {
+    const err = new Error(
+      'Email & integration APIs require the CampusConnect Node/Express backend server (not available on static-only hosting). Open the full-stack CampusConnect app URL to save Resend credentials and send live emails.'
+    );
+    (err as any).status = status || 503;
+    throw err;
+  }
+
   // Only allow static fallback when no Express backend route exists (404/405/SPA HTML/network offline)
-  // and NEVER fake transactional email sends or credential saves.
+  // for non-critical read-only directory views.
   if (
     !isCriticalTransactionalRoute &&
     (isBackendError || isSpaHtmlResponse || status === 405 || status === 404)
@@ -423,26 +438,8 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
     if (cleanEndpoint.includes('instagram')) {
       return { accounts: [] } as unknown as T;
     }
-    if (cleanEndpoint.includes('email')) {
-      return {
-        config: {
-          senderEmail: 'notifications@campusconnect.app',
-          senderName: 'CampusConnect Global',
-          smtpHost: 'smtp.mailgun.org',
-          smtpPort: 587,
-          tlsEnabled: true,
-          dkimVerified: true,
-          spfVerified: true,
-          status: 'OPERATIONAL'
-        },
-        logs: []
-      } as unknown as T;
-    }
     if (cleanEndpoint.includes('audit-logs')) {
       return { logs: getLocalAuditLogs() } as unknown as T;
-    }
-    if (cleanEndpoint.includes('integrations')) {
-      return { integrations: getLocalIntegrations() } as unknown as T;
     }
     if (cleanEndpoint.includes('submissions')) {
       return { submissions: getLocalSubmissions() } as unknown as T;
@@ -472,12 +469,13 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
 
   // If it's a real 401/403/400 with a JSON error payload from the actual backend
   let errorMsg = status === 405 
-    ? 'Endpoint handled in client mode.' 
+    ? 'Endpoint requires backend server.' 
     : `Request failed with status ${status}`;
+  let responseData: any = null;
   if (res) {
     try {
-      const data = await res.json();
-      errorMsg = data.message || data.error || errorMsg;
+      responseData = await res.json();
+      errorMsg = responseData.message || responseData.error || errorMsg;
     } catch {
       // ignore
     }
@@ -485,6 +483,9 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
 
   const err = new Error(errorMsg);
   (err as any).status = status;
+  if (responseData) {
+    (err as any).data = responseData;
+  }
   throw err;
 }
 
@@ -1228,17 +1229,45 @@ export async function sendTestUniversityEmail(params: {
   universityId?: string;
   eventType?: UniversityEmailEventType;
   customVariables?: Record<string, any>;
-}): Promise<{ success: boolean; sandboxMode?: boolean; message: string; log: DetailedEmailLog; resendStatus?: ResendDomainStatus }> {
-  return adminFetch<{ success: boolean; sandboxMode?: boolean; message: string; log: DetailedEmailLog; resendStatus?: ResendDomainStatus }>('/api/admin/email/test-template', {
+}): Promise<{
+  success: boolean;
+  sandboxMode?: boolean;
+  error?: string;
+  message: string;
+  log: DetailedEmailLog;
+  diagnostic?: { provider: string; httpStatus?: number; providerResponse?: any };
+  resendStatus?: ResendDomainStatus;
+}> {
+  return adminFetch('/api/admin/email/test-template', {
     method: 'POST',
     body: JSON.stringify(params)
   });
 }
 
-export async function retryEmailLog(logId: string): Promise<{ success: boolean; message: string; log: DetailedEmailLog; resendStatus?: ResendDomainStatus }> {
-  return adminFetch<{ success: boolean; message: string; log: DetailedEmailLog; resendStatus?: ResendDomainStatus }>(
+export async function retryEmailLog(logId: string): Promise<{
+  success: boolean;
+  sandboxMode?: boolean;
+  error?: string;
+  message: string;
+  log: DetailedEmailLog;
+  diagnostic?: { provider: string; httpStatus?: number; providerResponse?: any };
+  resendStatus?: ResendDomainStatus;
+}> {
+  return adminFetch(
     `/api/admin/email/logs/${encodeURIComponent(logId)}/retry`,
     { method: 'POST' }
   );
+}
+
+export async function runAdminEmailDiagnostics(params?: {
+  recipient?: string;
+  universityId?: string;
+  eventType?: UniversityEmailEventType;
+  attemptTestSend?: boolean;
+}): Promise<EmailDiagnosticReport> {
+  return adminFetch<EmailDiagnosticReport>('/api/admin/email/diagnostics', {
+    method: 'POST',
+    body: JSON.stringify(params || {})
+  });
 }
 

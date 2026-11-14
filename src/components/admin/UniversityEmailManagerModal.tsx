@@ -297,12 +297,24 @@ export const UniversityEmailManagerModal: React.FC<UniversityEmailManagerModalPr
         universityId: university.id,
         eventType: selectedEventType
       });
+      console.info('[UniversityEmailManager] Resend test-send response:', {
+        success: res.success,
+        sandboxMode: res.sandboxMode,
+        message: res.message,
+        diagnostic: res.diagnostic,
+        log: res.log
+      });
       if (res.success === false) {
         onSuccessToast?.('Delivery Blocked / Notice', res.message || 'Email delivery failed.');
       } else {
         onSuccessToast?.('Test Email Delivered', res.message || `Dispatched to ${testEmailRecipient}`);
       }
     } catch (err: any) {
+      console.error('[UniversityEmailManager] Explicit EmailDeliveryError during test send:', {
+        message: err?.message,
+        status: err?.status,
+        data: err?.data
+      });
       onSuccessToast?.('Dispatch Failed', err.message || 'Failed to dispatch test email.');
     } finally {
       setSendingTest(false);

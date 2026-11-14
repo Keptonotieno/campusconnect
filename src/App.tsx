@@ -21,7 +21,9 @@ import {
   TermsPage, 
   PrivacyPage, 
   ForgotPasswordPage, 
-  DataDeletionPage 
+  DataDeletionPage,
+  VerifyEmailPage,
+  ResetPasswordPage
 } from './pages/public/StaticPages';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
@@ -57,7 +59,7 @@ const AppContent: React.FC = () => {
   const requestedCampusSlug = (() => {
     const pathOnly = (currentRoute || (typeof window !== 'undefined' ? window.location.pathname : '/')).split('?')[0];
     const firstSegment = pathOnly.replace(/^\//, '').split('/')[0];
-    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'app', 'business', 'student', 'campuses', 'schools', 'my-submissions'];
+    const reservedRoutes = ['admin', 'login', 'register', 'terms', 'privacy', 'data-deletion', 'forgot-password', 'verify', 'reset-password', 'app', 'business', 'student', 'campuses', 'schools', 'my-submissions'];
 
     // Dedicated auth, admin, and app routes take precedence - never render community landing page over them
     if (reservedRoutes.includes(firstSegment)) {
@@ -391,8 +393,10 @@ const AppContent: React.FC = () => {
   else if (pathOnly === '/login' || pathOnly === '/business/login') PublicComponent = LoginPage;
   else if (pathOnly === '/register' || pathOnly === '/business/register') PublicComponent = RegisterPage;
   else if (pathOnly === '/forgot-password') PublicComponent = ForgotPasswordPage;
+  else if (pathOnly === '/verify') PublicComponent = VerifyEmailPage;
+  else if (pathOnly === '/reset-password') PublicComponent = ResetPasswordPage;
 
-  const isAuthOrStaticPage = pathOnly === '/login' || pathOnly === '/register' || pathOnly === '/forgot-password';
+  const isAuthOrStaticPage = pathOnly === '/login' || pathOnly === '/register' || pathOnly === '/forgot-password' || pathOnly === '/verify' || pathOnly === '/reset-password';
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">

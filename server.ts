@@ -6,7 +6,7 @@ import path from 'path';
 import cookieParser from 'cookie-parser';
 import crypto from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
-import { dbInstance } from './server/db';
+import { dbInstance, EmailDeliveryError } from './server/db';
 import type { AdminSession } from './server/db';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -245,6 +245,20 @@ app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
       logId: log.id
     });
   } catch (err: any) {
+    if (err instanceof EmailDeliveryError) {
+      console.error('[ForgotPassword][EmailDeliveryError]', err.code, err.message);
+      return res.status(400).json({
+        success: false,
+        error: err.code,
+        message: err.message,
+        logId: err.emailLog?.id,
+        diagnostic: {
+          provider: err.provider,
+          httpStatus: err.httpStatus,
+          providerResponse: err.providerResponse
+        }
+      });
+    }
     return res.status(500).json({ error: 'ResetFailed', message: err.message || 'Failed to dispatch password reset email.' });
   }
 });
@@ -301,6 +315,20 @@ app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
       logId: log.id
     });
   } catch (err: any) {
+    if (err instanceof EmailDeliveryError) {
+      console.error('[SendVerification][EmailDeliveryError]', err.code, err.message);
+      return res.status(400).json({
+        success: false,
+        error: err.code,
+        message: err.message,
+        logId: err.emailLog?.id,
+        diagnostic: {
+          provider: err.provider,
+          httpStatus: err.httpStatus,
+          providerResponse: err.providerResponse
+        }
+      });
+    }
     return res.status(500).json({ error: 'VerificationFailed', message: err.message || 'Failed to dispatch verification email.' });
   }
 });
@@ -606,9 +634,31 @@ app.post('/api/admin/email/test-template', requireAdminAuth, async (req: Authent
       sandboxMode: Boolean(log.metadata?.sandboxMode || log.metadata?.sandboxRestriction),
       message: responseMessage,
       log,
+      diagnostic: {
+        provider: log.provider,
+        httpStatus: log.metadata?.resendHttpStatus || 200,
+        providerResponse: log.metadata?.resendResponse || null
+      },
       resendStatus
     });
   } catch (err: any) {
+    if (err instanceof EmailDeliveryError) {
+      console.error('[TestTemplate][EmailDeliveryError]', err.code, err.message);
+      const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
+      return res.status(400).json({
+        success: false,
+        sandboxMode: err.code === 'RESEND_SANDBOX_BLOCKED',
+        error: err.code,
+        message: err.message,
+        log: err.emailLog,
+        diagnostic: {
+          provider: err.provider,
+          httpStatus: err.httpStatus,
+          providerResponse: err.providerResponse
+        },
+        resendStatus
+      });
+    }
     return res.status(500).json({ error: 'TestSendFailed', message: err.message });
   }
 });
@@ -664,9 +714,31 @@ app.post('/api/admin/email/send-test', requireAdminAuth, async (req: Authenticat
       sandboxMode: Boolean(log.metadata?.sandboxMode || log.metadata?.sandboxRestriction),
       message: responseMessage,
       log,
+      diagnostic: {
+        provider: log.provider,
+        httpStatus: log.metadata?.resendHttpStatus || 200,
+        providerResponse: log.metadata?.resendResponse || null
+      },
       resendStatus
     });
   } catch (err: any) {
+    if (err instanceof EmailDeliveryError) {
+      console.error('[SendTest][EmailDeliveryError]', err.code, err.message);
+      const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
+      return res.status(400).json({
+        success: false,
+        sandboxMode: err.code === 'RESEND_SANDBOX_BLOCKED',
+        error: err.code,
+        message: err.message,
+        log: err.emailLog,
+        diagnostic: {
+          provider: err.provider,
+          httpStatus: err.httpStatus,
+          providerResponse: err.providerResponse
+        },
+        resendStatus
+      });
+    }
     return res.status(500).json({ error: 'SendFailed', message: err.message });
   }
 });
@@ -718,10 +790,49 @@ app.post('/api/admin/email/logs/:id/retry', requireAdminAuth, async (req: Authen
             : retryLog.errorMessage || `Retry queued for ${original.recipient}`)
         : (retryLog.errorMessage || 'Retry dispatch failed.'),
       log: retryLog,
+      diagnostic: {
+        provider: retryLog.provider,
+        httpStatus: retryLog.metadata?.resendHttpStatus || 200,
+        providerResponse: retryLog.metadata?.resendResponse || null
+      },
       resendStatus
     });
   } catch (err: any) {
+    if (err instanceof EmailDeliveryError) {
+      console.error('[EmailRetry][EmailDeliveryError]', err.code, err.message);
+      const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
+      return res.status(400).json({
+        success: false,
+        sandboxMode: err.code === 'RESEND_SANDBOX_BLOCKED',
+        error: err.code,
+        message: err.message,
+        log: err.emailLog,
+        diagnostic: {
+          provider: err.provider,
+          httpStatus: err.httpStatus,
+          providerResponse: err.providerResponse
+        },
+        resendStatus
+      });
+    }
     return res.status(500).json({ error: 'RetryFailed', message: err.message });
+  }
+});
+
+// 14. Live Email Infrastructure & SMTP / Resend Diagnostic Probe
+app.post('/api/admin/email/diagnostics', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const { recipient, universityId, eventType, attemptTestSend } = req.body || {};
+    const report = await dbInstance.runEmailDiagnostics({
+      recipient: recipient ? String(recipient).trim() : undefined,
+      universityId: universityId || 'general',
+      eventType: eventType || 'WELCOME',
+      attemptTestSend: Boolean(attemptTestSend)
+    });
+    return res.json(report);
+  } catch (err: any) {
+    console.error('[EmailDiagnosticsEndpointError]', err);
+    return res.status(500).json({ error: 'DiagnosticsFailed', message: err?.message || 'Failed to run email diagnostics.' });
   }
 });
 
@@ -986,26 +1097,28 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
       sub.paymentAmount = 6.00;
       sub.updatedAt = new Date().toISOString();
       dbInstance.saveSubmission(sub);
+    }
 
-      // Trigger automated payment confirmation email asynchronously
-      if (sub.studentEmail) {
-        const baseUrl = getBaseUrl(req);
-        dbInstance.sendUniversityEmail({
-          universityId: sub.universityId || universityId || 'general',
-          eventType: 'PAYMENT_CONFIRMATION',
-          recipient: sub.studentEmail,
-          variables: {
-            student_name: payment.studentName || sub.studentDisplayName,
-            student_email: sub.studentEmail,
-            submission_reference: txnRef,
-            payment_amount: '6.00',
-            payment_status: 'CONFIRMED',
-            base_url: baseUrl,
-            continuation_link: `${baseUrl}/university/${sub.universitySlug || 'general'}`
-          },
-          idempotencyKey: `pay_conf_${payment.id}`
-        }).catch(err => console.error('[PaymentVerifyEmailTrigger]', err));
-      }
+    const recipientEmail = sub?.studentEmail || (typeof req.body?.studentEmail === 'string' ? req.body.studentEmail.trim() : '');
+    if (recipientEmail) {
+      const baseUrl = getBaseUrl(req);
+      const targetUniId = sub?.universityId || universityId || 'general';
+      const targetUniSlug = sub?.universitySlug || (typeof req.body?.universitySlug === 'string' ? req.body.universitySlug : 'general');
+      dbInstance.sendUniversityEmail({
+        universityId: targetUniId,
+        eventType: 'PAYMENT_CONFIRMATION',
+        recipient: recipientEmail,
+        variables: {
+          student_name: payment.studentName || sub?.studentDisplayName || 'Student',
+          student_email: recipientEmail,
+          submission_reference: txnRef,
+          payment_amount: '6.00',
+          payment_status: 'CONFIRMED',
+          base_url: baseUrl,
+          continuation_link: `${baseUrl}/university/${targetUniSlug || 'general'}`
+        },
+        idempotencyKey: `pay_conf_${payment.id}`
+      }).catch(err => console.error('[PaymentVerifyEmailTrigger]', err));
     }
 
     return res.json({

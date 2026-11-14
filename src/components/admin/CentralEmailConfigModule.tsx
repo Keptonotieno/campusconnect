@@ -34,6 +34,7 @@ import {
   ChevronRight,
   SlidersHorizontal
 } from 'lucide-react';
+import { EmailDiagnosticUtility } from './EmailDiagnosticUtility';
 
 interface CentralEmailConfigModuleProps {
   initialConfig: CentralEmailConfig;
@@ -130,9 +131,10 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
       const res = await fetchCentralEmailConfig(force);
       if (res?.resendStatus) {
         setResendStatus(res.resendStatus);
+        console.info('[CentralEmailConfig] Resend domain check response:', res.resendStatus);
       }
-    } catch {
-      // Keep current status on transient error
+    } catch (err: any) {
+      console.error('[CentralEmailConfig] Resend domain check failed:', err?.data || err?.message || err);
     } finally {
       setCheckingDomains(false);
     }
@@ -178,7 +180,13 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
       if (res?.resendStatus) {
         setResendStatus(res.resendStatus);
       }
-      if (res.config.provider === 'RESEND' && !res.resendStatus?.productionReady) {
+      if (res?.config?.provider === 'RESEND' && !res.resendStatus?.connected) {
+        onToast(
+          'Resend API Key Missing',
+          'Configuration saved, but no active Resend API key is configured. Enter a valid re_... key to enable email delivery.',
+          'error'
+        );
+      } else if (res?.config?.provider === 'RESEND' && !res.resendStatus?.productionReady) {
         const notice = res.resendStatus?.mode === 'PRODUCTION'
           ? 'Settings saved with verified Resend domain. Send a live test to an external student address to confirm production readiness.'
           : 'Settings saved, but Resend is in Sandbox Mode until a custom domain is verified at resend.com/domains.';
@@ -208,6 +216,14 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
         universityId: testUniversityId,
         eventType: testEventType
       });
+      console.info('[CentralEmailConfig] Email test-send response:', {
+        success: res.success,
+        sandboxMode: res.sandboxMode,
+        message: res.message,
+        diagnostic: res.diagnostic,
+        log: res.log,
+        resendStatus: res.resendStatus
+      });
       if (res.resendStatus) {
         setResendStatus(res.resendStatus);
       }
@@ -222,7 +238,24 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
       }
       onRefresh();
     } catch (err: any) {
-      onToast('Dispatch Failed', err.message || 'Failed to dispatch test email.', 'error');
+      const errData = err?.data;
+      console.error('[CentralEmailConfig] Explicit EmailDeliveryError during test send:', {
+        message: err?.message,
+        status: err?.status,
+        error: errData?.error,
+        diagnostic: errData?.diagnostic,
+        log: errData?.log,
+        resendStatus: errData?.resendStatus
+      });
+      if (errData?.resendStatus) {
+        setResendStatus(errData.resendStatus);
+      }
+      onRefresh();
+      onToast(
+        errData?.sandboxMode ? 'External Inbox Blocked (Sandbox Mode)' : 'Dispatch Failed',
+        err?.message || 'Failed to dispatch test email.',
+        'error'
+      );
     } finally {
       setSendingTest(false);
     }
@@ -233,6 +266,12 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
     setRetryingLogId(logId);
     try {
       const res = await retryEmailLog(logId);
+      console.info('[CentralEmailConfig] Email retry response:', {
+        success: res.success,
+        message: res.message,
+        diagnostic: res.diagnostic,
+        log: res.log
+      });
       if (res.resendStatus) {
         setResendStatus(res.resendStatus);
       }
@@ -243,7 +282,19 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
       );
       onRefresh();
     } catch (err: any) {
-      onToast('Retry Failed', err.message || 'Could not retry email delivery.', 'error');
+      const errData = err?.data;
+      console.error('[CentralEmailConfig] Explicit EmailDeliveryError during retry:', {
+        message: err?.message,
+        status: err?.status,
+        error: errData?.error,
+        diagnostic: errData?.diagnostic,
+        log: errData?.log
+      });
+      if (errData?.resendStatus) {
+        setResendStatus(errData.resendStatus);
+      }
+      onRefresh();
+      onToast('Retry Failed', err?.message || 'Could not retry email delivery.', 'error');
     } finally {
       setRetryingLogId(null);
     }
@@ -318,9 +369,27 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
               Centralized Infrastructure
             </span>
-            <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Multi-Tenant Delivery Engine ({campuses.length} Campuses)</span>
+            <span className={`text-xs font-semibold flex items-center gap-1.5 ${
+              config.provider === 'RESEND' && !resendStatus?.connected
+                ? 'text-rose-500'
+                : config.provider === 'RESEND' && !resendStatus?.productionReady
+                ? 'text-amber-500'
+                : 'text-emerald-500'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${
+                config.provider === 'RESEND' && !resendStatus?.connected
+                  ? 'bg-rose-500'
+                  : config.provider === 'RESEND' && !resendStatus?.productionReady
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500 animate-pulse'
+              }`} />
+              <span>
+                {config.provider === 'RESEND' && !resendStatus?.connected
+                  ? `API Key Not Configured (${campuses.length} Campuses Paused)`
+                  : config.provider === 'RESEND' && !resendStatus?.productionReady
+                  ? `Sandbox Mode — Domain Verification Required (${campuses.length} Campuses)`
+                  : `Multi-Tenant Delivery Engine (${campuses.length} Campuses)`}
+              </span>
             </span>
           </div>
           <h2 className={`text-2xl font-black tracking-tight mt-1.5 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
@@ -692,7 +761,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                       type={showPassword ? 'text' : 'password'}
                       value={config.apiKey || ''}
                       onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                      placeholder="key-••••••••••••"
+                      placeholder={config.provider === 'RESEND' ? 're_••••••••••••••••••••••••' : 'key-••••••••••••'}
                       className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none focus:border-blue-500 ${
                         isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
                       }`}
@@ -793,7 +862,34 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                 </div>
               </div>
 
-              {/* Resend Domain Verification & Sending Mode Status */}
+              {/* Resend API Key & Domain Verification Status */}
+              {config.provider === 'RESEND' && (!resendStatus || !resendStatus.connected) && (
+                <div className={`p-4 rounded-2xl border space-y-2 ${
+                  isDarkMode ? 'bg-rose-950/20 border-rose-500/30' : 'bg-rose-50/80 border-rose-200'
+                }`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                      <span className={`text-xs font-black ${isDarkMode ? 'text-rose-300' : 'text-rose-900'}`}>
+                        Resend API Key Required — Outbound Emails Cannot Deliver Yet
+                      </span>
+                    </div>
+                    <a
+                      href="https://resend.com/api-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
+                    >
+                      <span>Get Resend API Key</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <p className={`text-[11px] leading-relaxed ${isDarkMode ? 'text-rose-200/80' : 'text-rose-900'}`}>
+                    No active Resend API key is currently stored on the server. Paste your central Resend API key (<span className="font-mono font-bold">re_...</span>) in the credential field above, set your verified sending domain (e.g. from <span className="font-mono">resend.com/domains</span>), click <strong>Save Central Email Configuration</strong>, and then test delivery below.
+                  </p>
+                </div>
+              )}
+
               {resendStatus && resendStatus.connected && (
                 <div className={`p-4 rounded-2xl border space-y-2.5 ${
                   resendStatus.productionReady
@@ -960,6 +1056,16 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
               </button>
             </div>
           </div>
+
+          {/* Diagnostic Utility (SMTP & Resend Console Logger) */}
+          <EmailDiagnosticUtility
+            recipient={testRecipient || resendStatus?.ownerEmail || ''}
+            universityId={testUniversityId}
+            eventType={testEventType}
+            onToast={onToast}
+            onComplete={onRefresh}
+            isDarkMode={isDarkMode}
+          />
 
         </div>
       )}

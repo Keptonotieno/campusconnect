@@ -925,8 +925,16 @@ export const AdminPortalPage: React.FC = () => {
   const handleSendTestEmail = async () => {
     setSendingTestEmail(true);
     try {
-      const res = await sendAdminTestEmail(testEmailRecipient.trim() || undefined);
-      addToast('Email Sent', res.message, 'success');
+      const res: any = await sendAdminTestEmail(testEmailRecipient.trim() || undefined);
+      if (res?.success === false && res?.sandboxMode) {
+        addToast('External Inbox Blocked (Sandbox Mode)', res.message || 'Blocked by Resend Sandbox until a domain is verified.', 'error');
+      } else if (res?.success === false) {
+        addToast('Email Failed', res.message || 'Failed to deliver test email.', 'error');
+      } else if (res?.sandboxMode) {
+        addToast('Sandbox Test Delivered', res.message || 'Sandbox copy delivered.', 'info');
+      } else {
+        addToast('Email Delivered', res?.message || 'Test email delivered.', 'success');
+      }
       loadAllAdminData();
     } catch (err: any) {
       addToast('Email Failed', err.message || 'Failed to send test email.', 'error');

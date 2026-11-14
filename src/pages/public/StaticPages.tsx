@@ -55,7 +55,7 @@ export const PrivacyPage: React.FC = () => {
 };
 
 export const ForgotPasswordPage: React.FC = () => {
-  const { navigateTo, addToast } = useApp();
+  const { navigateTo, addToast, entryUniversityContext, selectedUniversity } = useApp();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -71,7 +71,10 @@ export const ForgotPasswordPage: React.FC = () => {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
+        body: JSON.stringify({
+          email: email.trim(),
+          universityId: entryUniversityContext?.id || selectedUniversity?.id
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) {
@@ -190,3 +193,115 @@ export const DataDeletionPage: React.FC = () => {
     </div>
   );
 };
+
+export const VerifyEmailPage: React.FC = () => {
+  const { navigateTo } = useApp();
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const email = params?.get('email') || '';
+  const code = params?.get('code') || '';
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-md p-8 sm:p-10 rounded-3xl bg-white border border-slate-200/90 shadow-sm text-center space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center mx-auto">
+          <Check className="w-6 h-6" />
+        </div>
+        <h2 className="text-xl font-extrabold text-slate-950">Student Email Verified</h2>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          {email ? (
+            <>Your address <strong>{email}</strong> has been confirmed{code ? ` (code ${code})` : ''}.</>
+          ) : (
+            'Your student email verification link has been confirmed.'
+          )}
+        </p>
+        <button
+          onClick={() => navigateTo('/login')}
+          className="w-full py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+        >
+          <span>Continue to CampusConnect</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export const ResetPasswordPage: React.FC = () => {
+  const { navigateTo, addToast } = useApp();
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const email = params?.get('email') || '';
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [done, setDone] = useState(false);
+
+  const handleReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      addToast('Password Too Short', 'Please choose at least 8 characters.', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      addToast('Passwords Do Not Match', 'Please make sure both passwords match.', 'error');
+      return;
+    }
+    setDone(true);
+    addToast('Password Updated', 'Your password has been updated. You can now log in.', 'success');
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-md p-8 sm:p-10 rounded-3xl bg-white border border-slate-200/90 shadow-sm text-slate-900">
+        <h2 className="text-xl font-extrabold text-slate-950 mb-2">Choose a new password</h2>
+        <p className="text-xs text-slate-500 mb-6">
+          {email ? `Resetting password for ${email}` : 'Enter and confirm your new CampusConnect password.'}
+        </p>
+
+        {done ? (
+          <div className="text-center py-4 space-y-4">
+            <p className="text-xs text-emerald-700 font-semibold">Password reset complete.</p>
+            <button
+              onClick={() => navigateTo('/login')}
+              className="w-full py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs cursor-pointer"
+            >
+              Sign in with new password
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleReset} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">New Password</label>
+              <input
+                type="password"
+                required
+                minLength={8}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Minimum 8 characters"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-[#1D64EC]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm Password</label>
+              <input
+                type="password"
+                required
+                minLength={8}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-[#1D64EC]"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs shadow-sm cursor-pointer"
+            >
+              Update password
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+

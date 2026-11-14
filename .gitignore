@@ -10,6 +10,26 @@ coverage/
 *.mov
 *.avi
 *.mkv
-public/assets/aistudio/*.mp4
-public/assets/aistudio/*.mov
 
+# AI Studio internal workspace & chat attachment screenshots/recordings
+.aistudio/
+public/assets/aistudio/
+
+# SQLite databases, WAL/SHM journals, and runtime mutable JSON snapshots
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/admins.json
+data/sessions.json
+data/audit-logs.json
+data/email-logs.json
+data/email-config.json
+data/integrations.json
+data/payments.json
+data/submissions.json
+data/users.json
+data/instagram.json
+data/university-email-identities.json
+data/campuses.json

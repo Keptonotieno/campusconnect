@@ -223,23 +223,23 @@ export class SQLiteStorage {
 
       CREATE TABLE IF NOT EXISTS central_email_config (
         id TEXT PRIMARY KEY DEFAULT 'central',
-        provider TEXT NOT NULL DEFAULT 'SMTP',
+        provider TEXT NOT NULL DEFAULT 'RESEND',
         sender_email TEXT NOT NULL DEFAULT 'notifications@campusconnect.app',
         sender_name TEXT NOT NULL DEFAULT 'CampusConnect Global',
         reply_to TEXT DEFAULT 'support@campusconnect.app',
         sender_domain TEXT DEFAULT 'campusconnect.app',
-        smtp_host TEXT DEFAULT 'smtp.mailgun.org',
+        smtp_host TEXT DEFAULT '',
         smtp_port INTEGER DEFAULT 587,
-        smtp_user TEXT,
+        smtp_user TEXT DEFAULT '',
         smtp_pass TEXT,
         api_key TEXT,
         tls_enabled INTEGER NOT NULL DEFAULT 1,
-        status TEXT NOT NULL DEFAULT 'OPERATIONAL',
+        status TEXT NOT NULL DEFAULT 'DEGRADED',
         sending_enabled INTEGER NOT NULL DEFAULT 1,
         daily_limit INTEGER NOT NULL DEFAULT 5000,
-        spf_verified INTEGER NOT NULL DEFAULT 1,
-        dkim_verified INTEGER NOT NULL DEFAULT 1,
-        dmarc_verified INTEGER NOT NULL DEFAULT 1,
+        spf_verified INTEGER NOT NULL DEFAULT 0,
+        dkim_verified INTEGER NOT NULL DEFAULT 0,
+        dmarc_verified INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL,
         raw_json TEXT NOT NULL
       );
@@ -469,10 +469,71 @@ export class SQLiteStorage {
       trans(legacyPays);
     }
 
-    // 6. Migrate Integrations
+    // 6. Migrate Integrations (with built-in defaults if integrations.json is not present)
     const intCount = (this.db.prepare('SELECT count(*) as c FROM integrations').get() as { c: number }).c;
     if (intCount === 0) {
-      const legacyInts = readLegacy<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: [] });
+      const defaultIntegrations: IntegrationConfig[] = [
+        {
+          id: 'payment_stripe',
+          name: 'Stripe Gateway',
+          category: 'Payment Processing',
+          status: 'NOT_CONFIGURED',
+          configured: false,
+          lastVerifiedAt: null,
+          details: 'Processes student $6.00 feature fees with 256-bit SSL encryption. Requires Stripe publishable and secret keys to activate live checkouts.',
+          keys: { publishableKey: '', secretKey: '', webhookSecret: '' }
+        },
+        {
+          id: 'meta_instagram',
+          name: 'Meta Instagram Graph API',
+          category: 'Social Media & Direct Publishing',
+          status: 'NOT_CONFIGURED',
+          configured: false,
+          lastVerifiedAt: null,
+          details: 'Official Meta Graph API connection for university profile publishing, media sync, and direct student spotlights.',
+          keys: { appId: '', appSecret: '', accessToken: '', instagramBusinessAccountId: '', webhookVerifyToken: '' }
+        },
+        {
+          id: 'firebase_firestore',
+          name: 'Firebase Firestore & Auth',
+          category: 'Persistent Database & Identity',
+          status: 'CONNECTED',
+          configured: true,
+          lastVerifiedAt: new Date().toISOString(),
+          details: 'Authoritative cloud database with granular RBAC security rules.',
+          keys: {
+            projectId: process.env.VITE_FIREBASE_PROJECT_ID || '',
+            databaseId: process.env.VITE_FIREBASE_DATABASE_ID || '',
+            authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+            storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || ''
+          }
+        },
+        {
+          id: 'email_transactional',
+          name: 'Transactional Email Service',
+          category: 'Notifications & Verification',
+          status: 'NOT_CONFIGURED',
+          configured: false,
+          lastVerifiedAt: null,
+          details: 'Centralized Resend & SMTP transactional email service for university-branded student notifications.',
+          keys: {
+            provider: 'RESEND',
+            smtpHost: '',
+            smtpPort: '587',
+            smtpUser: '',
+            smtpPassword: '',
+            senderEmail: 'notifications@campusconnect.app',
+            senderName: 'CampusConnect Global',
+            apiKey: '',
+            webhookSecret: '',
+            resendApiKey: ''
+          }
+        }
+      ];
+      const legacyInts = readLegacy<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: defaultIntegrations });
+      const seedList = (legacyInts.integrations && legacyInts.integrations.length > 0)
+        ? legacyInts.integrations
+        : defaultIntegrations;
       const insertInt = this.db.prepare(`
         INSERT OR IGNORE INTO integrations (
           id, name, category, status, configured, last_verified_at, details, keys_json
@@ -492,7 +553,7 @@ export class SQLiteStorage {
           );
         }
       });
-      trans(legacyInts.integrations || []);
+      trans(seedList);
     }
 
     // 7. Migrate Audit Logs
@@ -977,6 +1038,14 @@ export class SQLiteStorage {
   }
 
   public upsertIntegration(config: IntegrationConfig): IntegrationConfig {
+    const cleanKeys = { ...(config.keys || {}) };
+    if (config.id === 'email_transactional') {
+      const envResend = (process.env.RESEND_API_KEY || '').trim();
+      const envWebhook = (process.env.RESEND_WEBHOOK_SECRET || '').trim();
+      if (envResend && cleanKeys.apiKey === envResend) cleanKeys.apiKey = '';
+      if (envResend && cleanKeys.resendApiKey === envResend) cleanKeys.resendApiKey = '';
+      if (envWebhook && cleanKeys.webhookSecret === envWebhook) cleanKeys.webhookSecret = '';
+    }
     this.db.prepare(`
       INSERT OR REPLACE INTO integrations (
         id, name, category, status, configured, last_verified_at, details, keys_json
@@ -989,7 +1058,7 @@ export class SQLiteStorage {
       config.configured ? 1 : 0,
       config.lastVerifiedAt || null,
       config.details || '',
-      JSON.stringify(config.keys || {})
+      JSON.stringify(cleanKeys)
     );
     this.backupToJson('integrations.json', { integrations: this.getAllIntegrations() });
     return config;
@@ -1068,23 +1137,23 @@ export class SQLiteStorage {
   // --- CENTRAL EMAIL CONFIGURATION ---
   public getCentralEmailConfig(): CentralEmailConfig {
     const defaultConfig: CentralEmailConfig = {
-      provider: 'SMTP',
+      provider: 'RESEND',
       senderEmail: 'notifications@campusconnect.app',
       senderName: 'CampusConnect Global',
       replyTo: 'support@campusconnect.app',
       senderDomain: 'campusconnect.app',
-      smtpHost: 'smtp.mailgun.org',
+      smtpHost: '',
       smtpPort: 587,
-      smtpUser: 'postmaster@campusconnect.app',
+      smtpUser: '',
       smtpPass: '',
       apiKey: '',
       tlsEnabled: true,
-      status: 'OPERATIONAL',
+      status: 'DEGRADED',
       sendingEnabled: true,
       dailyLimit: 5000,
-      spfVerified: true,
-      dkimVerified: true,
-      dmarcVerified: true,
+      spfVerified: false,
+      dkimVerified: false,
+      dmarcVerified: false,
       updatedAt: new Date().toISOString()
     };
 
@@ -1092,12 +1161,42 @@ export class SQLiteStorage {
     const row = this.db.prepare('SELECT raw_json FROM central_email_config WHERE id = ?').get('central') as { raw_json: string } | undefined;
     if (row && row.raw_json) {
       try {
-        config = JSON.parse(row.raw_json) as CentralEmailConfig;
+        config = { ...defaultConfig, ...JSON.parse(row.raw_json) };
       } catch {
         config = { ...defaultConfig };
       }
     } else {
       config = { ...defaultConfig };
+    }
+
+    // Migrate legacy unconfigured Mailgun/SMTP seed row to honest unconfigured RESEND defaults
+    if (
+      config.provider === 'SMTP' &&
+      !(config.smtpPass || '').trim() &&
+      !(config.apiKey || '').trim() &&
+      (!config.smtpHost || config.smtpHost === 'smtp.mailgun.org')
+    ) {
+      config.provider = 'RESEND';
+      config.smtpHost = '';
+      config.smtpUser = '';
+      config.status = 'DEGRADED';
+      config.spfVerified = false;
+      config.dkimVerified = false;
+      config.dmarcVerified = false;
+    }
+
+    // Fallback to integrations['email_transactional'] key if central config apiKey is empty
+    if (!config.apiKey && config.provider === 'RESEND') {
+      try {
+        const intRow = this.db.prepare('SELECT keys_json FROM integrations WHERE id = ?').get('email_transactional') as { keys_json: string } | undefined;
+        if (intRow?.keys_json) {
+          const parsedKeys = JSON.parse(intRow.keys_json);
+          const storedKey = (parsedKeys?.apiKey || parsedKeys?.resendApiKey || '').trim();
+          if (storedKey) {
+            config.apiKey = storedKey;
+          }
+        }
+      } catch {}
     }
 
     // Auto-detect and overlay Resend API key or SMTP from environment secrets
@@ -1128,29 +1227,39 @@ export class SQLiteStorage {
       config.senderName = process.env.SMTP_SENDER_NAME;
     }
 
+    // Honest status when no credentials exist
+    if (config.provider === 'RESEND' && !(config.apiKey || '').trim()) {
+      config.status = 'DEGRADED';
+      config.spfVerified = false;
+      config.dkimVerified = false;
+      config.dmarcVerified = false;
+    } else if (config.provider === 'SMTP' && !(config.smtpPass || '').trim()) {
+      config.status = 'DEGRADED';
+    }
+
     return config;
   }
 
   public saveCentralEmailConfig(updates: Partial<CentralEmailConfig>): CentralEmailConfig {
     const row = this.db.prepare('SELECT raw_json FROM central_email_config WHERE id = ?').get('central') as { raw_json: string } | undefined;
     let base: CentralEmailConfig = {
-      provider: 'SMTP',
+      provider: 'RESEND',
       senderEmail: 'notifications@campusconnect.app',
       senderName: 'CampusConnect Global',
       replyTo: 'support@campusconnect.app',
       senderDomain: 'campusconnect.app',
-      smtpHost: 'smtp.mailgun.org',
+      smtpHost: '',
       smtpPort: 587,
-      smtpUser: 'postmaster@campusconnect.app',
+      smtpUser: '',
       smtpPass: '',
       apiKey: '',
       tlsEnabled: true,
-      status: 'OPERATIONAL',
+      status: 'DEGRADED',
       sendingEnabled: true,
       dailyLimit: 5000,
-      spfVerified: true,
-      dkimVerified: true,
-      dmarcVerified: true,
+      spfVerified: false,
+      dkimVerified: false,
+      dmarcVerified: false,
       updatedAt: new Date().toISOString()
     };
 

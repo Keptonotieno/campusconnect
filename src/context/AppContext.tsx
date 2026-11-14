@@ -908,11 +908,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setSubmissions((prev) => [newSubmission, ...prev]);
     try {
-      fetch('/api/submissions', {
+      await fetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newSubmission)
-      }).catch(() => {});
+      });
     } catch {}
     addToast('Submission Created', 'Now complete the one-time $6 payment to submit for review.', 'info');
     return newSubmission;
@@ -967,7 +967,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             submissionId,
             studentUid: currentUser.id,
             studentName: currentUser.name,
+            studentEmail: currentUser.email,
             universityId: sub.universityId,
+            universitySlug: sub.universitySlug,
             provider: 'STRIPE_CARD',
             idempotencyKey: result.paymentRecord.idempotencyKey
           })

@@ -12,7 +12,9 @@ import {
   UniversityEmailTemplate,
   DetailedEmailLog,
   UniversityEmailEventType,
-  ResendDomainStatus
+  ResendDomainStatus,
+  SmtpConnectionDiagnostic,
+  EmailDiagnosticReport
 } from '../src/types';
 import { VERIFIED_UNIVERSITIES, findUniversityBySlug } from '../src/data/universities';
 import { sqliteStorage } from './sqlite';
@@ -24,13 +26,17 @@ import type {
   IntegrationConfig 
 } from './sqlite';
 import { 
+  EmailDeliveryError,
   sendUniversityEmail, 
   previewUniversityEmail, 
   getResendDomainStatus,
   getCachedResendStatus,
+  verifySmtpConnection,
+  runEmailDiagnostics,
   type SendUniversityEmailParams 
 } from './emailService';
 
+export { EmailDeliveryError };
 export type { 
   AdminUser, 
   AdminSession, 
@@ -42,7 +48,9 @@ export type {
   UniversityEmailTemplate,
   DetailedEmailLog,
   UniversityEmailEventType,
-  SendUniversityEmailParams
+  SendUniversityEmailParams,
+  SmtpConnectionDiagnostic,
+  EmailDiagnosticReport
 };
 
 // Password hashing using Node.js crypto pbkdf2
@@ -85,20 +93,20 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
 class Database {
   private loginAttempts: Record<string, { count: number; lockedUntil?: number }> = {};
   private emailConfig: EmailConfig = {
-    provider: 'SMTP',
+    provider: 'RESEND',
     senderEmail: 'notifications@campusconnect.app',
     senderName: 'CampusConnect Global',
     senderDomain: 'campusconnect.app',
     replyTo: 'support@campusconnect.app',
-    smtpHost: 'smtp.mailgun.org',
+    smtpHost: '',
     smtpPort: 587,
     tlsEnabled: true,
-    status: 'OPERATIONAL',
+    status: 'DEGRADED',
     sendingEnabled: true,
     dailyLimit: 5000,
-    spfVerified: true,
-    dkimVerified: true,
-    dmarcVerified: true
+    spfVerified: false,
+    dkimVerified: false,
+    dmarcVerified: false
   };
 
   constructor() {
@@ -819,6 +827,16 @@ class Database {
 
   public async getResendDomainStatus(forceRefresh = false): Promise<ResendDomainStatus> {
     return getResendDomainStatus(undefined, forceRefresh);
+  }
+
+  public async verifySmtpConnection(): Promise<SmtpConnectionDiagnostic> {
+    return verifySmtpConnection();
+  }
+
+  public async runEmailDiagnostics(
+    params?: Parameters<typeof runEmailDiagnostics>[0]
+  ): Promise<EmailDiagnosticReport> {
+    return runEmailDiagnostics(params);
   }
 
   public getEmailLogs(): EmailDeliveryLog[] {
