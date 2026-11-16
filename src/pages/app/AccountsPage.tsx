@@ -16,13 +16,13 @@ import {
 import { InstagramAccount } from '../../types';
 
 export const AccountsPage: React.FC = () => {
-  const { accounts, disconnectAccount, connectAccount, setOAuthModalOpen, addToast, navigateTo } = useApp();
+  const { accounts, disconnectAccount, refreshAccount, setOAuthModalOpen, navigateTo } = useApp();
   const [disconnectCandidate, setDisconnectCandidate] = useState<InstagramAccount | null>(null);
 
   const displayAccounts = accounts;
 
-  const handleRefresh = (username: string) => {
-    addToast('Token Refreshed', `Meta Graph API token for @${username} renewed for 60 days.`, 'success');
+  const handleRefresh = (id: string) => {
+    refreshAccount(id);
   };
 
   const confirmDisconnect = () => {
@@ -38,7 +38,7 @@ export const AccountsPage: React.FC = () => {
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Connected Instagram Accounts</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Manage your Meta Graph API authorizations, token validity, and account permissions
+            Manage your connected Instagram accounts, sync health, and publishing permissions directly
           </p>
         </div>
 
@@ -89,12 +89,21 @@ export const AccountsPage: React.FC = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
                 <div className="flex items-center gap-4">
                   <div className="relative">
-                    <img
-                      src={acct.profilePictureUrl}
-                      alt={acct.username}
-                      referrerPolicy="no-referrer"
-                      className="w-14 h-14 rounded-full object-cover ring-2 ring-blue-500/20 shadow-xs"
-                    />
+                    {acct.profilePictureUrl ? (
+                      <img
+                        src={acct.profilePictureUrl}
+                        alt={acct.username}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        }}
+                        className="w-14 h-14 rounded-full object-cover ring-2 ring-blue-500/20 shadow-xs bg-slate-100"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white font-black text-base ring-2 ring-blue-500/20 shadow-xs">
+                        {(acct.username || 'IG').slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
                     <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shadow-2xs">
                       <Instagram className="w-3 h-3" />
                     </div>
@@ -104,7 +113,7 @@ export const AccountsPage: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <h3 className="text-base font-extrabold text-slate-900">@{acct.username}</h3>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#1D64EC] border border-blue-200 font-bold">
-                        {acct.accountType}
+                        {acct.accountType || 'BUSINESS'}
                       </span>
                       <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -112,7 +121,7 @@ export const AccountsPage: React.FC = () => {
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {acct.displayName} · <span className="tabular-nums text-slate-800 font-bold">{acct.followersCount.toLocaleString()}</span> followers · <span className="tabular-nums text-slate-800 font-bold">{acct.mediaCount}</span> posts
+                      {acct.displayName || acct.username} · <span className="tabular-nums text-slate-800 font-bold">{(acct.followersCount || 0).toLocaleString()}</span> followers · <span className="tabular-nums text-slate-800 font-bold">{acct.mediaCount || 0}</span> posts
                     </p>
                   </div>
                 </div>
@@ -120,11 +129,11 @@ export const AccountsPage: React.FC = () => {
                 {/* Status and Action Buttons */}
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleRefresh(acct.username)}
+                    onClick={() => handleRefresh(acct.id)}
                     className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs text-slate-700 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Refresh Token</span>
+                    <span>Refresh Sync</span>
                   </button>
 
                   <button
@@ -145,37 +154,37 @@ export const AccountsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Token details and scopes */}
+              {/* Session details and capabilities */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5">
                   <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                    Authentication & Session
+                    Connection & Sync Status
                   </div>
                   <div className="flex items-center justify-between text-slate-600">
-                    <span>Protocol:</span>
-                    <span className="text-slate-900 font-mono font-bold">Meta Graph API v19.0 (OAuth 2.0)</span>
+                    <span>Mode:</span>
+                    <span className="text-slate-900 font-mono font-bold">Direct CampusConnect Sync</span>
                   </div>
                   <div className="flex items-center justify-between text-slate-600">
-                    <span>Token Health:</span>
+                    <span>Account Health:</span>
                     <span className="text-emerald-700 font-bold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span>Active & Verified</span>
+                      <span>Active & Ready</span>
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-600">
-                    <span>Token Expiry:</span>
+                    <span>Sync Window:</span>
                     <span className="text-slate-900 font-bold tabular-nums">
-                      {new Date(acct.tokenExpiresAt).toLocaleDateString()} (in 60 days)
+                      {acct.tokenExpiresAt ? `${new Date(acct.tokenExpiresAt).toLocaleDateString()} (active)` : 'Active'}
                     </span>
                   </div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5">
                   <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                    Approved Meta Scopes
+                    Enabled Channel Permissions
                   </div>
                   <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {acct.permissions.map((perm) => (
+                    {(acct.permissions || ['direct_publishing', 'comments_moderation', 'dm_inbox', 'insights']).map((perm) => (
                       <span
                         key={perm}
                         className="text-[10px] px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200 font-mono font-medium shadow-2xs"
@@ -204,7 +213,7 @@ export const AccountsPage: React.FC = () => {
                 Disconnect @{disconnectCandidate.username}?
               </h3>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Disconnecting will revoke the OAuth token from Meta servers and remove this profile from your CampusConnect workspace.
+                Disconnecting will pause direct publishing and remove this profile from your active CampusConnect workspace.
               </p>
             </div>
 

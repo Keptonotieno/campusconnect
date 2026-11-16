@@ -4,16 +4,16 @@ import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 import { Grid, MessageSquare, MessageCircle, BarChart3, Check } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
-  const { register, navigateTo, selectedUniversity, entryUniversityContext } = useApp();
+  const { register, navigateTo, selectedUniversity, entryUniversityContext, universities } = useApp();
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [universitySlug, setUniversitySlug] = useState(
-    entryUniversityContext?.slug || selectedUniversity?.slug || VERIFIED_UNIVERSITIES[0].slug
+    entryUniversityContext?.slug || selectedUniversity?.slug || ''
   );
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [isStudentMode, setIsStudentMode] = useState(false);
+  const [isStudentMode, setIsStudentMode] = useState(Boolean(entryUniversityContext || selectedUniversity));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,15 +181,21 @@ export const RegisterPage: React.FC = () => {
                 {isStudentMode && (
                   <div>
                     <select
+                      required
                       value={universitySlug}
                       onChange={(e) => setUniversitySlug(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 focus:outline-none focus:border-[#1D64EC] focus:ring-1 focus:ring-blue-500 shadow-2xs"
                     >
-                      {VERIFIED_UNIVERSITIES.map((u) => (
-                        <option key={u.id} value={u.slug}>
-                          {u.name}
-                        </option>
-                      ))}
+                      <option value="">Select your university...</option>
+                      {(universities && universities.length > 0 ? universities : VERIFIED_UNIVERSITIES)
+                        .filter((u): u is NonNullable<typeof u> => Boolean(u && u.id && u.slug))
+                        .slice()
+                        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                        .map((u) => (
+                          <option key={u.id} value={u.slug}>
+                            {u.name}
+                          </option>
+                        ))}
                     </select>
                   </div>
                 )}
@@ -205,9 +211,8 @@ export const RegisterPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Note from Screenshot */}
                 <div className="text-[11px] text-slate-500 leading-relaxed font-normal">
-                  You'll connect Instagram on the next step, through Instagram's own login. We never ask for your Instagram password.
+                  You can link your Instagram handle directly from your dashboard anytime—no Instagram password required.
                 </div>
 
                 {/* Terms Checkbox */}

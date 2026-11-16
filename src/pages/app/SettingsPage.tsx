@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { User, Lock, Bell, Trash2, MessageCircle, Check } from 'lucide-react';
+import { User, Lock, Bell, Trash2 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
   const { business, currentUser, updateBusiness, updateUserProfile, addToast } = useApp();
@@ -32,13 +32,34 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   // Form states
-  const [bizName, setBizName] = useState(business?.name || 'Campus Workspace');
+  const [bizName, setBizName] = useState(business?.name || 'CampusConnect Workspace');
   const [email, setEmail] = useState(currentUser?.email || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
-  // Notifications preference toggles (Image 6)
-  const [accountAlerts, setAccountAlerts] = useState(true);
-  const [publishingAlerts, setPublishingAlerts] = useState(true);
+  useEffect(() => {
+    if (business?.name) setBizName(business.name);
+    if (currentUser?.email) setEmail(currentUser.email);
+    if (currentUser?.phone !== undefined) setPhone(currentUser.phone || '');
+  }, [business?.name, currentUser?.email, currentUser?.phone]);
+
+  // Notifications preference toggles (persisted)
+  const [accountAlerts, setAccountAlerts] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('campusconnect_pref_account_alerts');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+  const [publishingAlerts, setPublishingAlerts] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('campusconnect_pref_publishing_alerts');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
 
   const handleSaveProfile = (e: React.FormEvent) => {
@@ -50,10 +71,43 @@ export const SettingsPage: React.FC = () => {
 
   const handleSaveNotifications = () => {
     setIsSavingNotifications(true);
+    try {
+      localStorage.setItem('campusconnect_pref_account_alerts', String(accountAlerts));
+      localStorage.setItem('campusconnect_pref_publishing_alerts', String(publishingAlerts));
+    } catch {}
     setTimeout(() => {
       setIsSavingNotifications(false);
       addToast('Preferences Saved', 'Your email notification preferences have been saved.', 'success');
-    }, 400);
+    }, 300);
+  };
+
+  const handleSendResetEmail = async () => {
+    const targetEmail = (currentUser?.email || email || '').trim();
+    if (!targetEmail) {
+      addToast('Email Missing', 'Please save an email address on your profile first.', 'error');
+      return;
+    }
+    setIsSendingReset(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: targetEmail,
+          universityId: currentUser?.universityId || currentUser?.universitySlug
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        addToast('Dispatch Failed', data.message || 'Could not dispatch reset email.', 'error');
+      } else {
+        addToast('Reset Link Sent', data.message || `Password reset email sent to ${targetEmail}.`, 'info');
+      }
+    } catch {
+      addToast('Network Issue', 'Could not reach password reset service.', 'error');
+    } finally {
+      setIsSendingReset(false);
+    }
   };
 
   return (
@@ -306,10 +360,11 @@ export const SettingsPage: React.FC = () => {
               <div className="pt-2">
                 <button
                   type="button"
-                  onClick={() => addToast('Reset Link Sent', 'Password reset email sent to your address.', 'info')}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-semibold cursor-pointer"
+                  disabled={isSendingReset}
+                  onClick={handleSendResetEmail}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-semibold cursor-pointer disabled:opacity-50"
                 >
-                  Send password reset email
+                  {isSendingReset ? 'Sending reset email...' : 'Send password reset email'}
                 </button>
               </div>
             </div>
@@ -340,23 +395,6 @@ export const SettingsPage: React.FC = () => {
 
         </div>
 
-      </div>
-
-      {/* Floating "We Are Here! 1" support badge */}
-      <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2 select-none pointer-events-auto">
-        <div className="relative flex items-center justify-center">
-          <button 
-            type="button"
-            onClick={() => addToast('Live Support', 'Our campus support team is active 24/7 to assist with your workspace setup.', 'info')}
-            className="w-12 h-12 rounded-full bg-[#854D0E] text-white flex items-center justify-center shadow-lg border-2 border-white cursor-pointer hover:scale-105 active:scale-95 transition-transform"
-            aria-label="Contact live support"
-          >
-            <MessageCircle className="w-6 h-6 fill-white text-[#854D0E]" />
-          </button>
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
-            1
-          </span>
-        </div>
       </div>
 
     </div>

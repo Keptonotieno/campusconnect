@@ -27,7 +27,7 @@ export const LandingPage: React.FC = () => {
     },
     {
       q: 'Do you see or store my Instagram password?',
-      a: 'Never. You connect directly through Instagram’s official authorization screen on Meta’s own servers. Your password is never shared with us or stored anywhere.'
+      a: 'Never. CampusConnect runs standalone in your browser and workspace—you simply link your university or creator handle without sharing any Instagram password or using third-party OAuth.'
     },
     {
       q: 'Can I manage more than one account?',
@@ -90,7 +90,7 @@ export const LandingPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-2 text-xs font-medium text-slate-500">
               <div className="flex items-center gap-1.5">
                 <Check className="w-4 h-4 text-[#1D64EC]" />
-                <span>Official Instagram login</span>
+                <span>Direct standalone setup</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Check className="w-4 h-4 text-[#1D64EC]" />
@@ -336,7 +336,7 @@ export const LandingPage: React.FC = () => {
               <div className="space-y-1">
                 <h4 className="text-base font-bold text-slate-950">Connect your Instagram</h4>
                 <p className="text-xs sm:text-sm text-slate-500 font-normal">
-                  Log in through Instagram’s own screen and choose what to allow. We never see your password.
+                  Add your Business or Creator handle directly inside CampusConnect—no Meta OAuth or external password needed.
                 </p>
               </div>
             </div>
@@ -365,9 +365,9 @@ export const LandingPage: React.FC = () => {
             <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <ShieldCheck className="w-4 h-4" />
             </div>
-            <h4 className="text-sm font-bold text-slate-950">Official Instagram login</h4>
+            <h4 className="text-sm font-bold text-slate-950">No Instagram password required</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              You connect through Instagram itself. Your password is never shared with us.
+              Connect and organize university handles directly without ever entering your Instagram password.
             </p>
           </div>
 
@@ -375,9 +375,9 @@ export const LandingPage: React.FC = () => {
             <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <ShieldCheck className="w-4 h-4" />
             </div>
-            <h4 className="text-sm font-bold text-slate-950">You choose the access</h4>
+            <h4 className="text-sm font-bold text-slate-950">You control your profiles</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Instagram shows exactly what you’re allowing before you connect.
+              Choose which Business or Creator pages are active and manage moderation from one place.
             </p>
           </div>
 

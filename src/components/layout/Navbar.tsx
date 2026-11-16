@@ -152,15 +152,38 @@ export const Navbar: React.FC = () => {
             >
               FAQ
             </button>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                navigateTo('/login');
-              }}
-              className="text-left py-1 hover:text-[#1D64EC] transition-colors"
-            >
-              Business login
-            </button>
+            {isAuthenticated ? (
+              <>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    navigateTo(currentUser?.role === 'Admin' ? '/admin' : '/student');
+                  }}
+                  className="text-left py-1 text-[#1D64EC] hover:opacity-80 transition-opacity"
+                >
+                  My dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    logout();
+                  }}
+                  className="text-left py-1 text-rose-600 hover:opacity-80 transition-opacity"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigateTo('/login');
+                }}
+                className="text-left py-1 hover:text-[#1D64EC] transition-colors"
+              >
+                Sign in
+              </button>
+            )}
           </div>
         </div>
       )}

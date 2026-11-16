@@ -630,6 +630,12 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
         universityName: university.name,
         universitySlug: university.slug,
         universityInstagramHandle: university.instagramHandle,
+        personalInstagramHandle: cleanHandle,
+        instagramHandle: `@${cleanHandle}`,
+        major: selectedMajor || undefined,
+        classYear: classYearInput || university.classYear || '2031',
+        snapchatHandle: snapchatHandle ? snapchatHandle.replace(/^@/, '') : undefined,
+        tiktokHandle: tiktokHandle ? tiktokHandle.replace(/^@/, '') : undefined,
         originalImagePath: coverPhoto.url,
         watermarkedImagePath: watermarkedUrl,
         caption: captionLines,
@@ -645,21 +651,20 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       };
 
       // 3. Post submission to authoritative server database
-      try {
-        await fetch('/api/submissions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newSubmission)
-        });
-      } catch (sErr) {
-        console.warn('Server sync fallback:', sErr);
+      const subRes = await fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSubmission)
+      });
+      if (!subRes.ok) {
+        const subErr = await subRes.json().catch(() => ({}));
+        throw new Error(subErr.message || 'Could not save your submission. Please try again.');
       }
 
       // Add to local client state immediately
       addSubmission(newSubmission);
 
       // 4. Verify & audit Stripe payment with backend
-      const last4 = cleanCard.slice(-4);
       const verifyRes = await fetch('/api/payments/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -667,18 +672,22 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
           submissionId,
           studentUid,
           studentName: newSubmission.studentDisplayName,
+          studentEmail: newSubmission.studentEmail,
           universityId: university.id,
+          universitySlug: university.slug,
           provider: 'STRIPE_CARD',
           idempotencyKey: `idem_${submissionId}_${Date.now()}`
         })
       });
 
+      const vData = await verifyRes.json().catch(() => ({}));
+      if (!verifyRes.ok) {
+        throw new Error(vData.message || 'Stripe payment verification failed. Please check your details and try again.');
+      }
+
       let txnRef = `ch_${Math.random().toString(36).substring(2, 11)}`;
-      if (verifyRes.ok) {
-        const vData = await verifyRes.json();
-        if (vData.payment?.providerTransactionReference) {
-          txnRef = vData.payment.providerTransactionReference;
-        }
+      if (vData.payment?.providerTransactionReference) {
+        txnRef = vData.payment.providerTransactionReference;
       }
 
       setCompletedPaymentRef(txnRef);
@@ -1994,7 +2003,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigateTo('/app/dashboard')}
+                  onClick={() => navigateTo('/student')}
                   className="w-full sm:w-auto px-6 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors cursor-pointer"
                 >
                   Go to Student Dashboard
@@ -2184,11 +2193,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                     type="button"
                     onClick={() => {
                       setEntryUniversityContext(university);
-                      if (photos.length > 0) {
-                        navigateTo(`/login?uni=${university.slug}&redirect=/student`);
-                      } else {
-                        navigateTo(`/login?uni=${university.slug}&redirect=/app/dashboard`);
-                      }
+                      navigateTo(`/login?uni=${university.slug}&redirect=/student`);
                     }}
                     className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-slate-950 transition-colors cursor-pointer px-3 py-1.5 rounded-xl hover:bg-slate-100"
                   >
@@ -2201,7 +2206,8 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                       setIsNavLoading(true);
                       setTimeout(() => {
                         setIsNavLoading(false);
-                        navigateTo('/app/dashboard');
+                        setEntryUniversityContext(university);
+                        navigateTo(currentUser?.role === 'Admin' ? '/admin' : '/student');
                       }, 250);
                     }}
                     className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-blue-600 transition-colors cursor-pointer px-3 py-1.5 rounded-xl hover:bg-slate-100 flex items-center gap-1.5"

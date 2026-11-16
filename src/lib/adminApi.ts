@@ -174,31 +174,17 @@ const DEFAULT_INITIAL_INTEGRATIONS: IntegrationItem[] = [
     status: 'NOT_CONFIGURED',
     configured: false,
     lastVerifiedAt: null,
-    details: 'Outbound SMTP / Email service for sending submission receipts, status updates, and verification codes to students.',
+    details: 'Centralized Resend & SMTP transactional email service for university-branded student notifications.',
     keys: {
-      provider: 'SMTP',
+      provider: 'RESEND',
       smtpHost: '',
       smtpPort: '587',
       smtpUser: '',
       smtpPassword: '',
-      senderEmail: '',
-      senderName: 'CampusConnect Global'
-    }
-  },
-  {
-    id: 'meta_instagram',
-    name: 'Meta Instagram Graph API',
-    category: 'Social Media & Direct Publishing',
-    status: 'NOT_CONFIGURED',
-    configured: false,
-    lastVerifiedAt: null,
-    details: 'Official Meta Graph API connection for university profile publishing, media sync, and direct student spotlights.',
-    keys: {
-      appId: '',
-      appSecret: '',
-      accessToken: '',
-      instagramBusinessAccountId: '',
-      webhookVerifyToken: ''
+      senderEmail: 'notifications@campusconnect.app',
+      senderName: 'CampusConnect Global',
+      apiKey: '',
+      webhookSecret: ''
     }
   }
 ];
@@ -210,7 +196,7 @@ function getLocalIntegrations(): IntegrationItem[] {
     if (raw) {
       const parsed: IntegrationItem[] = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.some(i => i.id === 'payment_stripe')) {
-        return parsed;
+        return parsed.filter(i => i.id !== 'meta_instagram');
       }
     }
   } catch {}
@@ -455,7 +441,7 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
       return {
         totalAmountPaid: { usd: totalUsd, formattedUsd: `$${totalUsd.toFixed(2)}` },
         connectedInstagramAccounts: campuses.filter(c => c.instagramHandle).length,
-        registeredUsers: 1,
+        registeredUsers: getLocalUsers().length,
         successfulPayments: payments.length,
         totalCampuses: campuses.length,
         activeCampuses: campuses.filter(c => c.communityEnabled !== false).length,
@@ -514,7 +500,7 @@ function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}
         formattedUsd: `$${totalUsd.toFixed(2)}`
       },
       connectedInstagramAccounts: campuses.filter(c => c.instagramHandle).length,
-      registeredUsers: 1,
+      registeredUsers: getLocalUsers().length,
       successfulPayments: payments.length,
       totalCampuses: campuses.length,
       activeCampuses: campuses.filter(c => c.communityEnabled !== false).length,
@@ -1029,21 +1015,15 @@ export async function updateAdminCampus(id: string, updates: Partial<University>
 }
 
 export async function deleteAdminCampus(id: string): Promise<{ success: boolean }> {
+  const res = await adminFetch<{ success: boolean }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
   try {
-    const res = await adminFetch<{ success: boolean }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
-      method: 'DELETE'
-    });
     const list = getLocalCampuses();
     const next = list.filter(c => c.id !== id && c.slug !== id);
     saveLocalCampuses(next);
-    return res || { success: true };
-  } catch (err) {
-    // Resilient local removal in case of offline/mock fallback
-    const list = getLocalCampuses();
-    const next = list.filter(c => c.id !== id && c.slug !== id);
-    saveLocalCampuses(next);
-    return { success: true };
-  }
+  } catch {}
+  return res || { success: true };
 }
 
 // 4. Payments
@@ -1061,6 +1041,21 @@ export async function simulateWebhookTest(payload: any): Promise<any> {
 // 5. Instagram
 export async function fetchAdminInstagram(): Promise<{ accounts: InstagramAccount[] }> {
   return adminFetch<{ accounts: InstagramAccount[] }>('/api/admin/instagram');
+}
+
+export async function connectAdminInstagram(
+  data: Partial<InstagramAccount> & { universityId?: string; universityName?: string }
+): Promise<{ success: boolean; account: InstagramAccount }> {
+  return adminFetch<{ success: boolean; account: InstagramAccount }>('/api/admin/instagram/connect', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function refreshAdminInstagram(id: string): Promise<{ success: boolean; account: InstagramAccount }> {
+  return adminFetch<{ success: boolean; account: InstagramAccount }>(`/api/admin/instagram/${encodeURIComponent(id)}/refresh`, {
+    method: 'POST'
+  });
 }
 
 export async function disconnectAdminInstagram(id: string): Promise<{ success: boolean; account: InstagramAccount }> {

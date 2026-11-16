@@ -37,7 +37,7 @@ export const CommandPalette: React.FC = () => {
   const quickActions = [
     {
       title: 'Connect Instagram Account',
-      description: 'Link your business or creator profile via Meta OAuth',
+      description: 'Link your business or creator Instagram handle directly in your workspace',
       icon: Instagram,
       action: () => {
         setOAuthModalOpen(true);

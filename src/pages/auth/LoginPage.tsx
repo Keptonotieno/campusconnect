@@ -6,7 +6,6 @@ import {
   Eye, 
   EyeOff,
   Instagram,
-  MessageCircle,
   Sparkles,
   ChevronRight,
   ShieldCheck,
@@ -87,45 +86,94 @@ export const LoginPage: React.FC = () => {
     register,
     navigateTo, 
     addToast,
+    currentUser,
     entryUniversityContext,
+    setEntryUniversityContext,
     selectedUniversity,
+    setSelectedUniversity,
     getUniversityBySlug, 
     universities 
   } = useApp();
 
   const [mode, setMode] = useState<'SIGN_IN' | 'CREATE_ACCOUNT'>('SIGN_IN');
   const [isLazyLoading, setIsLazyLoading] = useState(false);
-  const [fullName, setFullName] = useState('software developer');
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [keepLoggedIn, setKeepLoggedIn] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [showSchoolPicker, setShowSchoolPicker] = useState(false);
 
-  // Target university resolution (defaults to Spalding University matching Image 1)
+  // Target university resolution: strictly reflects what the student/user selected earlier (never hardcoded)
   const targetUniversity = useMemo(() => {
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search);
-      const uniParam = sp.get('uni') || sp.get('university') || sp.get('slug');
+      const uniParam = sp.get('uni') || sp.get('university') || sp.get('slug') || sp.get('campus');
       if (uniParam) {
         const found = getUniversityBySlug(uniParam);
         if (found) return found;
       }
+      const redirectParam = sp.get('redirect') || '';
+      if (redirectParam) {
+        const cleanRedirect = redirectParam.split('?')[0];
+        const parts = cleanRedirect.replace(/^\//, '').split('/');
+        if (parts.length >= 2 && ['ig', 'u', 'university', 'submit'].includes(parts[0])) {
+          const found = getUniversityBySlug(parts[1]);
+          if (found) return found;
+        }
+      }
     }
-    if (entryUniversityContext) return entryUniversityContext;
     if (selectedUniversity) return selectedUniversity;
-    const spalding = getUniversityBySlug('spaldinguniversity2031class');
-    if (spalding) return spalding;
-    if (universities.length > 0) return universities[0];
-    return {
-      id: 'uni_spaldinguniversity2031class',
-      name: 'Spalding University',
-      slug: 'spaldinguniversity2031class',
-      instagramHandle: '@spaldinguniversity2031class',
-      classYear: '2031',
-      primaryColor: '#3B4988'
-    } as any;
-  }, [entryUniversityContext, selectedUniversity, getUniversityBySlug, universities]);
+    if (entryUniversityContext) return entryUniversityContext;
+
+    try {
+      const storedSlug =
+        localStorage.getItem('campusconnect_selected_uni') ||
+        localStorage.getItem('campusconnect_entry_uni');
+      if (storedSlug) {
+        const found = getUniversityBySlug(storedSlug);
+        if (found) return found;
+      }
+      const draftRaw = localStorage.getItem('campusconnect_active_draft');
+      if (draftRaw) {
+        const parsed = JSON.parse(draftRaw);
+        if (parsed?.universitySlug) {
+          const found = getUniversityBySlug(parsed.universitySlug);
+          if (found) return found;
+        }
+      }
+    } catch {}
+
+    if (currentUser?.universitySlug) {
+      const found = getUniversityBySlug(currentUser.universitySlug);
+      if (found) return found;
+    }
+
+    return null;
+  }, [entryUniversityContext, selectedUniversity, getUniversityBySlug, currentUser?.universitySlug]);
+
+  const sortedUniversities = useMemo(() => {
+    return (universities || [])
+      .filter((u): u is NonNullable<typeof u> => Boolean(u && u.slug && u.name))
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [universities]);
+
+  const handleSelectUniversityOnLogin = (slug: string) => {
+    if (!slug) {
+      setSelectedUniversity(null);
+      setEntryUniversityContext(null);
+      setShowSchoolPicker(false);
+      return;
+    }
+    const chosen = getUniversityBySlug(slug);
+    if (chosen) {
+      setSelectedUniversity(chosen);
+      setEntryUniversityContext(chosen);
+      setShowSchoolPicker(false);
+    }
+  };
 
   // Diagnostics state
   const [diagnosticReport, setDiagnosticReport] = useState<FirebaseDiagnosticReport | null>(null);
@@ -184,8 +232,8 @@ export const LoginPage: React.FC = () => {
 
     try {
       if (mode === 'CREATE_ACCOUNT') {
-        const studentName = fullName.trim() || 'software developer';
-        await register(studentName, email.trim(), password, targetUniversity.slug);
+        const studentName = fullName.trim() || email.trim().split('@')[0] || 'Student';
+        await register(studentName, email.trim(), password, targetUniversity?.slug);
       } else {
         await login(email.trim(), password);
       }
@@ -204,17 +252,19 @@ export const LoginPage: React.FC = () => {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-screen">
         
         {/* ================================================================= */}
-        {/* LEFT PANEL: CampusConnect brand, university target card & 3 steps */}
-        {/* Deep Royal Blue #3B4988 matching Image 1                          */}
+        {/* LEFT PANEL: CampusConnect brand, selected university (if any)     */}
         {/* ================================================================= */}
-        <div className="lg:col-span-5 bg-[#3B4988] text-white p-8 sm:p-12 lg:p-14 flex flex-col justify-between relative overflow-hidden">
+        <div
+          className="lg:col-span-5 text-white p-8 sm:p-12 lg:p-14 flex flex-col justify-between relative overflow-hidden transition-colors duration-300"
+          style={{ backgroundColor: targetUniversity?.primaryColor || '#3B4988' }}
+        >
           
-          {/* Subtle curved background accents matching Image 1 */}
+          {/* Subtle curved background accents */}
           <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-white/[0.04] pointer-events-none" />
-          <div className="absolute -bottom-32 -left-20 w-[450px] h-[450px] rounded-full bg-black/[0.08] pointer-events-none" />
+          <div className="absolute -bottom-32 -left-20 w-[450px] h-[450px] rounded-full bg-black/[0.10] pointer-events-none" />
           <div className="absolute top-1/2 -right-32 w-80 h-80 rounded-full bg-white/[0.03] pointer-events-none" />
 
-          {/* Top Bar: Brand Logo on Left, "< Back to page" button on Right */}
+          {/* Top Bar: Brand Logo on Left, Back button on Right */}
           <div className="relative z-10 flex items-center justify-between gap-4">
             <div 
               onClick={() => navigateTo('/')}
@@ -230,38 +280,101 @@ export const LoginPage: React.FC = () => {
               onClick={() => navigateTo(targetUniversity?.slug ? `/ig/${targetUniversity.slug}` : '/')}
               className="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-medium flex items-center gap-1.5 transition-colors border border-white/10 cursor-pointer shadow-xs"
             >
-              <span>‹ Back to page</span>
+              <span>{targetUniversity ? '‹ Back to page' : '‹ Back to home'}</span>
             </button>
           </div>
 
           {/* Center Main Content */}
           <div className="relative z-10 my-10 space-y-8 max-w-lg">
             
-            {/* Submitting to Campus Block */}
-            <div className="flex items-start gap-4">
-              {/* Circular Emblem with colored ring and lightning bolt */}
-              <div className="relative w-14 h-14 rounded-full bg-white p-1 shrink-0 flex items-center justify-center shadow-md">
-                <div className="w-full h-full rounded-full border-2 border-indigo-200 flex flex-col items-center justify-center text-center">
-                  <span className="text-xs leading-none">⚡</span>
-                  <span className="text-[7px] font-bold text-slate-800 leading-none">CampusConnect</span>
-                  <span className="text-[10px] font-black text-[#1E3A8A] leading-none mt-0.5">
-                    {targetUniversity.classYear || '2031'}
-                  </span>
-                </div>
-              </div>
+            {targetUniversity ? (
+              /* Selected University Header Block */
+              <div className="space-y-3">
+                <div className="flex items-start gap-4">
+                  {/* Circular Emblem with colored ring and lightning bolt */}
+                  <div className="relative w-14 h-14 rounded-full bg-white p-1 shrink-0 flex items-center justify-center shadow-md">
+                    <div className="w-full h-full rounded-full border-2 border-indigo-200 flex flex-col items-center justify-center text-center">
+                      <span className="text-xs leading-none">⚡</span>
+                      <span className="text-[7px] font-bold text-slate-800 leading-none">CampusConnect</span>
+                      <span className="text-[10px] font-black text-[#1E3A8A] leading-none mt-0.5">
+                        {targetUniversity.classYear || '2031'}
+                      </span>
+                    </div>
+                  </div>
 
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-blue-200">
-                  SUBMITTING TO
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-blue-100/90">
+                      SUBMITTING TO
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-extrabold text-white leading-tight break-all mt-0.5">
+                      {targetUniversity.instagramHandle}
+                    </h2>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-blue-100/90 mt-1">
+                      <span>{targetUniversity.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowSchoolPicker(!showSchoolPicker)}
+                        className="text-[11px] underline text-white/80 hover:text-white cursor-pointer"
+                      >
+                        {showSchoolPicker ? 'Cancel' : 'Change'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-white leading-tight break-all mt-0.5">
-                  {targetUniversity.instagramHandle}
-                </h2>
-                <div className="text-xs text-blue-200/90 mt-1">
-                  {targetUniversity.name}
+
+                {showSchoolPicker && (
+                  <div className="pt-1">
+                    <select
+                      value={targetUniversity.slug}
+                      onChange={(e) => handleSelectUniversityOnLogin(e.target.value)}
+                      className="w-full rounded-xl bg-white/95 text-slate-900 px-3 py-2 text-xs font-semibold focus:outline-none shadow-sm cursor-pointer"
+                    >
+                      <option value="">No specific university (general login)</option>
+                      {sortedUniversities.map((u) => (
+                        <option key={u.id} value={u.slug}>
+                          {u.name} ({u.instagramHandle})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Neutral CampusConnect Header when no university was previously selected */
+              <div className="space-y-4">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/10 text-white text-[11px] font-semibold">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>University & Creator Network</span>
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">
+                    Sign in to your CampusConnect account
+                  </h2>
+                  <p className="text-xs sm:text-sm text-blue-100/85 leading-relaxed">
+                    Access your dashboard, manage Instagram pages, or choose your university to get featured on your class page.
+                  </p>
+                </div>
+
+                {/* Optional quick university selector for students arriving directly */}
+                <div className="pt-1 space-y-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-blue-100/80">
+                    Submitting to a university page? (Optional)
+                  </label>
+                  <select
+                    value=""
+                    onChange={(e) => handleSelectUniversityOnLogin(e.target.value)}
+                    className="w-full rounded-xl bg-white/15 hover:bg-white/20 text-white border border-white/20 px-3.5 py-2.5 text-xs font-semibold focus:outline-none focus:bg-white focus:text-slate-900 transition-colors cursor-pointer"
+                  >
+                    <option value="" className="text-slate-900">Select your university...</option>
+                    {sortedUniversities.map((u) => (
+                      <option key={u.id} value={u.slug} className="text-slate-900">
+                        {u.name} ({u.instagramHandle})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Pill: Lock + $6 to get featured · secure checkout */}
             <div>
@@ -362,7 +475,13 @@ export const LoginPage: React.FC = () => {
                     Welcome back
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-500">
-                    Sign in to continue your post for <strong className="text-slate-900 font-semibold">{targetUniversity.instagramHandle}</strong>.
+                    {targetUniversity ? (
+                      <>
+                        Sign in to continue your post for <strong className="text-slate-900 font-semibold">{targetUniversity.instagramHandle}</strong>.
+                      </>
+                    ) : (
+                      'Sign in to continue to your CampusConnect dashboard.'
+                    )}
                   </p>
                 </div>
 
@@ -486,7 +605,13 @@ export const LoginPage: React.FC = () => {
                     Create an account
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-500">
-                    Create your account to submit your post for <strong className="text-slate-900 font-semibold">{targetUniversity.instagramHandle}</strong>.
+                    {targetUniversity ? (
+                      <>
+                        Create your account to submit your post for <strong className="text-slate-900 font-semibold">{targetUniversity.instagramHandle}</strong>.
+                      </>
+                    ) : (
+                      'Create your free CampusConnect account to get started.'
+                    )}
                   </p>
                 </div>
 
@@ -503,7 +628,7 @@ export const LoginPage: React.FC = () => {
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder="e.g. software developer"
+                      placeholder="Your full name"
                       autoComplete="name"
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#3B4988] focus:ring-1 focus:ring-[#3B4988] transition-colors shadow-2xs"
                     />
@@ -602,23 +727,6 @@ export const LoginPage: React.FC = () => {
 
         </div>
 
-      </div>
-
-      {/* Floating "We Are Here! 1" support badge from Image 1 */}
-      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 select-none pointer-events-auto">
-        <div className="relative flex items-center justify-center">
-          <button 
-            type="button"
-            onClick={() => addToast('Live Support', 'Our campus support team is active 24/7 to assist with your post submission.', 'info')}
-            className="w-12 h-12 rounded-full bg-[#854D0E] text-white flex items-center justify-center shadow-lg border-2 border-white cursor-pointer hover:scale-105 active:scale-95 transition-transform"
-            aria-label="Contact live support"
-          >
-            <MessageCircle className="w-6 h-6 fill-white text-[#854D0E]" />
-          </button>
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
-            1
-          </span>
-        </div>
       </div>
 
     </div>

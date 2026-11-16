@@ -25,17 +25,24 @@ export const SubmitPhotoPage: React.FC = () => {
     currentUser, 
     universities, 
     selectedUniversity, 
+    entryUniversityContext,
     createSubmission, 
     payForSubmission, 
     navigateTo, 
     addToast 
   } = useApp();
 
-  // Selected university (default to URL ?uni= param, user's university, or first campus)
+  // Selected university (URL ?uni= param, prior selected university, user's university, or first campus)
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const uniParam = searchParams?.get('uni');
-  const paramUni = uniParam ? universities.find(u => u.slug.toLowerCase() === uniParam.toLowerCase() || u.id === uniParam) : null;
-  const defaultUni = paramUni || universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0] || VERIFIED_UNIVERSITIES[0];
+  const paramUni = uniParam ? universities.find(u => u && (u.slug?.toLowerCase() === uniParam.toLowerCase() || u.id === uniParam)) : null;
+  const defaultUni =
+    paramUni ||
+    selectedUniversity ||
+    entryUniversityContext ||
+    universities.find(u => u && (u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug)) ||
+    universities[0] ||
+    VERIFIED_UNIVERSITIES[0];
   const [targetUni, setTargetUni] = useState<University>(defaultUni);
 
   // Form states
@@ -80,8 +87,13 @@ export const SubmitPhotoPage: React.FC = () => {
     }
 
     setPhotoFile(file);
-    const originalUrl = URL.createObjectURL(file);
-    setOriginalPreview(originalUrl);
+    const dataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => resolve(URL.createObjectURL(file));
+      reader.readAsDataURL(file);
+    });
+    setOriginalPreview(dataUrl);
 
     setIsWatermarking(true);
     try {
@@ -214,7 +226,7 @@ export const SubmitPhotoPage: React.FC = () => {
 
         <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
           <button
-            onClick={() => navigateTo('/app/dashboard')}
+            onClick={() => navigateTo('/student')}
             className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#1D64EC] hover:bg-blue-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
           >
             Go to Student Dashboard

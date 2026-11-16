@@ -25,7 +25,7 @@ export const CommentsPage: React.FC = () => {
     setOAuthModalOpen
   } = useApp();
 
-  const [filter, setFilter] = useState<'ALL' | 'UNANSWERED' | 'REPLIED' | 'FLAGGED'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'UNANSWERED' | 'REPLIED' | 'FLAGGED' | 'HIDDEN'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
 
@@ -33,6 +33,7 @@ export const CommentsPage: React.FC = () => {
     if (filter === 'UNANSWERED' && c.status !== 'UNANSWERED') return false;
     if (filter === 'REPLIED' && c.status !== 'REPLIED') return false;
     if (filter === 'FLAGGED' && c.status !== 'FLAGGED') return false;
+    if (filter === 'HIDDEN' && c.status !== 'HIDDEN') return false;
     if (searchTerm) {
       return (
         c.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -71,7 +72,7 @@ export const CommentsPage: React.FC = () => {
       {/* Filter and Search Bar */}
       <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto">
-          {(['ALL', 'UNANSWERED', 'REPLIED', 'FLAGGED'] as const).map((tab) => (
+          {(['ALL', 'UNANSWERED', 'REPLIED', 'FLAGGED', 'HIDDEN'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setFilter(tab)}
@@ -131,12 +132,18 @@ export const CommentsPage: React.FC = () => {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3.5">
                   {/* Post thumbnail */}
-                  <img
-                    src={comment.postThumbnail}
-                    alt="Post"
-                    referrerPolicy="no-referrer"
-                    className="w-12 h-12 rounded-xl object-cover ring-1 ring-slate-200 shrink-0"
-                  />
+                  {comment.postThumbnail ? (
+                    <img
+                      src={comment.postThumbnail}
+                      alt="Post"
+                      referrerPolicy="no-referrer"
+                      className="w-12 h-12 rounded-xl object-cover ring-1 ring-slate-200 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-slate-100 ring-1 ring-slate-200 shrink-0 flex items-center justify-center text-slate-400">
+                      <Instagram className="w-5 h-5" />
+                    </div>
+                  )}
 
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -148,6 +155,8 @@ export const CommentsPage: React.FC = () => {
                           ? 'bg-amber-50 text-amber-700 border border-amber-200'
                           : comment.status === 'REPLIED'
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : comment.status === 'HIDDEN'
+                          ? 'bg-slate-100 text-slate-600 border border-slate-200'
                           : 'bg-rose-50 text-rose-700 border border-rose-200'
                       }`}>
                         {comment.status}
@@ -167,10 +176,14 @@ export const CommentsPage: React.FC = () => {
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={() => hideComment(comment.id)}
-                    className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors"
-                    title="Hide comment on Instagram"
+                    className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                      comment.status === 'HIDDEN'
+                        ? 'border-blue-200 bg-blue-50 text-[#1D64EC] hover:bg-blue-100'
+                        : 'border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                    }`}
+                    title={comment.status === 'HIDDEN' ? 'Unhide comment' : 'Hide comment on Instagram'}
                   >
-                    <EyeOff className="w-3.5 h-3.5" />
+                    {comment.status === 'HIDDEN' ? <Check className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                   </button>
                   <button
                     onClick={() => deleteComment(comment.id)}

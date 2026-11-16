@@ -221,6 +221,16 @@ export class SQLiteStorage {
         raw_json TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS auth_tokens (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        type TEXT NOT NULL,
+        token_or_code TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS central_email_config (
         id TEXT PRIMARY KEY DEFAULT 'central',
         provider TEXT NOT NULL DEFAULT 'RESEND',
@@ -484,16 +494,6 @@ export class SQLiteStorage {
           keys: { publishableKey: '', secretKey: '', webhookSecret: '' }
         },
         {
-          id: 'meta_instagram',
-          name: 'Meta Instagram Graph API',
-          category: 'Social Media & Direct Publishing',
-          status: 'NOT_CONFIGURED',
-          configured: false,
-          lastVerifiedAt: null,
-          details: 'Official Meta Graph API connection for university profile publishing, media sync, and direct student spotlights.',
-          keys: { appId: '', appSecret: '', accessToken: '', instagramBusinessAccountId: '', webhookVerifyToken: '' }
-        },
-        {
           id: 'firebase_firestore',
           name: 'Firebase Firestore & Auth',
           category: 'Persistent Database & Identity',
@@ -531,9 +531,10 @@ export class SQLiteStorage {
         }
       ];
       const legacyInts = readLegacy<{ integrations: IntegrationConfig[] }>('integrations.json', { integrations: defaultIntegrations });
-      const seedList = (legacyInts.integrations && legacyInts.integrations.length > 0)
+      const rawSeedList = (legacyInts.integrations && legacyInts.integrations.length > 0)
         ? legacyInts.integrations
         : defaultIntegrations;
+      const seedList = rawSeedList.filter(i => i.id !== 'meta_instagram');
       const insertInt = this.db.prepare(`
         INSERT OR IGNORE INTO integrations (
           id, name, category, status, configured, last_verified_at, details, keys_json
@@ -555,6 +556,9 @@ export class SQLiteStorage {
       });
       trans(seedList);
     }
+
+    // Ensure obsolete Meta Instagram integration requirement is removed from existing databases
+    this.db.prepare("DELETE FROM integrations WHERE id = 'meta_instagram'").run();
 
     // 7. Migrate Audit Logs
     const auditCount = (this.db.prepare('SELECT count(*) as c FROM audit_logs').get() as { c: number }).c;
@@ -932,27 +936,89 @@ export class SQLiteStorage {
     return rows.map(r => JSON.parse(r.raw_json) as User);
   }
 
-  public upsertUser(u: User): User {
+  public getUserByEmail(email: string): (User & { passwordHash?: string; passwordSalt?: string }) | null {
+    if (!email) return null;
+    const clean = email.toLowerCase().trim();
+    const row = this.db.prepare('SELECT raw_json FROM users WHERE email = ? LIMIT 1').get(clean) as { raw_json: string } | undefined;
+    if (!row?.raw_json) return null;
+    try {
+      return JSON.parse(row.raw_json);
+    } catch {
+      return null;
+    }
+  }
+
+  public upsertUser(u: User & { passwordHash?: string; passwordSalt?: string }): User {
+    const cleanEmail = u.email.toLowerCase().trim();
+    const existing = this.getUserByEmail(cleanEmail);
+    const merged = {
+      ...existing,
+      ...u,
+      id: u.id || existing?.id || `usr_${Date.now()}`,
+      email: cleanEmail,
+      passwordHash: u.passwordHash || existing?.passwordHash,
+      passwordSalt: u.passwordSalt || existing?.passwordSalt,
+      updatedAt: new Date().toISOString()
+    };
     this.db.prepare(`
       INSERT OR REPLACE INTO users (
         id, name, email, role, university_id, university_name, university_slug,
         student_verification_status, created_at, updated_at, raw_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      u.id,
-      u.name,
-      u.email.toLowerCase().trim(),
-      u.role || 'Student',
-      u.universityId || null,
-      u.universityName || null,
-      u.universitySlug || null,
-      u.studentVerificationStatus || 'UNVERIFIED',
-      u.createdAt || new Date().toISOString(),
-      u.updatedAt || new Date().toISOString(),
-      JSON.stringify(u)
+      merged.id,
+      merged.name,
+      merged.email,
+      merged.role || 'Student',
+      merged.universityId || null,
+      merged.universityName || null,
+      merged.universitySlug || null,
+      merged.studentVerificationStatus || 'UNVERIFIED',
+      merged.createdAt || new Date().toISOString(),
+      merged.updatedAt,
+      JSON.stringify(merged)
     );
     this.backupToJson('users.json', this.getAllUsers());
-    return u;
+    return merged;
+  }
+
+  // --- AUTH VERIFICATION & PASSWORD RESET TOKENS ---
+  public createAuthToken(
+    email: string,
+    type: 'EMAIL_VERIFY' | 'PASSWORD_RESET',
+    tokenOrCode: string,
+    ttlMinutes = 30
+  ): void {
+    const cleanEmail = email.toLowerCase().trim();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000).toISOString();
+    const id = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    this.db.prepare('UPDATE auth_tokens SET used = 1 WHERE email = ? AND type = ? AND used = 0').run(cleanEmail, type);
+    this.db.prepare(`
+      INSERT INTO auth_tokens (id, email, type, token_or_code, expires_at, used, created_at)
+      VALUES (?, ?, ?, ?, ?, 0, ?)
+    `).run(id, cleanEmail, type, tokenOrCode.trim(), expiresAt, now.toISOString());
+  }
+
+  public verifyAndConsumeAuthToken(
+    email: string,
+    type: 'EMAIL_VERIFY' | 'PASSWORD_RESET',
+    tokenOrCode: string
+  ): boolean {
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanValue = tokenOrCode.trim();
+    if (!cleanEmail || !cleanValue) return false;
+    const row = this.db.prepare(`
+      SELECT id, expires_at, used FROM auth_tokens
+      WHERE email = ? AND type = ? AND token_or_code = ?
+      ORDER BY created_at DESC LIMIT 1
+    `).get(cleanEmail, type, cleanValue) as { id: string; expires_at: string; used: number } | undefined;
+
+    if (!row || row.used === 1) return false;
+    if (new Date(row.expires_at).getTime() < Date.now()) return false;
+
+    this.db.prepare('UPDATE auth_tokens SET used = 1 WHERE id = ?').run(row.id);
+    return true;
   }
 
   // --- INSTAGRAM ACCOUNTS ---

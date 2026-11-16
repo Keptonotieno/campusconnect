@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, setLogLevel, doc, getDoc, type Firestore } from 'firebase/firestore';
+import { getFirestore, setLogLevel, doc, getDocFromServer, type Firestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -67,13 +67,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Connection test as required by skill guidelines
 export async function testConnection(): Promise<void> {
   try {
-    const testDoc = doc(db, 'test', 'connection');
     await Promise.race([
-      getDoc(testDoc),
-      new Promise<void>((resolve) => setTimeout(resolve, 2000))
+      getDocFromServer(doc(db, 'test', 'connection')),
+      new Promise<void>((resolve) => setTimeout(resolve, 2500))
     ]);
-  } catch {
-    // Firestore operates with cache resilience when warming up or offline
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error('Please check your Firebase configuration.');
+    }
   }
 }
 

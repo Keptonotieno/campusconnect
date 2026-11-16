@@ -249,6 +249,7 @@ export interface Conversation {
   lastMessageTime: string;
   unreadCount: number;
   isImportant?: boolean;
+  isArchived?: boolean;
   messages: DirectMessage[];
 }
 

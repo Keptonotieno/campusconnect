@@ -340,10 +340,15 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
     });
   }, [logs, searchQuery, filterUniversity, filterStatus, filterEvent]);
 
+  const safeCampuses = useMemo(() => {
+    return (Array.isArray(campuses) ? campuses : []).filter(
+      (c): c is University => Boolean(c && typeof c === 'object' && (c.id || c.slug))
+    );
+  }, [campuses]);
+
   // Filtered Campuses for Identities Tab
   const filteredCampuses = useMemo(() => {
-    return (campuses || []).filter(c => {
-      if (!c || !c.id) return false;
+    return safeCampuses.filter(c => {
       const q = (campusSearch || '').toLowerCase().trim();
       const matchesSearch = !q || 
         (c.name || '').toLowerCase().includes(q) ||
@@ -357,7 +362,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
 
       return matchesSearch;
     });
-  }, [campuses, campusSearch, customFilter, identities]);
+  }, [safeCampuses, campusSearch, customFilter, identities]);
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -385,10 +390,10 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
               }`} />
               <span>
                 {config.provider === 'RESEND' && !resendStatus?.connected
-                  ? `API Key Not Configured (${campuses.length} Campuses Paused)`
+                  ? `API Key Not Configured (${safeCampuses.length} Campuses Paused)`
                   : config.provider === 'RESEND' && !resendStatus?.productionReady
-                  ? `Sandbox Mode — Domain Verification Required (${campuses.length} Campuses)`
-                  : `Multi-Tenant Delivery Engine (${campuses.length} Campuses)`}
+                  ? `Sandbox Mode — Domain Verification Required (${safeCampuses.length} Campuses)`
+                  : `Multi-Tenant Delivery Engine (${safeCampuses.length} Campuses)`}
               </span>
             </span>
           </div>
@@ -451,7 +456,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
               ? 'bg-white/20 text-white'
               : isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'
           }`}>
-            {campuses.length}
+            {safeCampuses.length}
           </span>
         </button>
 
@@ -538,7 +543,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                   </h3>
                 </div>
                 <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Single shared control point. All {campuses.length} university portals use this infrastructure to deliver student emails.
+                  Single shared control point. All {safeCampuses.length} university portals use this infrastructure to deliver student emails.
                 </p>
               </div>
 
@@ -1018,8 +1023,8 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                 }`}
               >
                 <option value="general">Global Identity (CampusConnect)</option>
-                {campuses.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                {safeCampuses.map(c => (
+                  <option key={c.id} value={c.id}>{c.name || c.slug}</option>
                 ))}
               </select>
 
@@ -1096,7 +1101,7 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
               <div className={`px-3 py-1.5 rounded-xl border text-center text-xs font-mono font-bold ${
                 isDarkMode ? 'bg-[#0A0E1A] border-slate-800 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
               }`}>
-                {Object.keys(identities).length} Customized / {campuses.length} Campuses
+                {Object.keys(identities).length} Customized / {safeCampuses.length} Campuses
               </div>
             </div>
           </div>
@@ -1124,9 +1129,9 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                   isDarkMode ? 'bg-[#131B2E] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'
                 }`}
               >
-                <option value="ALL">All Universities ({campuses.length})</option>
+                <option value="ALL">All Universities ({safeCampuses.length})</option>
                 <option value="CUSTOM">Customized Only ({Object.keys(identities).length})</option>
-                <option value="DEFAULT">Default Infrastructure ({campuses.length - Object.keys(identities).length})</option>
+                <option value="DEFAULT">Default Infrastructure ({Math.max(0, safeCampuses.length - Object.keys(identities).length)})</option>
               </select>
 
               <button
@@ -1324,8 +1329,8 @@ export const CentralEmailConfigModule: React.FC<CentralEmailConfigModuleProps> =
                 }`}
               >
                 <option value="ALL">All Universities</option>
-                {campuses.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                {safeCampuses.map(c => (
+                  <option key={c.id} value={c.id}>{c.name || c.slug}</option>
                 ))}
               </select>
 

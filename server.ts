@@ -15,8 +15,8 @@ const PORT = 3000;
 const app = express();
 
 app.disable('x-powered-by');
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(cookieParser());
 
 // Global Security Headers Middleware
@@ -203,7 +203,7 @@ app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const token = crypto.randomBytes(24).toString('hex');
+    const token = dbInstance.issuePasswordResetToken(cleanEmail);
     const matchedUser = dbInstance.getRegisteredUsers().find((u) => u.email?.toLowerCase() === cleanEmail);
     const targetUni = universityId || matchedUser?.universityId || matchedUser?.universitySlug || 'general';
     const baseUrl = getBaseUrl(req);
@@ -263,6 +263,26 @@ app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
   }
 });
 
+// Reset Password Confirmation (Validates token and hashes new password)
+app.post('/api/auth/reset-password', (req: Request, res: Response) => {
+  try {
+    const { email, token, newPassword } = req.body || {};
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Email, recovery token, and new password are required.' });
+    }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'WeakPassword', message: 'Password must be at least 8 characters.' });
+    }
+    const ok = dbInstance.resetUserPasswordWithToken(String(email), String(token), String(newPassword));
+    if (!ok) {
+      return res.status(400).json({ error: 'InvalidToken', message: 'Reset link is invalid or has expired. Please request a new reset email.' });
+    }
+    return res.json({ success: true, message: 'Your password has been updated. You can now sign in.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'ResetFailed', message: err.message || 'Could not reset password.' });
+  }
+});
+
 // Student Email Verification Request (Dispatches branded ACCOUNT_VERIFICATION email)
 app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
   try {
@@ -272,7 +292,7 @@ app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = dbInstance.issueVerificationCode(cleanEmail);
     const matchedUser = dbInstance.getRegisteredUsers().find((u) => u.email?.toLowerCase() === cleanEmail);
     const targetUni = universityId || matchedUser?.universityId || matchedUser?.universitySlug || 'general';
     const baseUrl = getBaseUrl(req);
@@ -414,10 +434,30 @@ app.get('/api/admin/payments', requireAdminAuth, (_req: AuthenticatedAdminReques
   });
 });
 
-// Instagram Management
+// Instagram Management (operates standalone without Meta Graph API integration)
 app.get('/api/admin/instagram', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
   const accounts = dbInstance.getInstagramAccounts();
   return res.json({ accounts });
+});
+
+// Admin Connect Instagram Account
+app.post('/api/admin/instagram/connect', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const account = dbInstance.connectInstagramAccount(req.body || {}, req.admin?.email || 'admin');
+    return res.json({ success: true, account });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'ConnectFailed', message: err.message });
+  }
+});
+
+// Admin Refresh Instagram Account
+app.post('/api/admin/instagram/:id/refresh', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const account = dbInstance.refreshInstagramAccount(req.params.id, req.admin?.email || 'admin');
+    return res.json({ success: true, account });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'RefreshFailed', message: err.message });
+  }
 });
 
 // Disconnect Instagram Account
@@ -425,6 +465,39 @@ app.post('/api/admin/instagram/:id/disconnect', requireAdminAuth, (req: Authenti
   try {
     const updated = dbInstance.disconnectInstagramAccount(req.params.id, req.admin?.email || 'admin');
     return res.json({ success: true, account: updated });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'DisconnectFailed', message: err.message });
+  }
+});
+
+// Workspace Instagram Account Routes (no integration setup required)
+app.get('/api/instagram/accounts', (_req: Request, res: Response) => {
+  const accounts = dbInstance.getInstagramAccounts();
+  return res.json({ accounts });
+});
+
+app.post('/api/instagram/accounts', (req: Request, res: Response) => {
+  try {
+    const account = dbInstance.connectInstagramAccount(req.body || {}, req.body?.actorEmail || 'system');
+    return res.json({ success: true, account });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'ConnectFailed', message: err.message });
+  }
+});
+
+app.post('/api/instagram/accounts/:id/refresh', (req: Request, res: Response) => {
+  try {
+    const account = dbInstance.refreshInstagramAccount(req.params.id, 'system');
+    return res.json({ success: true, account });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'RefreshFailed', message: err.message });
+  }
+});
+
+app.post('/api/instagram/accounts/:id/disconnect', (req: Request, res: Response) => {
+  try {
+    const account = dbInstance.disconnectInstagramAccount(req.params.id, 'system');
+    return res.json({ success: true, account });
   } catch (err: any) {
     return res.status(400).json({ error: 'DisconnectFailed', message: err.message });
   }
@@ -963,9 +1036,8 @@ app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req:
       message: `Post successfully published to official university account @${cleanHandle}!`
     });
   } catch (err: any) {
-    const isUnconfigured = err.message?.includes('NOT configured') || err.message?.includes('not configured');
-    return res.status(isUnconfigured ? 400 : 500).json({ 
-      error: isUnconfigured ? 'IntegrationNotConfigured' : 'PublishFailed', 
+    return res.status(400).json({ 
+      error: 'PublishFailed', 
       message: err.message 
     });
   }
@@ -1005,6 +1077,23 @@ app.post('/api/submissions', (req: Request, res: Response) => {
   }
 });
 
+// Verify Student Email Code
+app.post('/api/auth/verify-email', (req: Request, res: Response) => {
+  try {
+    const { email, code } = req.body || {};
+    if (!email || !code) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Email address and verification code are required.' });
+    }
+    const result = dbInstance.verifyStudentEmailCode(String(email), String(code));
+    if (!result.verified) {
+      return res.status(400).json({ error: 'InvalidCode', message: 'Verification code is invalid or expired. Please request a new code.' });
+    }
+    return res.json({ success: true, verified: true, user: result.user, message: `Email ${email} verified successfully.` });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'VerifyFailed', message: err.message || 'Could not verify email.' });
+  }
+});
+
 // Student User Registration
 app.post('/api/users/register', (req: Request, res: Response) => {
   try {
@@ -1031,6 +1120,40 @@ app.post('/api/users/register', (req: Request, res: Response) => {
     return res.status(201).json({ success: true, user });
   } catch (err: any) {
     return res.status(400).json({ error: 'UserRegistrationFailed', message: err.message });
+  }
+});
+
+// Student User Login (Verifies password against stored hash if registered with a password)
+app.post('/api/users/login', (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !String(email).includes('@')) {
+      return res.status(400).json({ error: 'BadRequest', message: 'A valid email address is required.' });
+    }
+    const { user, authenticated } = dbInstance.loginUser(String(email), password ? String(password) : undefined);
+    if (!authenticated) {
+      return res.status(401).json({ error: 'AuthenticationFailed', message: 'Incorrect password for this account.' });
+    }
+    return res.json({ success: true, user });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'LoginFailed', message: err.message || 'Failed to sign in.' });
+  }
+});
+
+// Student User Password Update
+app.post('/api/users/change-password', (req: Request, res: Response) => {
+  try {
+    const { email, currentPassword, newPassword } = req.body || {};
+    if (!email || !newPassword) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Email and new password are required.' });
+    }
+    const result = dbInstance.changeUserPassword(String(email), currentPassword ? String(currentPassword) : undefined, String(newPassword));
+    if (!result.success) {
+      return res.status(400).json({ error: 'PasswordChangeFailed', message: result.message });
+    }
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'PasswordChangeFailed', message: err.message || 'Could not update password.' });
   }
 });
 

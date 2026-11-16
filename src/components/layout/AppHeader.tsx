@@ -74,7 +74,7 @@ export const AppHeader: React.FC = () => {
             </h1>
             <span className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200/60">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Meta Graph API Active</span>
+              <span>{accounts.length > 0 ? 'Instagram Sync Active' : 'Instagram Ready'}</span>
             </span>
           </div>
         </div>

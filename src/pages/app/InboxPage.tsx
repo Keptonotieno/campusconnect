@@ -25,16 +25,21 @@ export const InboxPage: React.FC = () => {
     setSelectedConversationId, 
     sendMessage, 
     markConversationRead,
-    selectedAccount
+    toggleImportantConversation,
+    archiveConversation,
+    addToast
   } = useApp();
 
-  const [activeFilter, setActiveFilter] = useState<'ALL' | 'UNREAD' | 'IMPORTANT'>('ALL');
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'UNREAD' | 'IMPORTANT' | 'ARCHIVED'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [draftMessage, setDraftMessage] = useState('');
 
-  const activeConv = conversations.find((c) => c.id === selectedConversationId) || conversations[0];
-
   const filteredConversations = conversations.filter((c) => {
+    if (activeFilter === 'ARCHIVED') {
+      if (!c.isArchived) return false;
+    } else {
+      if (c.isArchived) return false;
+    }
     if (activeFilter === 'UNREAD' && c.unreadCount === 0) return false;
     if (activeFilter === 'IMPORTANT' && !c.isImportant) return false;
     if (searchTerm) {
@@ -46,6 +51,11 @@ export const InboxPage: React.FC = () => {
     }
     return true;
   });
+
+  const activeConv =
+    filteredConversations.find((c) => c.id === selectedConversationId) ||
+    filteredConversations[0] ||
+    null;
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +102,7 @@ export const InboxPage: React.FC = () => {
 
           {/* Filter Pills */}
           <div className="flex items-center gap-1 text-xs">
-            {(['ALL', 'UNREAD', 'IMPORTANT'] as const).map((filter) => (
+            {(['ALL', 'UNREAD', 'IMPORTANT', 'ARCHIVED'] as const).map((filter) => (
               <button
                 key={filter}
                 onClick={() => setActiveFilter(filter)}
@@ -193,10 +203,42 @@ export const InboxPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <button className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors">
-                  <Star className="w-4 h-4" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleImportantConversation(activeConv.id);
+                    addToast(
+                      activeConv.isImportant ? 'Removed Important' : 'Marked Important',
+                      `Conversation with @${activeConv.customerUsername} updated.`,
+                      'info'
+                    );
+                  }}
+                  title={activeConv.isImportant ? 'Remove from Important' : 'Mark as Important'}
+                  className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                    activeConv.isImportant
+                      ? 'text-amber-500 bg-amber-50 hover:bg-amber-100'
+                      : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Star className={`w-4 h-4 ${activeConv.isImportant ? 'fill-amber-400' : ''}`} />
                 </button>
-                <button className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => {
+                    archiveConversation(activeConv.id);
+                    addToast(
+                      activeConv.isArchived ? 'Unarchived' : 'Conversation Archived',
+                      `@${activeConv.customerUsername} thread updated.`,
+                      'info'
+                    );
+                  }}
+                  title={activeConv.isArchived ? 'Unarchive conversation' : 'Archive conversation'}
+                  className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                    activeConv.isArchived
+                      ? 'text-[#1D64EC] bg-blue-50 hover:bg-blue-100'
+                      : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
                   <Archive className="w-4 h-4" />
                 </button>
               </div>

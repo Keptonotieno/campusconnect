@@ -239,11 +239,11 @@ export const AppSidebar: React.FC = () => {
       <div className="p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
-            {currentUser?.name?.charAt(0).toUpperCase() || 'S'}
+            {currentUser?.name?.charAt(0).toUpperCase() || 'W'}
           </div>
           <div className="min-w-0">
             <div className="text-xs font-bold text-slate-900 truncate">
-              {currentUser?.name || 'Software'}
+              {currentUser?.name || 'Workspace User'}
             </div>
             <div className="text-[10px] text-slate-400 truncate">
               {currentUser?.email || 'admin@campusconnect.app'}

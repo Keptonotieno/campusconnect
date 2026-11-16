@@ -25,7 +25,6 @@ import {
   EyeOff,
   Edit2,
   Lock,
-  MessageCircle,
   X,
   FileText,
   Trash2,
@@ -80,6 +79,14 @@ export const StudentDashboardPage: React.FC = () => {
       return 0.00;
     }
   });
+  const [walletTopUps, setWalletTopUps] = useState<Array<{ id: string; amount: number; createdAt: string; description: string }>>(() => {
+    try {
+      const stored = localStorage.getItem('campusconnect_wallet_transactions');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Profile Form State - clean empty defaults for new students
   const [fullName, setFullName] = useState(currentUser?.name || '');
@@ -122,11 +129,8 @@ export const StudentDashboardPage: React.FC = () => {
   };
 
   const handleNewPost = () => {
-    setIsNavLoading(true);
-    setTimeout(() => {
-      setIsNavLoading(false);
-      navigateTo('/#search');
-    }, 250);
+    setSchoolSearchQuery('');
+    setIsFindSchoolModalOpen(true);
   };
 
   // Draft resolution (reads active draft from localStorage if present)
@@ -262,7 +266,6 @@ export const StudentDashboardPage: React.FC = () => {
     updateUserProfile({ name: fullName, email, phone });
     setTimeout(() => {
       setIsSavingProfile(false);
-      addToast('Profile Updated', 'Your profile details have been saved.', 'success');
     }, 400);
   };
 
@@ -297,7 +300,7 @@ export const StudentDashboardPage: React.FC = () => {
     }
   };
 
-  const handleUpdatePassword = (e: React.FormEvent) => {
+  const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPassword || newPassword.length < 8) {
       addToast('Password Too Short', 'New password must be at least 8 characters.', 'error');
@@ -307,14 +310,35 @@ export const StudentDashboardPage: React.FC = () => {
       addToast('Password Mismatch', 'New password and confirm password do not match.', 'error');
       return;
     }
+    if (!currentUser?.email) {
+      addToast('Profile Required', 'Please ensure your email is set on your profile first.', 'error');
+      return;
+    }
     setIsUpdatingPassword(true);
-    setTimeout(() => {
-      setIsUpdatingPassword(false);
+    try {
+      const res = await fetch('/api/users/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: currentUser.email,
+          currentPassword,
+          newPassword
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        addToast('Update Failed', data.message || 'Could not update password.', 'error');
+        return;
+      }
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      addToast('Password Updated', 'Your password has been changed successfully.', 'success');
-    }, 500);
+      addToast('Password Updated', 'Your password has been changed and saved.', 'success');
+    } catch {
+      addToast('Network Issue', 'Could not reach account security service.', 'error');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
   const handleTopUpSubmit = (e: React.FormEvent) => {
@@ -323,8 +347,17 @@ export const StudentDashboardPage: React.FC = () => {
     if (isNaN(amount) || amount <= 0) return;
     const newBal = walletBalance + amount;
     setWalletBalance(newBal);
+    const txn = {
+      id: `topup_${Date.now()}`,
+      amount,
+      createdAt: new Date().toISOString(),
+      description: 'Wallet Top-up (USD)'
+    };
+    const nextTopUps = [txn, ...walletTopUps];
+    setWalletTopUps(nextTopUps);
     try {
       localStorage.setItem('campusconnect_wallet_balance', newBal.toFixed(2));
+      localStorage.setItem('campusconnect_wallet_transactions', JSON.stringify(nextTopUps));
     } catch {}
     setIsTopUpModalOpen(false);
     addToast('Funds Added', `$${amount.toFixed(2)} added to your wallet balance.`, 'success');
@@ -450,7 +483,7 @@ export const StudentDashboardPage: React.FC = () => {
                   onMouseLeave={() => setIsUserMenuOpen(false)}
                 >
                   <div className="px-4 py-2 border-b border-slate-100">
-                    <div className="text-xs font-bold text-slate-900 truncate">{fullName}</div>
+                    <div className="text-xs font-bold text-slate-900 truncate">{fullName || userDisplayName}</div>
                     <div className="text-[10px] text-slate-400 truncate">{email}</div>
                   </div>
                   <button
@@ -610,8 +643,13 @@ export const StudentDashboardPage: React.FC = () => {
 
                   {/* University Crest & Name at bottom of photo */}
                   <div className="absolute bottom-3 left-3 flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-white p-0.5 shadow-md flex items-center justify-center text-[8px] font-bold text-blue-900">
-                      🦅 2031
+                    <div className="w-7 h-7 rounded-full bg-white p-0.5 shadow-md flex items-center justify-center text-[8px] font-extrabold text-blue-900 uppercase">
+                      {(activeDraft.universityName || 'UNI')
+                        .split(' ')
+                        .map(w => w[0])
+                        .filter(Boolean)
+                        .slice(0, 3)
+                        .join('')}
                     </div>
                     <span className="text-xs font-bold text-white drop-shadow-md">
                       {activeDraft.universityName}
@@ -776,7 +814,6 @@ export const StudentDashboardPage: React.FC = () => {
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px]">🦅</span>
                         <span className="text-xs sm:text-sm font-bold text-slate-900">
                           {activeDraft.universityName}
                         </span>
@@ -945,34 +982,81 @@ export const StudentDashboardPage: React.FC = () => {
               <div>
                 <div className="text-xs text-slate-500 font-medium">Total added</div>
                 <div className="text-sm font-bold text-slate-900 mt-0.5">
-                  USD {walletBalance.toFixed(2)}
+                  USD {Math.max(walletBalance, walletTopUps.reduce((s, t) => s + t.amount, 0)).toFixed(2)}
                 </div>
               </div>
               <div>
                 <div className="text-xs text-slate-500 font-medium">Total spent</div>
                 <div className="text-sm font-bold text-slate-900 mt-0.5">
-                  USD 0.00
+                  USD {totalSpent.toFixed(2)}
                 </div>
               </div>
             </div>
 
           </div>
 
-          {/* Transaction History Section matching Image 4 */}
-          <div className="space-y-3.5 max-w-3xl">
-            <h2 className="text-base font-bold text-slate-950 tracking-tight">
-              Transaction history
-            </h2>
+          {/* Transaction History Section */}
+          {(() => {
+            const unifiedTxns = [
+              ...walletTopUps.map(t => ({
+                id: t.id,
+                title: t.description,
+                subtitle: 'Wallet Credit',
+                amount: `+$${t.amount.toFixed(2)} USD`,
+                isCredit: true,
+                date: t.createdAt
+              })),
+              ...mySubmissions
+                .filter(s => s.paymentStatus === 'PAYMENT_CONFIRMED')
+                .map(s => ({
+                  id: `subpay_${s.id}`,
+                  title: `Featured Post — ${s.universityName || 'Campus Community'}`,
+                  subtitle: s.paymentReference ? `Stripe Ref: ${s.paymentReference}` : 'Stripe Card Checkout',
+                  amount: `-$${(s.paymentAmount || 6).toFixed(2)} USD`,
+                  isCredit: false,
+                  date: s.submittedAt
+                }))
+            ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-            <div className="bg-white rounded-3xl p-12 border border-slate-200/90 shadow-2xs text-center flex flex-col items-center justify-center space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
-                <FileText className="w-6 h-6" />
+            return (
+              <div className="space-y-3.5 max-w-3xl">
+                <h2 className="text-base font-bold text-slate-950 tracking-tight">
+                  Transaction history
+                </h2>
+
+                {unifiedTxns.length === 0 ? (
+                  <div className="bg-white rounded-3xl p-12 border border-slate-200/90 shadow-2xs text-center flex flex-col items-center justify-center space-y-2">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <p className="text-xs text-slate-400 font-medium pt-1">
+                      No transactions yet
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+                    {unifiedTxns.map(tx => (
+                      <div key={tx.id} className="p-4 sm:p-5 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">{tx.title}</div>
+                          <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                            <span>{tx.subtitle}</span>
+                            <span>•</span>
+                            <span>{new Date(tx.date).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <span className={`text-xs sm:text-sm font-extrabold font-mono shrink-0 ${
+                          tx.isCredit ? 'text-emerald-600' : 'text-slate-900'
+                        }`}>
+                          {tx.amount}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-slate-400 font-medium pt-1">
-                No transactions yet
-              </p>
-            </div>
-          </div>
+            );
+          })()}
 
         </main>
       )}
@@ -1056,7 +1140,7 @@ export const StudentDashboardPage: React.FC = () => {
                 <div className="text-[11px] text-slate-500 font-medium">Posted</div>
               </div>
               <div>
-                <div className="text-base sm:text-lg font-extrabold text-blue-600">${totalSpent}</div>
+                <div className="text-base sm:text-lg font-extrabold text-blue-600">${totalSpent.toFixed(2)}</div>
                 <div className="text-[11px] text-slate-500 font-medium">Spent</div>
               </div>
             </div>
@@ -1380,23 +1464,6 @@ export const StudentDashboardPage: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Floating "We Are Here! 1" support badge */}
-      <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2 select-none pointer-events-auto">
-        <div className="relative flex items-center justify-center">
-          <button 
-            type="button"
-            onClick={() => addToast('Live Support', 'Our campus support team is active 24/7 to assist with your post submission.', 'info')}
-            className="w-12 h-12 rounded-full bg-[#854D0E] text-white flex items-center justify-center shadow-lg border-2 border-white cursor-pointer hover:scale-105 active:scale-95 transition-transform"
-            aria-label="Contact live support"
-          >
-            <MessageCircle className="w-6 h-6 fill-white text-[#854D0E]" />
-          </button>
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
-            1
-          </span>
-        </div>
-      </div>
 
       {/* Video-Authentic Centered Loading Indicator Card */}
       {isNavLoading && (

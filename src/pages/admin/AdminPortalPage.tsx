@@ -81,6 +81,8 @@ import {
   fetchAdminPayments, 
   simulateWebhookTest, 
   fetchAdminInstagram, 
+  connectAdminInstagram,
+  refreshAdminInstagram,
   disconnectAdminInstagram, 
   fetchAdminEmail, 
   sendAdminTestEmail, 
@@ -144,6 +146,15 @@ export const AdminPortalPage: React.FC = () => {
   const [publishingInstagram, setPublishingInstagram] = useState(false);
   const [customPublishUrl, setCustomPublishUrl] = useState('');
 
+  // Standalone Instagram Account Management State
+  const [showConnectIgModal, setShowConnectIgModal] = useState(false);
+  const [igHandleInput, setIgHandleInput] = useState('');
+  const [igDisplayNameInput, setIgDisplayNameInput] = useState('');
+  const [igAccountType, setIgAccountType] = useState<'BUSINESS' | 'CREATOR'>('BUSINESS');
+  const [igUniId, setIgUniId] = useState('');
+  const [connectingIg, setConnectingIg] = useState(false);
+  const [refreshingIgId, setRefreshingIgId] = useState<string | null>(null);
+
   // Active Dashboard Tab
   const [activeTab, setActiveTab] = useState<
     'OVERVIEW' | 'CAMPUSES' | 'STUDENTS' | 'INTEGRATIONS' | 'INSTAGRAM' | 'PAYMENTS' | 'EMAIL' | 'SUBMISSIONS' | 'AUDIT_LOGS'
@@ -173,10 +184,20 @@ export const AdminPortalPage: React.FC = () => {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          parsed.forEach((u: University) => {
-            if (u && (u.slug || u.id)) {
-              const key = (u.slug || u.id).toLowerCase();
-              map.set(key, { ...(map.get(key) || {}), ...u });
+          parsed.forEach((u: any) => {
+            if (u && typeof u === 'object' && (u.slug || u.id)) {
+              const key = String(u.slug || u.id).toLowerCase();
+              const existing = map.get(key);
+              map.set(key, {
+                ...(existing || {}),
+                ...u,
+                id: u.id || existing?.id || `uni_${key}`,
+                slug: u.slug || existing?.slug || key,
+                name: u.name || existing?.name || key,
+                primaryColor: u.primaryColor || existing?.primaryColor || '#004B87',
+                accentColor: u.accentColor || existing?.accentColor || '#0284C7',
+                communityEnabled: u.communityEnabled !== false
+              });
             }
           });
         }
@@ -196,13 +217,15 @@ export const AdminPortalPage: React.FC = () => {
         const firestoreCampuses: University[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as University | undefined;
-          if (!data) return;
+          if (!data || typeof data !== 'object') return;
           firestoreCampuses.push({
             ...data,
             id: docSnap.id,
             slug: data.slug || docSnap.id,
             name: data.name || docSnap.id,
-            primaryColor: data.primaryColor || '#004B87'
+            primaryColor: data.primaryColor || '#004B87',
+            accentColor: data.accentColor || '#0284C7',
+            communityEnabled: data.communityEnabled !== false
           });
         });
 
@@ -215,14 +238,24 @@ export const AdminPortalPage: React.FC = () => {
               }
             });
             (prev || []).forEach(u => {
-              if (!u || (!u.slug && !u.id)) return;
-              const key = (u.slug || u.id).toLowerCase();
-              map.set(key, { ...(map.get(key) || {}), ...u });
+              if (!u || typeof u !== 'object' || (!u.slug && !u.id)) return;
+              const key = String(u.slug || u.id).toLowerCase();
+              map.set(key, {
+                ...(map.get(key) || {}),
+                ...u,
+                primaryColor: u.primaryColor || '#004B87',
+                accentColor: u.accentColor || '#0284C7'
+              });
             });
             firestoreCampuses.forEach(u => {
-              if (!u || (!u.slug && !u.id)) return;
-              const key = (u.slug || u.id).toLowerCase();
-              map.set(key, { ...(map.get(key) || {}), ...u });
+              if (!u || typeof u !== 'object' || (!u.slug && !u.id)) return;
+              const key = String(u.slug || u.id).toLowerCase();
+              map.set(key, {
+                ...(map.get(key) || {}),
+                ...u,
+                primaryColor: u.primaryColor || '#004B87',
+                accentColor: u.accentColor || '#0284C7'
+              });
             });
             const merged = Array.from(map.values());
             try {
@@ -476,7 +509,7 @@ export const AdminPortalPage: React.FC = () => {
               universityName: s.universityName,
               universitySlug: s.universitySlug,
               avatarUrl: s.originalImagePath || s.watermarkedImagePath || '',
-              studentVerificationStatus: s.paymentStatus === 'PAID' ? 'VERIFIED' : 'UNVERIFIED',
+              studentVerificationStatus: 'UNVERIFIED',
               createdAt: s.submittedAt || new Date().toISOString()
             });
           }
@@ -571,7 +604,7 @@ export const AdminPortalPage: React.FC = () => {
         studentName: sub.studentDisplayName,
         universityName: sub.universityName
       });
-      await publishToInstagram(sub.id, res.instagramPostUrl);
+      await publishToInstagram(sub.id, res.instagramPostUrl, { silent: true });
       addToast('Published to Instagram!', `Featured post published to official account ${res.targetHandle}.`, 'success');
       setPublishModalSub(null);
       setCustomPublishUrl('');
@@ -887,11 +920,7 @@ export const AdminPortalPage: React.FC = () => {
       }
 
       // 3. Keep backend database in sync as well
-      try {
-        await deleteAdminCampus(targetId);
-      } catch (apiErr) {
-        console.warn('Backend campus delete notice:', apiErr);
-      }
+      await deleteAdminCampus(targetId);
 
       addToast('Campus Deleted', `Successfully removed ${c.name} from the database.`, 'success');
       setCampusPendingDelete(null);
@@ -978,9 +1007,51 @@ export const AdminPortalPage: React.FC = () => {
     }
   };
 
+  // Connect Instagram Account (Standalone, no Meta Graph API keys required)
+  const handleConnectAdminInstagram = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanHandle = igHandleInput.trim().replace(/^@/, '');
+    if (!cleanHandle) return;
+    setConnectingIg(true);
+    try {
+      const linkedUni = (campuses || []).find(c => c && c.id === igUniId);
+      await connectAdminInstagram({
+        username: cleanHandle,
+        displayName: igDisplayNameInput.trim() || linkedUni?.name || cleanHandle,
+        accountType: igAccountType,
+        universityId: linkedUni?.id,
+        universityName: linkedUni?.name
+      });
+      addToast('Instagram Connected', `@${cleanHandle} linked and ready for direct publishing.`, 'success');
+      setShowConnectIgModal(false);
+      setIgHandleInput('');
+      setIgDisplayNameInput('');
+      setIgUniId('');
+      loadAllAdminData();
+    } catch (err: any) {
+      addToast('Connect Failed', err.message || 'Could not connect Instagram account.', 'error');
+    } finally {
+      setConnectingIg(false);
+    }
+  };
+
+  // Refresh Instagram Account Sync
+  const handleRefreshAdminInstagram = async (id: string, username: string) => {
+    setRefreshingIgId(id);
+    try {
+      await refreshAdminInstagram(id);
+      addToast('Instagram Synced', `@${username} connection refreshed cleanly.`, 'success');
+      loadAllAdminData();
+    } catch (err: any) {
+      addToast('Sync Error', err.message || 'Could not refresh Instagram account.', 'error');
+    } finally {
+      setRefreshingIgId(null);
+    }
+  };
+
   // Disconnect Instagram Account
   const handleDisconnectAccount = async (id: string, username: string) => {
-    if (!window.confirm(`Disconnect @${username}? The token will be revoked.`)) return;
+    if (!window.confirm(`Disconnect @${username}? Syncing will pause until reconnected.`)) return;
     try {
       await disconnectAdminInstagram(id);
       addToast('Account Disconnected', `@${username} disconnected.`, 'info');
@@ -1039,7 +1110,7 @@ export const AdminPortalPage: React.FC = () => {
   const handleAdminReview = async (id: string, decision: 'APPROVE' | 'REJECT', reason?: string) => {
     try {
       await reviewAdminSubmission(id, decision, reason);
-      reviewSubmission(id, decision, reason);
+      await reviewSubmission(id, decision, reason, { silent: true });
       addToast(decision === 'APPROVE' ? 'Submission Approved' : 'Submission Rejected', 'Student submission status updated.', 'success');
       loadAllAdminData();
     } catch (err: any) {
@@ -1049,11 +1120,10 @@ export const AdminPortalPage: React.FC = () => {
 
   // Filtered campuses
   const filteredCampuses = useMemo(() => {
-    const list = Array.isArray(campuses) ? campuses : [];
+    const list = (Array.isArray(campuses) ? campuses : []).filter((c): c is University => Boolean(c && (c.id || c.slug)));
     const q = (campusSearch || '').toLowerCase().trim();
     const noSpecialQ = q.replace(/[^a-z0-9]/g, '');
     return list.filter(c => {
-      if (!c) return false;
       const name = (c.name || '').toLowerCase();
       const slug = (c.slug || '').toLowerCase();
       const loc = (c.location || '').toLowerCase();
@@ -1073,11 +1143,10 @@ export const AdminPortalPage: React.FC = () => {
 
   // Overview Tab Universities Filter
   const overviewCampuses = useMemo(() => {
-    const list = Array.isArray(campuses) ? campuses : [];
+    const list = (Array.isArray(campuses) ? campuses : []).filter((c): c is University => Boolean(c && (c.id || c.slug)));
     if (!overviewCampusSearch.trim()) return list;
     const q = overviewCampusSearch.toLowerCase().trim();
     return list.filter(c => {
-      if (!c) return false;
       const name = (c.name || '').toLowerCase();
       const slug = (c.slug || '').toLowerCase();
       const loc = (c.location || '').toLowerCase();
@@ -1448,7 +1517,7 @@ export const AdminPortalPage: React.FC = () => {
             isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
           }`}>
             <User className="w-3.5 h-3.5 text-blue-500" />
-            <span className="font-mono">{adminUser?.email || 'compusconnect@gmail.com'}</span>
+            <span className="font-mono">{adminUser?.email || 'admin@campusconnect.app'}</span>
           </div>
 
           <button
@@ -1479,7 +1548,7 @@ export const AdminPortalPage: React.FC = () => {
                     ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20'
                     : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                 }`}>
-                  {selectedAdminUniFilter === 'ALL' ? 'All Universities' : (campuses.find(c => c.id === selectedAdminUniFilter)?.name || 'Filtered Campus')}
+                  {selectedAdminUniFilter === 'ALL' ? 'All Universities' : ((campuses || []).find(c => c && c.id === selectedAdminUniFilter)?.name || 'Filtered Campus')}
                 </span>
               </div>
               <div className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -1533,7 +1602,7 @@ export const AdminPortalPage: React.FC = () => {
             <option value="OVERVIEW">📊 Admin Overview</option>
             <option value="CAMPUSES">🏛️ Campus Management ({(campuses || []).length})</option>
             <option value="STUDENTS">🎓 Student Directory ({(registeredStudents || []).length})</option>
-            <option value="INTEGRATIONS">🔑 Integrations & API Keys ({(integrationsList || []).filter(i => i?.configured).length}/{(integrationsList || []).length || 3})</option>
+            <option value="INTEGRATIONS">🔑 Integrations & API Keys ({(integrationsList || []).filter(i => i?.configured).length}/{(integrationsList || []).length || 2})</option>
             <option value="INSTAGRAM">📸 Instagram Accounts ({(instagramAccounts || []).length})</option>
             <option value="PAYMENTS">💳 Payment Transactions ({(payments || []).length})</option>
             <option value="EMAIL">✉️ Email Infrastructure & Templates</option>
@@ -1585,7 +1654,7 @@ export const AdminPortalPage: React.FC = () => {
             { id: 'OVERVIEW', label: 'Admin Overview', icon: Layers },
             { id: 'CAMPUSES', label: 'Campus Management', icon: Building2, count: (campuses || []).length },
             { id: 'STUDENTS', label: 'Student Directory', icon: GraduationCap, count: (registeredStudents || []).length },
-            { id: 'INTEGRATIONS', label: 'Integrations & API Keys', icon: Key, count: `${(integrationsList || []).filter(i => i?.configured).length}/${(integrationsList || []).length || 3}` },
+            { id: 'INTEGRATIONS', label: 'Integrations & API Keys', icon: Key, count: `${(integrationsList || []).filter(i => i?.configured).length}/${(integrationsList || []).length || 2}` },
             { id: 'INSTAGRAM', label: 'Instagram Accounts', icon: Instagram, count: (instagramAccounts || []).length },
             { id: 'PAYMENTS', label: 'Payment Transactions', icon: CreditCard, count: (payments || []).length },
             { id: 'EMAIL', label: 'Email Infrastructure & Templates', icon: Mail },
@@ -1637,7 +1706,7 @@ export const AdminPortalPage: React.FC = () => {
                 Admin Overview
               </h2>
               <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                Authoritative platform telemetry, live campus registries, verified Instagram integrations, and payment ledger.
+                Authoritative platform telemetry, live campus registries, direct Instagram publishing, and payment ledger.
               </p>
             </div>
 
@@ -1722,16 +1791,16 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               </button>
 
-              {/* 4. Registered users - Clickable to Campuses */}
+              {/* 4. Registered users - Clickable to Students Directory */}
               <button 
                 type="button"
-                onClick={() => setActiveTab('CAMPUSES')}
+                onClick={() => setActiveTab('STUDENTS')}
                 className={`p-5 rounded-2xl border space-y-2 cursor-pointer transition-all active:scale-[0.98] group text-left w-full focus:outline-none ${
                   isDarkMode 
                     ? 'bg-[#131B2E] border-slate-800 hover:border-indigo-500/60 hover:bg-[#162036]' 
                     : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md hover:border-indigo-400'
                 }`}
-                title="Click to view campus registries"
+                title="Click to view registered student accounts"
               >
                 <div className={`flex items-center justify-between text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                   <span className="group-hover:text-indigo-500 transition-colors">Registered Users</span>
@@ -1858,14 +1927,16 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {overviewCampuses.map((campus) => {
-                    const canonicalUrl = `/ig/${campus.slug}`;
-                    const fullHubUrl = `/university/${campus.slug}`;
-                    const isActive = campus.communityEnabled;
+                  {overviewCampuses.filter((campus): campus is University => Boolean(campus && (campus.id || campus.slug))).map((campus) => {
+                    const campusSlug = campus.slug || campus.id || 'campus';
+                    const campusName = campus.name || campusSlug;
+                    const canonicalUrl = `/ig/${campusSlug}`;
+                    const fullHubUrl = `/university/${campusSlug}`;
+                    const isActive = campus.communityEnabled !== false;
 
                     return (
                       <div 
-                        key={campus.id}
+                        key={campus.id || campusSlug}
                         className={`rounded-2xl border overflow-hidden flex flex-col justify-between transition-all ${
                           isDarkMode 
                             ? 'bg-[#0F1626] border-slate-800 hover:border-slate-700' 
@@ -1877,11 +1948,14 @@ export const AdminPortalPage: React.FC = () => {
                           {campus.coverUrl ? (
                             <img 
                               src={campus.coverUrl} 
-                              alt={campus.name} 
+                              alt={campusName} 
                               className="w-full h-full object-cover opacity-80" 
                             />
                           ) : (
-                            <div className="w-full h-full bg-gradient-to-r from-blue-900 to-indigo-900" />
+                            <div
+                              className="w-full h-full"
+                              style={{ background: `linear-gradient(135deg, ${campus?.primaryColor || '#004B87'}, ${campus?.accentColor || '#1E3A8A'})` }}
+                            />
                           )}
                           <div className="absolute top-2 right-2">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-xs ${
@@ -1901,12 +1975,12 @@ export const AdminPortalPage: React.FC = () => {
                               {campus.logoUrl ? (
                                 <img 
                                   src={campus.logoUrl} 
-                                  alt={campus.name} 
+                                  alt={campusName} 
                                   className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/10 shrink-0 bg-white" 
                                 />
                               ) : (
                                 <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
-                                  {campus.name.charAt(0)}
+                                  {campusName.charAt(0).toUpperCase()}
                                 </div>
                               )}
                               <div className="min-w-0 flex-1">
@@ -2595,7 +2669,7 @@ export const AdminPortalPage: React.FC = () => {
                         s.studentUid === stu.id || 
                         (s.studentEmail && s.studentEmail.toLowerCase() === stu.email?.toLowerCase())
                       );
-                      const uni = campuses.find(c => c.id === stu.universityId || c.slug === stu.universitySlug);
+                      const uni = (campuses || []).find(c => c && (c.id === stu.universityId || c.slug === stu.universitySlug));
                       return (
                         <tr key={stu.id} className={`transition-colors ${isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50/70'}`}>
                           <td className="py-3 px-4 font-semibold">
@@ -2691,71 +2765,188 @@ export const AdminPortalPage: React.FC = () => {
         {/* ------------------------------------------------------------------- */}
         {activeTab === 'INSTAGRAM' && (
           <div className="space-y-6 animate-in fade-in">
-            <div className="space-y-1">
-              <h2 className={`text-2xl font-black tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                Instagram Accounts Management
-              </h2>
-              <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                Inspect connected Instagram Business and Creator accounts with live Meta Graph token health.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h2 className={`text-2xl font-black tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                  Instagram Accounts Management
+                </h2>
+                <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                  Manage university and creator Instagram accounts directly — operates standalone without external API integration.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConnectIgModal(true)}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:from-purple-500 hover:to-rose-400 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-md shadow-pink-600/20 self-start sm:self-auto"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Connect Instagram Account</span>
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(instagramAccounts || []).map(acc => (
-                <div key={acc.id} className={`p-6 rounded-2xl border space-y-4 ${
-                  isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
-                }`}>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full border-2 border-fuchsia-500 p-0.5">
-                        <img src={acc.profilePictureUrl || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80'} alt={acc.username} className="w-full h-full rounded-full object-cover" />
+            {showConnectIgModal && (
+              <form
+                onSubmit={handleConnectAdminInstagram}
+                className={`p-6 rounded-2xl border space-y-4 ${
+                  isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-xs'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                    Link Instagram Account Directly
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowConnectIgModal(false)}
+                    className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <input
+                    type="text"
+                    required
+                    value={igHandleInput}
+                    onChange={(e) => setIgHandleInput(e.target.value)}
+                    placeholder="@harvard_classof2031"
+                    className={`rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-blue-500 ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  />
+                  <input
+                    type="text"
+                    value={igDisplayNameInput}
+                    onChange={(e) => setIgDisplayNameInput(e.target.value)}
+                    placeholder="Display Name (optional)"
+                    className={`rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-blue-500 ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  />
+                  <select
+                    value={igUniId}
+                    onChange={(e) => setIgUniId(e.target.value)}
+                    className={`rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-blue-500 ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  >
+                    <option value="">Select University (optional)</option>
+                    {(campuses || []).filter((c): c is University => Boolean(c && c.id)).map(c => (
+                      <option key={c.id} value={c.id}>{c.name || c.slug}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={igAccountType}
+                    onChange={(e) => setIgAccountType(e.target.value as 'BUSINESS' | 'CREATOR')}
+                    className={`rounded-xl px-3.5 py-2 text-xs border focus:outline-none focus:border-blue-500 ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  >
+                    <option value="BUSINESS">Business Account</option>
+                    <option value="CREATOR">Creator Account</option>
+                  </select>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowConnectIgModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={connectingIg}
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {connectingIg ? 'Connecting...' : 'Save Instagram Account'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {(instagramAccounts || []).length === 0 ? (
+              <div className={`p-10 rounded-2xl border text-center space-y-3 ${
+                isDarkMode ? 'bg-[#131B2E] border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-600'
+              }`}>
+                <Instagram className="w-8 h-8 mx-auto text-pink-500" />
+                <div className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                  No Instagram Accounts Linked Yet
+                </div>
+                <p className="text-xs max-w-md mx-auto">
+                  Connect any campus or creator Instagram handle above to manage sync health, analytics, and featured spotlight publishing directly.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(instagramAccounts || []).map(acc => (
+                  <div key={acc.id} className={`p-6 rounded-2xl border space-y-4 ${
+                    isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
+                  }`}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full border-2 border-fuchsia-500 p-0.5">
+                          <img src={acc.profilePictureUrl || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80'} alt={acc.username} className="w-full h-full rounded-full object-cover" />
+                        </div>
+                        <div>
+                          <div className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>@{acc.username}</div>
+                          <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{acc.displayName || acc.username} • {acc.accountType || 'BUSINESS'}</div>
+                        </div>
+                      </div>
+
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        acc.status === 'CONNECTED' 
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
+                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                      }`}>
+                        {acc.status || 'CONNECTED'}
+                      </span>
+                    </div>
+
+                    <div className={`grid grid-cols-3 gap-2 p-3 rounded-xl border text-center ${
+                      isDarkMode ? 'bg-[#0A0E1A] border-slate-800' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <div>
+                        <div className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{(acc.followersCount ?? 0).toLocaleString()}</div>
+                        <div className="text-[10px] text-slate-500">Followers</div>
                       </div>
                       <div>
-                        <div className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>@{acc.username}</div>
-                        <div className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{acc.displayName || acc.username} • {acc.accountType || 'BUSINESS'}</div>
+                        <div className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{acc.mediaCount ?? 0}</div>
+                        <div className="text-[10px] text-slate-500">Posts</div>
+                      </div>
+                      <div>
+                        <div className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{(((acc.reach28d ?? 0) / 1000)).toFixed(1)}K</div>
+                        <div className="text-[10px] text-slate-500">28d Reach</div>
                       </div>
                     </div>
 
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      acc.status === 'CONNECTED' 
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
-                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                    }`}>
-                      {acc.status || 'CONNECTED'}
-                    </span>
-                  </div>
-
-                  <div className={`grid grid-cols-3 gap-2 p-3 rounded-xl border text-center ${
-                    isDarkMode ? 'bg-[#0A0E1A] border-slate-800' : 'bg-slate-50 border-slate-200'
-                  }`}>
-                    <div>
-                      <div className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{(acc.followersCount ?? 0).toLocaleString()}</div>
-                      <div className={`text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>Followers</div>
+                    <div className={`text-xs flex items-center justify-between pt-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      <span>Sync Health: {acc.status === 'CONNECTED' ? 'Active' : 'Paused'}</span>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleRefreshAdminInstagram(acc.id, acc.username)}
+                          disabled={refreshingIgId === acc.id}
+                          className="text-blue-500 hover:text-blue-600 font-semibold cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${refreshingIgId === acc.id ? 'animate-spin' : ''}`} />
+                          <span>{acc.status === 'CONNECTED' ? 'Refresh Sync' : 'Reconnect'}</span>
+                        </button>
+                        {acc.status === 'CONNECTED' && (
+                          <button
+                            type="button"
+                            onClick={() => handleDisconnectAccount(acc.id, acc.username)}
+                            className="text-rose-500 hover:text-rose-600 dark:text-rose-400 font-semibold cursor-pointer"
+                          >
+                            Disconnect
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <div className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{acc.mediaCount ?? 0}</div>
-                      <div className={`text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>Posts</div>
-                    </div>
-                    <div>
-                      <div className={`text-xs font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{(((acc.reach28d ?? 0) / 1000)).toFixed(1)}K</div>
-                      <div className={`text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>28d Reach</div>
-                    </div>
                   </div>
-
-                  <div className={`text-xs flex items-center justify-between pt-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                    <span>Token Expiration: {acc.tokenExpiresAt ? new Date(acc.tokenExpiresAt).toLocaleDateString() : 'Active Sync'}</span>
-                    {acc.status === 'CONNECTED' && (
-                      <button
-                        onClick={() => handleDisconnectAccount(acc.id, acc.username)}
-                        className="text-rose-500 hover:text-rose-600 dark:text-rose-400 font-semibold cursor-pointer"
-                      >
-                        Disconnect Account
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -2953,14 +3144,14 @@ export const AdminPortalPage: React.FC = () => {
                 </span>
               </div>
               <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                Third-party production gateways for Stripe payments, transactional email, and Meta Instagram publishing. Integrations can only operate when the administrator supplies valid credentials.
+                Third-party production gateways for Stripe payments and transactional email. Instagram publishing and account management operate directly without requiring external integration.
               </p>
             </div>
 
             {/* Environment Health Summary Banner */}
             {(() => {
               const configuredCount = integrationsList.filter(i => i.configured).length;
-              const totalCount = integrationsList.length || 3;
+              const totalCount = integrationsList.length || 2;
               const allConfigured = configuredCount >= totalCount && totalCount > 0;
 
               return (
@@ -2993,8 +3184,8 @@ export const AdminPortalPage: React.FC = () => {
                           : isDarkMode ? 'text-amber-400/80' : 'text-amber-700'
                       }`}>
                         {allConfigured
-                          ? 'Stripe checkouts, transactional emails, and Meta Instagram publishing are fully authorized.'
-                          : 'Features requiring unconfigured integrations are strictly locked until credentials are entered below.'}
+                          ? 'Stripe checkouts and transactional email gateways are fully authorized.'
+                          : 'Features requiring unconfigured external integrations are strictly locked until credentials are entered below.'}
                       </div>
                     </div>
                   </div>
@@ -3013,7 +3204,7 @@ export const AdminPortalPage: React.FC = () => {
             })()}
 
             {/* Integration Cards Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               
               {/* CARD 1: STRIPE GATEWAY */}
               {(() => {
@@ -3301,131 +3492,6 @@ export const AdminPortalPage: React.FC = () => {
                 );
               })()}
 
-              {/* CARD 3: META INSTAGRAM GRAPH API */}
-              {(() => {
-                const instagram = integrationsList.find(i => i.id === 'meta_instagram') || {
-                  id: 'meta_instagram',
-                  name: 'Meta Instagram Graph API',
-                  category: 'Social Media & Direct Publishing',
-                  status: 'NOT_CONFIGURED',
-                  configured: false,
-                  lastVerifiedAt: null,
-                  details: 'Official Meta Graph API connection for university profile publishing, media sync, and direct student spotlights.',
-                  keys: {}
-                };
-                const isTesting = testingIntegrationId === 'meta_instagram';
-
-                return (
-                  <div className={`p-6 rounded-3xl border flex flex-col justify-between space-y-5 transition-all ${
-                    isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md'
-                  }`}>
-                    <div className="space-y-4">
-                      
-                      {/* Header */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-11 h-11 rounded-2xl bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 flex items-center justify-center">
-                            <Instagram className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <h3 className={`text-base font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                              Meta Instagram API
-                            </h3>
-                            <div className="text-[11px] text-fuchsia-500 font-semibold">
-                              Social Media Publishing
-                            </div>
-                          </div>
-                        </div>
-
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          instagram.configured
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20'
-                        }`}>
-                          {instagram.configured ? 'CONFIGURED' : 'NOT CONFIGURED'}
-                        </span>
-                      </div>
-
-                      <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Empowers administrators to publish approved student features directly to university Instagram accounts. Without credentials, Instagram publishing is locked.
-                      </p>
-
-                      {/* Credentials Summary Box */}
-                      <div className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-800/90' : 'bg-slate-50 border-slate-200/80'
-                      }`}>
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          Configured Credentials
-                        </div>
-                        
-                        <div className="space-y-1.5 font-mono text-[11px]">
-                          <div className="flex items-center justify-between">
-                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Meta App ID:</span>
-                            <span className={instagram.keys?.appId ? 'text-fuchsia-500 font-semibold truncate max-w-[180px]' : 'text-amber-500 font-medium'}>
-                              {instagram.keys?.appId || 'Not Configured (Required)'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Access Token:</span>
-                            <span className={instagram.keys?.accessToken ? 'text-slate-300 font-semibold' : 'text-amber-500 font-medium'}>
-                              {instagram.keys?.accessToken ? `${instagram.keys.accessToken.substring(0, 8)}••••••••` : 'Not Configured (Required)'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>Business ID:</span>
-                            <span className={instagram.keys?.instagramBusinessAccountId ? 'text-slate-300 font-semibold' : 'text-slate-400'}>
-                              {instagram.keys?.instagramBusinessAccountId || 'Optional'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Last Handshake Verified */}
-                      <div className={`text-[11px] flex items-center justify-between ${
-                        isDarkMode ? 'text-slate-400' : 'text-slate-500'
-                      }`}>
-                        <span>Last Verified:</span>
-                        <span className="font-mono text-[10px]">
-                          {safeFormatDateTime(instagram.lastVerifiedAt, 'Never tested')}
-                        </span>
-                      </div>
-
-                    </div>
-
-                    {/* Actions */}
-                    <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenConfigureIntegration(instagram)}
-                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:from-purple-500 hover:to-rose-400 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-pink-600/20 transition-all"
-                      >
-                        <Key className="w-3.5 h-3.5" />
-                        <span>{instagram.configured ? 'Edit Meta Credentials' : 'Add Meta API Keys'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleTestIntegrationHandshake('meta_instagram')}
-                        disabled={isTesting || !instagram.configured}
-                        className={`w-full py-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                          isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        {isTesting && <RefreshCw className="w-3.5 h-3.5 animate-spin text-fuchsia-500" />}
-                        <span>{instagram.configured ? 'Test Graph API Handshake' : 'Requires Keys to Test'}</span>
-                      </button>
-
-                      <div className="text-[10px] text-center text-slate-400">
-                        developers.facebook.com &gt; My Apps &gt; Graph API
-                      </div>
-                    </div>
-
-                  </div>
-                );
-              })()}
-
             </div>
 
           </div>
@@ -3464,23 +3530,6 @@ export const AdminPortalPage: React.FC = () => {
                 ))}
               </div>
             </div>
-
-            {/* Warning banner if Meta Instagram is unconfigured */}
-            {!(integrationsList || []).find(i => i?.id === 'meta_instagram')?.configured && (
-              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-                  <span>Meta Instagram Graph API is not configured. Direct publishing of approved profiles is locked until you enter your Meta API keys.</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('INTEGRATIONS')}
-                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs shrink-0 cursor-pointer shadow-2xs"
-                >
-                  Configure Meta Keys →
-                </button>
-              </div>
-            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {(filteredSubmissions || []).map(sub => (
@@ -4178,81 +4227,6 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               )}
 
-              {editingIntegration.id === 'meta_instagram' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Meta App ID
-                    </label>
-                    <input
-                      type="text"
-                      value={integrationKeysForm['appId'] || ''}
-                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, appId: e.target.value })}
-                      placeholder="e.g. 849201948201923"
-                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Meta App Secret
-                    </label>
-                    <input
-                      type="password"
-                      value={integrationKeysForm['appSecret'] || ''}
-                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, appSecret: e.target.value })}
-                      placeholder="••••••••••••"
-                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Meta Graph Long-Lived Access Token
-                    </label>
-                    <input
-                      type="password"
-                      value={integrationKeysForm['accessToken'] || ''}
-                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, accessToken: e.target.value })}
-                      placeholder="EAAX..."
-                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Instagram Business Account ID
-                    </label>
-                    <input
-                      type="text"
-                      value={integrationKeysForm['instagramBusinessAccountId'] || ''}
-                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, instagramBusinessAccountId: e.target.value })}
-                      placeholder="e.g. 1784140530921102"
-                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      Webhook Verify Token
-                    </label>
-                    <input
-                      type="text"
-                      value={integrationKeysForm['webhookVerifyToken'] || ''}
-                      onChange={(e) => setIntegrationKeysForm({ ...integrationKeysForm, webhookVerifyToken: e.target.value })}
-                      placeholder="tok_campus_verify_2026"
-                      className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
-                        isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                      }`}
-                    />
-                  </div>
-                </div>
-              )}
-
               {editingIntegration.id === 'email_transactional' && (
                 <div className="space-y-4">
                   <div>
@@ -4418,7 +4392,7 @@ export const AdminPortalPage: React.FC = () => {
                 </div>
               )}
 
-              {editingIntegration.id === 'cloud_firestore' && (
+              {(editingIntegration.id === 'cloud_firestore' || editingIntegration.id === 'firebase_firestore') && (
                 <div className="space-y-3">
                   <div>
                     <label className={`block text-xs font-semibold mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -4517,47 +4491,18 @@ export const AdminPortalPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Target University Banner & Configuration Check */}
-            {(() => {
-              const isMetaConfigured = integrationsList.find(i => i.id === 'meta_instagram')?.configured;
-              return (
-                <>
-                  {!isMetaConfigured && (
-                    <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 space-y-1">
-                      <div className="font-bold flex items-center gap-1.5">
-                        <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span>Meta Instagram API is Not Configured</span>
-                      </div>
-                      <p>
-                        To post to official university accounts, configure your Meta App ID & Access Token in the Integrations tab.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPublishModalSub(null);
-                          setActiveTab('INTEGRATIONS');
-                        }}
-                        className="text-blue-600 dark:text-blue-400 font-bold underline cursor-pointer inline-block mt-1"
-                      >
-                        Go to Integrations & API Keys →
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 space-y-1">
-                    <div className="flex items-center justify-between text-xs font-bold">
-                      <span className="text-blue-500 dark:text-blue-400">{publishModalSub.universityName}</span>
-                      <span className="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-500 border border-pink-500/30 text-[10px] font-mono">
-                        {publishModalSub.universityInstagramHandle}
-                      </span>
-                    </div>
-                    <p className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                      Only administrators can publish student submissions to this official university account.
-                    </p>
-                  </div>
-                </>
-              );
-            })()}
+            {/* Target University Banner */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 space-y-1">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="text-blue-500 dark:text-blue-400">{publishModalSub.universityName}</span>
+                <span className="px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-500 border border-pink-500/30 text-[10px] font-mono">
+                  {publishModalSub.universityInstagramHandle}
+                </span>
+              </div>
+              <p className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Direct Instagram publishing is active for administrators to publish approved student submissions.
+              </p>
+            </div>
 
             {/* Post Photo & Caption Preview */}
             <div className="space-y-3">
@@ -4606,7 +4551,7 @@ export const AdminPortalPage: React.FC = () => {
                   type="url"
                   value={customPublishUrl}
                   onChange={(e) => setCustomPublishUrl(e.target.value)}
-                  placeholder={`https://www.instagram.com/p/... (leave blank for Meta Graph API auto-publish)`}
+                  placeholder={`https://www.instagram.com/p/... (leave blank to auto-generate post link)`}
                   className={`w-full rounded-xl px-3.5 py-2 text-xs font-mono focus:outline-none focus:border-blue-500 border ${
                     isDarkMode ? 'bg-[#0A0E1A] border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
                   }`}
@@ -4636,7 +4581,7 @@ export const AdminPortalPage: React.FC = () => {
                 {publishingInstagram ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Publishing to Meta Graph API...</span>
+                    <span>Publishing to Instagram...</span>
                   </>
                 ) : (
                   <>

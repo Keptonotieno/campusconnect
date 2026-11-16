@@ -39,9 +39,9 @@ export const SupportWidget: React.FC = () => {
 
     let answer = "Thanks for asking! Our support team is online.";
     if (question.includes('link my Instagram Business account')) {
-      answer = "To link your account, click the blue 'Connect Instagram' or 'Connect Instagram account' button on your dashboard. Instagram's own official login screen will appear where you authorize access. Your account must be an Instagram Business or Creator profile.";
+      answer = "To link your account, click the blue 'Connect Instagram' or 'Connect Instagram account' button on your dashboard and enter your Business or Creator handle directly inside CampusConnect.";
     } else if (question.includes('made a post and its not yet posted')) {
-      answer = "If you scheduled a post, it will be published at your specified date and time via the Meta Graph API. You can check its scheduled timestamp in the Content queue. Also ensure your connected Instagram account has active publishing permissions.";
+      answer = "If you scheduled or submitted a post, it will be published directly to your campus Instagram page once reviewed and approved. You can check its live status in your dashboard.";
     } else if (question.includes('have a question')) {
       answer = "Feel free to ask anything about connecting multiple accounts, comment moderation, DM inbox, or university student submissions!";
     }
@@ -81,7 +81,7 @@ export const SupportWidget: React.FC = () => {
       if (lower.includes('connect') || lower.includes('link') || lower.includes('account')) {
         reply = "You can link your Instagram Business or Creator account by clicking '+ Connect account' in the sidebar or 'Connect Instagram' in your dashboard banner.";
       } else if (lower.includes('password') || lower.includes('secure')) {
-        reply = "We never see or store your Instagram password. Authentication happens directly on Meta's official OAuth screen.";
+        reply = "We never ask for or store your Instagram password. Handles are connected directly in standalone mode inside your workspace.";
       } else if (lower.includes('dm') || lower.includes('message') || lower.includes('comment')) {
         reply = "You can reply to customer messages and moderate comments straight from your desk without opening your phone!";
       }

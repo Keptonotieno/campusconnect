@@ -17,8 +17,7 @@ import {
   Sparkles,
   Mail,
   Bell,
-  X,
-  MessageCircle
+  X
 } from 'lucide-react';
 import { University } from '../../types';
 
@@ -33,7 +32,7 @@ export const DashboardPage: React.FC = () => {
     selectedUniversity,
     entryUniversityContext,
     mySubmissions,
-    addToast,
+    notifications,
     universities
   } = useApp();
 
@@ -255,7 +254,7 @@ export const DashboardPage: React.FC = () => {
               </h4>
 
               <p className="text-xs text-slate-500 leading-relaxed max-w-sm font-normal">
-                Works with Instagram Business and Creator accounts. You’ll log in on Instagram’s own screen.
+                Works with Instagram Business and Creator handles directly inside your CampusConnect workspace.
               </p>
 
               <div className="pt-2">
@@ -278,12 +277,19 @@ export const DashboardPage: React.FC = () => {
                   className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                 >
                   <div className="flex items-center gap-3.5">
-                    <div className="w-12 h-12 rounded-full border-2 border-fuchsia-500 p-0.5 flex items-center justify-center bg-white shadow-xs shrink-0">
-                      <img 
-                        src={acc.profilePictureUrl} 
-                        alt={acc.username}
-                        className="w-full h-full rounded-full object-cover" 
-                      />
+                    <div className="w-12 h-12 rounded-full border-2 border-fuchsia-500 p-0.5 flex items-center justify-center bg-white shadow-xs shrink-0 overflow-hidden">
+                      {acc.profilePictureUrl ? (
+                        <img 
+                          src={acc.profilePictureUrl} 
+                          alt={acc.username}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full rounded-full object-cover" 
+                        />
+                      ) : (
+                        <span className="w-full h-full rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white text-xs font-black">
+                          {(acc.username || 'IG').slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -293,7 +299,7 @@ export const DashboardPage: React.FC = () => {
                         </span>
                       </div>
                       <div className="text-xs text-slate-500 mt-0.5">
-                        {acc.followersCount.toLocaleString()} followers · {acc.accountType}
+                        {(acc.followersCount || 0).toLocaleString()} followers · {acc.accountType || 'BUSINESS'}
                       </div>
                     </div>
                   </div>
@@ -322,84 +328,99 @@ export const DashboardPage: React.FC = () => {
         {/* Right Column: Get set up checklist + Recent activity */}
         <div className="lg:col-span-4 space-y-5">
           
-          {/* Get set up checklist card (Matching Image 2 / Image 3 / Image 4) */}
-          <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-2xs space-y-5">
-            
-            {/* Header with Circular Progress Ring & Title */}
-            <div className="flex items-center gap-4">
-              <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
-                <svg className="w-12 h-12 -rotate-90">
-                  <circle
-                    cx="24"
-                    cy="24"
-                    r="20"
-                    className="text-slate-100"
-                    strokeWidth="4"
-                    stroke="currentColor"
-                    fill="transparent"
-                  />
-                  <circle
-                    cx="24"
-                    cy="24"
-                    r="20"
-                    className="text-blue-600"
-                    strokeWidth="4"
-                    strokeDasharray={125.6}
-                    strokeDashoffset={125.6 * (1 - 1 / 4)}
-                    strokeLinecap="round"
-                    stroke="currentColor"
-                    fill="transparent"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900 leading-tight">Get set up</h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">1 of 4 done</p>
-              </div>
-            </div>
-
-            {/* 4 Checklist Items with Clickable Arrows */}
-            <div className="space-y-3.5 pt-1">
-              
-              {/* 1. Create your business account (Checked) */}
-              <div className="flex items-center gap-3 text-xs sm:text-sm">
-                <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+          {/* Get set up checklist card */}
+          {(() => {
+            const hasSubmitted = mySubmissions.length > 0;
+            const stepsDone = 1 + (isConnected ? 1 : 0) + (hasSubmitted ? 1 : 0);
+            const dashOffset = 125.6 * (1 - stepsDone / 4);
+            return (
+              <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-2xs space-y-5">
+                {/* Header with Circular Progress Ring & Title */}
+                <div className="flex items-center gap-4">
+                  <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+                    <svg className="w-12 h-12 -rotate-90">
+                      <circle
+                        cx="24"
+                        cy="24"
+                        r="20"
+                        className="text-slate-100"
+                        strokeWidth="4"
+                        stroke="currentColor"
+                        fill="transparent"
+                      />
+                      <circle
+                        cx="24"
+                        cy="24"
+                        r="20"
+                        className="text-blue-600 transition-all duration-300"
+                        strokeWidth="4"
+                        strokeDasharray={125.6}
+                        strokeDashoffset={dashOffset}
+                        strokeLinecap="round"
+                        stroke="currentColor"
+                        fill="transparent"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 leading-tight">Get set up</h3>
+                    <p className="text-xs text-slate-500 mt-0.5 font-medium">{stepsDone} of 4 done</p>
+                  </div>
                 </div>
-                <del className="text-slate-400 font-medium">
-                  Create your business account
-                </del>
-              </div>
 
-              {/* 2. Connect an Instagram account -> (Clickable, opens School Selector Modal) */}
-              <button 
-                type="button"
-                onClick={() => handleOpenSchoolModal('CONNECT')}
-                className="w-full flex items-center justify-between text-xs sm:text-sm text-slate-800 font-medium hover:text-blue-600 cursor-pointer transition-colors group text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0 group-hover:border-blue-500 transition-colors" />
-                  <span>Connect an Instagram account</span>
-                </div>
-                <span className="text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all text-sm font-semibold">
-                  →
-                </span>
-              </button>
+                {/* 4 Checklist Items with Clickable Arrows */}
+                <div className="space-y-3.5 pt-1">
+                  {/* 1. Create your business account (Checked) */}
+                  <div className="flex items-center gap-3 text-xs sm:text-sm">
+                    <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </div>
+                    <del className="text-slate-400 font-medium">
+                      Create your business account
+                    </del>
+                  </div>
 
-              {/* 3. Publish your first post -> (Clickable, opens School Selector Modal to choose school) */}
-              <button 
-                type="button"
-                onClick={() => handleOpenSchoolModal('POST')}
-                className="w-full flex items-center justify-between text-xs sm:text-sm text-slate-800 font-medium hover:text-blue-600 cursor-pointer transition-colors group text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0 group-hover:border-blue-500 transition-colors" />
-                  <span>Publish your first post</span>
-                </div>
-                <span className="text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all text-sm font-semibold">
-                  →
-                </span>
-              </button>
+                  {/* 2. Connect an Instagram account */}
+                  <button 
+                    type="button"
+                    onClick={() => isConnected ? navigateTo('/app/accounts') : handleOpenSchoolModal('CONNECT')}
+                    className="w-full flex items-center justify-between text-xs sm:text-sm text-slate-800 font-medium hover:text-blue-600 cursor-pointer transition-colors group text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      {isConnected ? (
+                        <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0 group-hover:border-blue-500 transition-colors" />
+                      )}
+                      <span className={isConnected ? 'line-through text-slate-400' : ''}>Connect an Instagram account</span>
+                    </div>
+                    <span className="text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all text-sm font-semibold">
+                      →
+                    </span>
+                  </button>
+
+                  {/* 3. Publish your first post */}
+                  <button 
+                    type="button"
+                    onClick={() => handleOpenSchoolModal('POST')}
+                    className="w-full flex items-center justify-between text-xs sm:text-sm text-slate-800 font-medium hover:text-blue-600 cursor-pointer transition-colors group text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      {hasSubmitted ? (
+                        <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0 group-hover:border-blue-500 transition-colors" />
+                      )}
+                      <span className={hasSubmitted ? 'line-through text-slate-400' : ''}>Publish your first post</span>
+                    </div>
+                    <span className="text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all text-sm font-semibold">
+                      →
+                    </span>
+                  </button>
 
               {/* 4. Choose your email alerts -> (Clickable, switches directly to Image 6 Notifications Settings) */}
               <button 
@@ -419,6 +440,8 @@ export const DashboardPage: React.FC = () => {
             </div>
 
           </div>
+            );
+          })()}
 
           {/* Recent activity card (Matching Image 4) */}
           <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-2xs space-y-4">
@@ -433,19 +456,39 @@ export const DashboardPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-slate-50/70 border border-slate-100">
-              <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                <Check className="w-4 h-4 stroke-[2.5]" />
+            {notifications && notifications.length > 0 ? (
+              <div className="space-y-2.5">
+                {notifications.slice(0, 3).map((n) => (
+                  <div key={n.id} className="flex items-start gap-3.5 p-3 rounded-2xl bg-slate-50/70 border border-slate-100">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                      <Check className="w-4 h-4 stroke-[2.5]" />
+                    </div>
+                    <div className="text-xs min-w-0">
+                      <div className="font-semibold text-slate-900 leading-snug truncate">
+                        {n.title}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                        {n.createdAt}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="text-xs">
-                <div className="font-semibold text-slate-900 leading-snug">
-                  Welcome to CampusConnect for business
+            ) : (
+              <div className="flex items-start gap-3.5 p-3 rounded-2xl bg-slate-50/70 border border-slate-100">
+                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                  <Check className="w-4 h-4 stroke-[2.5]" />
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  17 Oct
+                <div className="text-xs">
+                  <div className="font-semibold text-slate-900 leading-snug">
+                    Workspace ready for CampusConnect publishing
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    Active session
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
         </div>
@@ -460,14 +503,13 @@ export const DashboardPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-in zoom-in-95 duration-200">
             
-            {/* Top Step Breadcrumb: 1 CHOOSE YOUR SCHOOL -> 2 LOG IN TO INSTAGRAM */}
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider mb-3">
               <span className="w-5 h-5 rounded-full bg-[#1D64EC] text-white flex items-center justify-center text-[10px]">
                 1
               </span>
               <span className="text-[#1D64EC]">CHOOSE YOUR SCHOOL</span>
               <span className="text-slate-400 font-normal">→</span>
-              <span className="text-slate-400 font-medium">2 LOG IN TO INSTAGRAM</span>
+              <span className="text-slate-400 font-medium">2 CONNECT INSTAGRAM HANDLE</span>
             </div>
 
             {/* Heading and Subtext */}
@@ -475,7 +517,7 @@ export const DashboardPage: React.FC = () => {
               Which school is this account for?
             </h3>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Search for your school, then log in to its Instagram account. We'll link the two automatically.
+              Search for your school, then link its Instagram handle directly inside CampusConnect.
             </p>
 
             {/* Search Input matching Image 5 */}
@@ -595,23 +637,6 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Floating "We Are Here! 1" support badge */}
-      <div className="fixed bottom-4 right-4 z-40 flex items-center gap-2 select-none pointer-events-auto">
-        <div className="relative flex items-center justify-center">
-          <button 
-            type="button"
-            onClick={() => addToast('Live Support', 'Our campus support team is active 24/7 to assist with your workspace setup.', 'info')}
-            className="w-12 h-12 rounded-full bg-[#854D0E] text-white flex items-center justify-center shadow-lg border-2 border-white cursor-pointer hover:scale-105 active:scale-95 transition-transform"
-            aria-label="Contact live support"
-          >
-            <MessageCircle className="w-6 h-6 fill-white text-[#854D0E]" />
-          </button>
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white shadow-xs">
-            1
-          </span>
-        </div>
-      </div>
 
     </div>
   );

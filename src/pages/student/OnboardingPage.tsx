@@ -16,7 +16,7 @@ import {
 import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 
 export const OnboardingPage: React.FC = () => {
-  const { currentUser, universities, completeOnboarding, navigateTo } = useApp();
+  const { currentUser, universities, selectedUniversity, entryUniversityContext, completeOnboarding, navigateTo } = useApp();
 
   const [course, setCourse] = useState(currentUser?.course || '');
   const [graduationYear, setGraduationYear] = useState(currentUser?.graduationYear || '2028');
@@ -27,7 +27,12 @@ export const OnboardingPage: React.FC = () => {
     (currentUser as any)?.housingPreference || 'Not Specified'
   );
 
-  const selectedUni = universities.find(u => u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug) || universities[0] || VERIFIED_UNIVERSITIES[0];
+  const selectedUni =
+    selectedUniversity ||
+    entryUniversityContext ||
+    universities.find(u => u && (u.id === currentUser?.universityId || u.slug === currentUser?.universitySlug)) ||
+    universities[0] ||
+    VERIFIED_UNIVERSITIES[0];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
