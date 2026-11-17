@@ -70,6 +70,7 @@ export const ForgotPasswordPage: React.FC = () => {
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim(),
@@ -202,6 +203,7 @@ export const VerifyEmailPage: React.FC = () => {
     try {
       const res = await fetch('/api/auth/verify-email', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: targetEmail.trim(), code: targetCode.trim() })
       });
@@ -318,8 +320,18 @@ export const ResetPasswordPage: React.FC = () => {
       addToast('Missing Recovery Token', 'Please open the password reset link directly from your email.', 'error');
       return;
     }
-    if (newPassword.length < 8) {
-      addToast('Password Too Short', 'Please choose at least 8 characters.', 'error');
+    if (
+      newPassword.length < 10 ||
+      !/[a-z]/.test(newPassword) ||
+      !/[A-Z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) ||
+      !/[^a-zA-Z0-9]/.test(newPassword)
+    ) {
+      addToast(
+        'Weak Password',
+        'Please choose at least 10 characters with uppercase, lowercase, a number, and a symbol.',
+        'error'
+      );
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -330,6 +342,7 @@ export const ResetPasswordPage: React.FC = () => {
     try {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, token, newPassword })
       });
@@ -372,10 +385,10 @@ export const ResetPasswordPage: React.FC = () => {
               <input
                 type="password"
                 required
-                minLength={8}
+                minLength={10}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Minimum 8 characters"
+                placeholder="Min 10 chars (upper, lower, number & symbol)"
                 className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-[#1D64EC]"
               />
             </div>
@@ -384,7 +397,7 @@ export const ResetPasswordPage: React.FC = () => {
               <input
                 type="password"
                 required
-                minLength={8}
+                minLength={10}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter password"

@@ -8,79 +8,397 @@ import crypto from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
 import { dbInstance, EmailDeliveryError } from './server/db';
 import type { AdminSession } from './server/db';
+import type { User, FeaturedSubmission } from './src/types';
+import {
+  getNormalizedClientIp,
+  validateAndStoreImageUpload,
+  resolvePrivateUploadPath,
+  signFileAccessToken,
+  verifyFileAccessToken,
+  timingSafeEqualStr,
+  validateSafeHttpUrl
+} from './server/security';
 
 const isProduction = process.env.NODE_ENV === 'production';
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 const app = express();
 
 app.disable('x-powered-by');
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+if (process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
+
+// Capture raw body for cryptographic webhook signature verification before JSON parsing
+const jsonWithRawBody = express.json({
+  limit: '2mb',
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf;
+  }
+});
+
+const uploadJsonParser = express.json({
+  limit: '10mb'
+});
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path === '/api/uploads/photo' || req.path === '/api/submissions') {
+    return uploadJsonParser(req, res, next);
+  }
+  return jsonWithRawBody(req, res, next);
+});
+
+app.use(express.urlencoded({ extended: true, limit: '256kb' }));
 app.use(cookieParser());
 
-// Global Security Headers Middleware
+// -----------------------------------------------------------------------------
+// GLOBAL SECURITY HEADERS MIDDLEWARE
+// -----------------------------------------------------------------------------
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'self' https://aistudio.google.com https://*.google.com https://*.googleusercontent.com",
+      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.firebaseapp.com https://accounts.google.com",
+      "worker-src 'self' blob:",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      isProduction
+        ? "script-src 'self' https://js.stripe.com https://apis.google.com https://www.gstatic.com"
+        : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://apis.google.com https://www.gstatic.com",
+      "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://api.stripe.com https://api.resend.com ws: wss:"
+    ].join('; ')
+  );
 
-  // Keep all administrative and API routes out of public caches and search engine indexing
-  if (req.path.startsWith('/admin') || req.path.startsWith('/api/admin') || req.path.startsWith('/api/auth')) {
+  if (isProduction && (req.secure || req.headers['x-forwarded-proto'] === 'https')) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+
+  // Keep all administrative, auth, file, and private API routes out of caches and search indexes
+  if (
+    req.path.startsWith('/admin') ||
+    req.path.startsWith('/api/admin') ||
+    req.path.startsWith('/api/auth') ||
+    req.path.startsWith('/api/users') ||
+    req.path.startsWith('/api/payments') ||
+    req.path.startsWith('/api/files')
+  ) {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
   }
+
   next();
 });
 
-// Extend Express Request type to carry admin session
+// -----------------------------------------------------------------------------
+// CSRF ORIGIN / FETCH-METADATA GUARD FOR STATE-CHANGING REQUESTS
+// -----------------------------------------------------------------------------
+const CSRF_EXEMPT_PATHS = new Set([
+  '/api/payments/webhook',
+  '/api/webhooks/resend',
+  '/api/webhooks/email',
+  '/api/email/webhook'
+]);
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const method = req.method.toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return next();
+  }
+  if (!req.path.startsWith('/api/') || CSRF_EXEMPT_PATHS.has(req.path)) {
+    return next();
+  }
+
+  const originHeader = req.headers.origin;
+  const refererHeader = req.headers.referer;
+  const host = (req.headers['x-forwarded-host'] as string || req.get('host') || '').split(',')[0].trim().toLowerCase();
+
+  const parseOriginHost = (rawUrl?: string): string | null => {
+    if (!rawUrl) return null;
+    try {
+      return new URL(rawUrl).host.toLowerCase();
+    } catch {
+      return null;
+    }
+  };
+
+  if (typeof originHeader === 'string' && originHeader.length > 0) {
+    const reqHost = parseOriginHost(originHeader);
+    if (!reqHost || (host && reqHost !== host)) {
+      dbInstance.logSecurityEvent(
+        'HIGH',
+        'CSRF_ORIGIN_BLOCKED',
+        `Blocked cross-origin ${method} ${req.path} from Origin=${originHeader} (expected host ${host})`,
+        undefined,
+        getNormalizedClientIp(req)
+      );
+      return res.status(403).json({
+        error: 'CsrfBlocked',
+        message: 'Cross-origin state-changing request rejected.'
+      });
+    }
+  } else if (typeof refererHeader === 'string' && refererHeader.length > 0) {
+    const refHost = parseOriginHost(refererHeader);
+    if (!refHost || (host && refHost !== host)) {
+      dbInstance.logSecurityEvent(
+        'HIGH',
+        'CSRF_REFERER_BLOCKED',
+        `Blocked cross-origin ${method} ${req.path} from Referer=${refererHeader}`,
+        undefined,
+        getNormalizedClientIp(req)
+      );
+      return res.status(403).json({
+        error: 'CsrfBlocked',
+        message: 'Cross-origin state-changing request rejected.'
+      });
+    }
+  } else if (req.cookies?.admin_session_token || req.cookies?.cc_user_session) {
+    // Cookie-authenticated mutation without Origin or Referer
+    const secFetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+    if (secFetchSite === 'cross-site') {
+      return res.status(403).json({
+        error: 'CsrfBlocked',
+        message: 'Cross-site cookie mutation rejected.'
+      });
+    }
+  }
+
+  next();
+});
+
+// -----------------------------------------------------------------------------
+// GENERAL API RATE LIMITER
+// -----------------------------------------------------------------------------
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === 'GET' || CSRF_EXEMPT_PATHS.has(req.path)) {
+    return next();
+  }
+  const ip = getNormalizedClientIp(req);
+  const limit = dbInstance.consumeRateLimit(`api_mut:${ip}`, 120, 60 * 1000, 60 * 1000);
+  if (!limit.allowed) {
+    res.setHeader('Retry-After', String(limit.retryAfterSeconds));
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: `Too many requests. Please try again in ${limit.retryAfterSeconds}s.`
+    });
+  }
+  next();
+});
+
+// -----------------------------------------------------------------------------
+// REQUEST CONTEXT & AUTHORIZATION MIDDLEWARES
+// -----------------------------------------------------------------------------
 export interface AuthenticatedAdminRequest extends Request {
   admin?: AdminSession;
 }
 
-// Server-side Administrator Authorization Middleware
-export function requireAdminAuth(req: AuthenticatedAdminRequest, res: Response, next: NextFunction) {
-  // Extract token from Bearer header or cookie
+export interface AuthenticatedUserRequest extends Request {
+  user?: User;
+  admin?: AdminSession;
+}
+
+function getCookieSecurityFlags(req: Request) {
+  const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
+  const referer = typeof req.headers.referer === 'string' ? req.headers.referer : '';
+  const isHttps = Boolean(
+    req.secure ||
+    req.headers['x-forwarded-proto'] === 'https' ||
+    origin.startsWith('https://') ||
+    referer.startsWith('https://') ||
+    isProduction
+  );
+  return {
+    httpOnly: true,
+    secure: isHttps,
+    sameSite: (isHttps ? 'none' : 'lax') as 'none' | 'lax'
+  };
+}
+
+function extractAdminToken(req: Request): string | undefined {
   let token = req.cookies?.admin_session_token;
   if (!token && req.headers.authorization) {
     const parts = req.headers.authorization.split(' ');
-    if (parts.length === 2 && parts[0] === 'Bearer') {
+    if (parts.length === 2 && parts[0] === 'Bearer' && parts[1].startsWith('sess_')) {
       token = parts[1];
     }
   }
+  return token;
+}
 
-  if (!token) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Authentication required. Please log in as an administrator.'
-    });
+function extractUserToken(req: Request): string | undefined {
+  let token = req.cookies?.cc_user_session;
+  if (!token && req.headers.authorization) {
+    const parts = req.headers.authorization.split(' ');
+    if (parts.length === 2 && parts[0] === 'Bearer' && parts[1].startsWith('usr_sess_')) {
+      token = parts[1];
+    }
+  }
+  return token;
+}
+
+export function requireAdminAuth(req: AuthenticatedAdminRequest, res: Response, next: NextFunction) {
+  const token = extractAdminToken(req);
+  if (token) {
+    const session = dbInstance.validateSession(token);
+    if (session) {
+      if (session.role !== 'Admin' || !session.mfaVerified) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Administrative MFA privileges required.'
+        });
+      }
+      req.admin = session;
+      return next();
+    }
   }
 
-  const session = dbInstance.validateSession(token);
-  if (!session) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Invalid or expired administrator session. Please log in again.'
-    });
-  }
-
-  if (session.role !== 'Admin') {
+  // Explicitly distinguish student attempting admin access (403) vs anonymous (401)
+  const userToken = extractUserToken(req);
+  if (userToken && dbInstance.validateUserSession(userToken)) {
+    dbInstance.logSecurityEvent(
+      'HIGH',
+      'PRIVILEGE_ESCALATION_ATTEMPT',
+      `Student user attempted unauthorized access to admin endpoint ${req.method} ${req.path}`,
+      undefined,
+      getNormalizedClientIp(req)
+    );
     return res.status(403).json({
       error: 'Forbidden',
       message: 'Administrative privileges required.'
     });
   }
 
-  req.admin = session;
+  return res.status(401).json({
+    error: 'Unauthorized',
+    message: 'Authentication required. Please log in as an administrator.'
+  });
+}
+
+export function requireUserAuth(req: AuthenticatedUserRequest, res: Response, next: NextFunction) {
+  const token = extractUserToken(req);
+  if (!token) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Please sign in to your student account.'
+    });
+  }
+  const validated = dbInstance.validateUserSession(token);
+  if (!validated) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Your session has expired. Please sign in again.'
+    });
+  }
+  req.user = validated.user;
   next();
 }
 
+export function requireUserOrAdminAuth(req: AuthenticatedUserRequest, res: Response, next: NextFunction) {
+  const adminToken = extractAdminToken(req);
+  if (adminToken) {
+    const adminSess = dbInstance.validateSession(adminToken);
+    if (adminSess && adminSess.role === 'Admin' && adminSess.mfaVerified) {
+      req.admin = adminSess;
+      return next();
+    }
+  }
+  const userToken = extractUserToken(req);
+  if (userToken) {
+    const validated = dbInstance.validateUserSession(userToken);
+    if (validated) {
+      req.user = validated.user;
+      return next();
+    }
+  }
+  return res.status(401).json({
+    error: 'Unauthorized',
+    message: 'Authentication required.'
+  });
+}
+
+const getBaseUrl = (req: Request): string => {
+  const configured = (process.env.APP_URL || '').trim();
+  if (configured && configured.startsWith('http')) {
+    return configured.replace(/\/+$/, '');
+  }
+  const host = (req.headers['x-forwarded-host'] as string || req.get('host') || '').split(',')[0].trim();
+  if (host) {
+    const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0] || req.protocol || 'http';
+    return `${proto}://${host}`;
+  }
+  return 'https://campusconnect.app';
+};
+
+function resolveStripeCredentials() {
+  const stripeIntegration = dbInstance.getIntegrations().find((i) => i.id === 'payment_stripe');
+  const publishableKey = (
+    process.env.VITE_STRIPE_PUBLISHABLE_KEY ||
+    process.env.STRIPE_PUBLISHABLE_KEY ||
+    stripeIntegration?.keys?.publishableKey ||
+    ''
+  ).trim();
+  const secretKey = (
+    process.env.STRIPE_SECRET_KEY ||
+    stripeIntegration?.keys?.secretKey ||
+    ''
+  ).trim();
+  const webhookSecret = (
+    process.env.STRIPE_WEBHOOK_SECRET ||
+    stripeIntegration?.keys?.webhookSecret ||
+    ''
+  ).trim();
+
+  return { publishableKey, secretKey, webhookSecret };
+}
+
+function verifyStripeWebhookSignature(
+  rawBody: Buffer,
+  sigHeader: string | undefined,
+  webhookSecret: string,
+  toleranceSeconds = 300
+): boolean {
+  if (!sigHeader || !webhookSecret || !rawBody) return false;
+  const parts = sigHeader.split(',').map((p) => p.trim());
+  let timestamp = '';
+  const v1Sigs: string[] = [];
+
+  for (const part of parts) {
+    const eqIdx = part.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = part.slice(0, eqIdx);
+    const val = part.slice(eqIdx + 1);
+    if (key === 't') timestamp = val;
+    else if (key === 'v1') v1Sigs.push(val);
+  }
+
+  const tsNum = Number(timestamp);
+  if (!Number.isFinite(tsNum) || v1Sigs.length === 0) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - tsNum) > toleranceSeconds) return false;
+
+  const signedPayload = `${timestamp}.${rawBody.toString('utf8')}`;
+  const expectedSig = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(signedPayload, 'utf8')
+    .digest('hex');
+
+  return v1Sigs.some((sig) => timingSafeEqualStr(sig, expectedSig));
+}
+
 // -----------------------------------------------------------------------------
-// AUTHENTICATION & BOOTSTRAP API ENDPOINTS
+// ADMIN AUTHENTICATION, BOOTSTRAP & TOTP MFA ENDPOINTS
 // -----------------------------------------------------------------------------
 
-// Check if initial admin is bootstrapped
 app.get('/api/auth/admin-status', (_req: Request, res: Response) => {
   const adminCount = dbInstance.getAdminCount();
   res.json({
@@ -89,86 +407,112 @@ app.get('/api/auth/admin-status', (_req: Request, res: Response) => {
   });
 });
 
-// Initial Administrator Bootstrap (One-Time Only)
 app.post('/api/auth/bootstrap-admin', (req: Request, res: Response) => {
-  try {
-    const { email, password } = req.body;
-    const { admin, session } = dbInstance.bootstrapAdmin(email, password);
-
-    // Set secure HTTP-only cookie compatible with HTTPS preview iframes
-    const isHttps = Boolean(req.secure || req.headers['x-forwarded-proto'] === 'https' || isProduction);
-    res.cookie('admin_session_token', session.token, {
-      httpOnly: true,
-      secure: isHttps,
-      sameSite: isHttps ? 'none' : 'lax',
-      maxAge: 4 * 60 * 60 * 1000 // 4 hours
+  const clientIp = getNormalizedClientIp(req);
+  const limit = dbInstance.consumeRateLimit(`admin_boot:${clientIp}`, 5, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: `Too many bootstrap attempts. Wait ${Math.ceil(limit.retryAfterSeconds / 60)} minute(s).`
     });
+  }
 
+  try {
+    const { email, password } = req.body || {};
+    const result = dbInstance.bootstrapAdmin(email, password, clientIp);
     return res.status(201).json({
       success: true,
-      message: 'Administrator successfully initialized.',
-      admin,
-      token: session.token,
-      expiresAt: session.expiresAt
+      message: 'Administrator account created. Complete MFA enrollment to start your session.',
+      admin: result.admin,
+      mfaRequired: true,
+      mfaSetupRequired: true,
+      challengeToken: result.challengeToken,
+      secret: result.secret,
+      otpAuthUri: result.otpAuthUri,
+      backupCodes: result.backupCodes
     });
   } catch (err: any) {
     return res.status(400).json({
       error: 'BootstrapFailed',
-      message: err.message || 'Failed to bootstrap administrator.'
+      message: err.message || 'Failed to initialize administrator.'
     });
   }
 });
 
-// Administrator Login
 app.post('/api/auth/admin-login', (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
-    const rawIp = ((req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || '127.0.0.1').trim();
-    const clientIp = rawIp.replace(/^::ffff:/, '');
-
-    const { admin, session } = dbInstance.loginAdmin(email, password, clientIp);
-
-    const isHttps = Boolean(req.secure || req.headers['x-forwarded-proto'] === 'https' || isProduction);
-    res.cookie('admin_session_token', session.token, {
-      httpOnly: true,
-      secure: isHttps,
-      sameSite: isHttps ? 'none' : 'lax',
-      maxAge: 4 * 60 * 60 * 1000
-    });
-
+    const { email, password } = req.body || {};
+    const clientIp = getNormalizedClientIp(req);
+    const challenge = dbInstance.loginAdmin(email, password, clientIp);
     return res.json({
       success: true,
-      message: 'Administrator authenticated successfully.',
-      admin,
-      token: session.token,
-      expiresAt: session.expiresAt
+      message: challenge.mfaSetupRequired
+        ? 'Scan or copy your MFA authenticator key and enter your 6-digit verification code.'
+        : 'Enter the 6-digit verification code from your authenticator app.',
+      ...challenge
     });
   } catch (err: any) {
     const status = err.message?.includes('wait') ? 429 : 401;
     return res.status(status).json({
       error: 'AuthenticationFailed',
-      message: err.message || 'Invalid administrator credentials.'
+      message: err.message || 'Invalid email or password.'
     });
   }
 });
 
-// Administrator Logout
+app.post('/api/auth/admin-mfa/verify', (req: Request, res: Response) => {
+  try {
+    const { challengeToken, code } = req.body || {};
+    if (!challengeToken || !code) {
+      return res.status(400).json({
+        error: 'BadRequest',
+        message: 'MFA challenge token and 6-digit verification code are required.'
+      });
+    }
+    const clientIp = getNormalizedClientIp(req);
+    const { admin, session } = dbInstance.verifyAdminMfaChallenge(String(challengeToken), String(code), clientIp);
+
+    res.cookie('admin_session_token', session.token, {
+      ...getCookieSecurityFlags(req),
+      maxAge: 4 * 60 * 60 * 1000
+    });
+
+    return res.json({
+      success: true,
+      message: 'Administrator authenticated with MFA.',
+      admin,
+      expiresAt: session.expiresAt
+    });
+  } catch (err: any) {
+    const status = err.message?.includes('wait') ? 429 : 401;
+    return res.status(status).json({
+      error: 'MfaVerificationFailed',
+      message: err.message || 'Invalid MFA verification code.'
+    });
+  }
+});
+
 app.post('/api/auth/admin-logout', (req: AuthenticatedAdminRequest, res: Response) => {
-  let token = req.cookies?.admin_session_token;
-  if (!token && req.headers.authorization) {
-    const parts = req.headers.authorization.split(' ');
-    if (parts.length === 2 && parts[0] === 'Bearer') token = parts[1];
-  }
-
+  const token = extractAdminToken(req);
   if (token) {
+    const sess = dbInstance.validateSession(token);
     dbInstance.invalidateSession(token);
+    if (sess) {
+      dbInstance.logAudit({
+        actorUid: sess.adminId,
+        actorEmail: sess.email,
+        actorRole: 'Admin',
+        action: 'ADMIN_LOGOUT',
+        targetType: 'USER',
+        targetId: sess.adminId,
+        details: `Administrator logged out from IP ${getNormalizedClientIp(req)}`
+      });
+    }
   }
-
-  res.clearCookie('admin_session_token');
+  res.clearCookie('admin_session_token', getCookieSecurityFlags(req));
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
 
-// Verify Current Admin Session
 app.get('/api/auth/admin-me', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   return res.json({
     authenticated: true,
@@ -176,34 +520,50 @@ app.get('/api/auth/admin-me', requireAdminAuth, (req: AuthenticatedAdminRequest,
       id: req.admin?.adminId,
       email: req.admin?.email,
       role: req.admin?.role,
+      mfaVerified: Boolean(req.admin?.mfaVerified),
       expiresAt: req.admin?.expiresAt
     }
   });
 });
 
-const getBaseUrl = (req: Request): string => {
-  const origin = req.headers.origin;
-  if (typeof origin === 'string' && origin.startsWith('http')) {
-    return origin.replace(/\/+$/, '');
-  }
-  const host = req.get('host');
-  if (host) {
-    const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0] || req.protocol || 'http';
-    return `${proto}://${host}`;
-  }
-  return 'https://campusconnect.app';
-};
+// -----------------------------------------------------------------------------
+// STUDENT ACCOUNT RECOVERY & VERIFICATION ENDPOINTS
+// -----------------------------------------------------------------------------
 
-// Password Reset Request (Dispatches branded PASSWORD_RESET email)
 app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
+  const clientIp = getNormalizedClientIp(req);
+  const ipLimit = dbInstance.consumeRateLimit(`pwd_forgot_ip:${clientIp}`, 6, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!ipLimit.allowed) {
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: `Too many password reset requests. Please wait ${Math.ceil(ipLimit.retryAfterSeconds / 60)} minute(s).`
+    });
+  }
+
   try {
-    const { email, universityId } = req.body;
-    if (!email || !email.includes('@')) {
+    const { email, universityId } = req.body || {};
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
       return res.status(400).json({ error: 'BadRequest', message: 'A valid email address is required.' });
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const acctLimit = dbInstance.consumeRateLimit(`pwd_forgot_acct:${cleanEmail}`, 4, 15 * 60 * 1000, 15 * 60 * 1000);
+    if (!acctLimit.allowed) {
+      return res.status(429).json({
+        error: 'TooManyRequests',
+        message: 'Too many reset requests for this email. Please wait before trying again.'
+      });
+    }
+
     const token = dbInstance.issuePasswordResetToken(cleanEmail);
+    // Non-enumerating response: never disclose whether an account exists
+    if (!token) {
+      return res.json({
+        success: true,
+        message: 'If an account matches that email address, password reset instructions have been dispatched.'
+      });
+    }
+
     const matchedUser = dbInstance.getRegisteredUsers().find((u) => u.email?.toLowerCase() === cleanEmail);
     const targetUni = universityId || matchedUser?.universityId || matchedUser?.universitySlug || 'general';
     const baseUrl = getBaseUrl(req);
@@ -216,7 +576,7 @@ app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
         student_name: matchedUser?.name || cleanEmail.split('@')[0],
         student_email: cleanEmail,
         base_url: baseUrl,
-        continuation_link: `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(cleanEmail)}`
+        continuation_link: `${baseUrl}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(cleanEmail)}`
       },
       idempotencyKey: `pwd_reset_${cleanEmail}_${Math.floor(Date.now() / 60000)}`
     });
@@ -225,76 +585,83 @@ app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         error: 'DispatchFailed',
-        message: log.errorMessage || 'Failed to dispatch password reset email.',
-        logId: log.id
-      });
-    }
-
-    if (log.metadata?.sandboxRestriction) {
-      return res.json({
-        success: true,
-        sandboxQueued: true,
-        message: 'Password reset request logged and queued. External email delivery activates after verifying your sending domain.',
+        message: 'Unable to dispatch password reset email right now. Please contact support.',
         logId: log.id
       });
     }
 
     return res.json({
       success: true,
-      message: `Password reset instructions have been dispatched to ${cleanEmail}.`,
-      logId: log.id
+      message: 'If an account matches that email address, password reset instructions have been dispatched.'
     });
   } catch (err: any) {
     if (err instanceof EmailDeliveryError) {
-      console.error('[ForgotPassword][EmailDeliveryError]', err.code, err.message);
       return res.status(400).json({
         success: false,
         error: err.code,
-        message: err.message,
-        logId: err.emailLog?.id,
-        diagnostic: {
-          provider: err.provider,
-          httpStatus: err.httpStatus,
-          providerResponse: err.providerResponse
-        }
+        message: 'Unable to send reset email at this time.'
       });
     }
-    return res.status(500).json({ error: 'ResetFailed', message: err.message || 'Failed to dispatch password reset email.' });
+    return res.status(500).json({ error: 'ResetFailed', message: 'Failed to process password reset request.' });
   }
 });
 
-// Reset Password Confirmation (Validates token and hashes new password)
 app.post('/api/auth/reset-password', (req: Request, res: Response) => {
+  const clientIp = getNormalizedClientIp(req);
+  const limit = dbInstance.consumeRateLimit(`pwd_reset_ip:${clientIp}`, 10, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: `Too many reset attempts. Please wait ${Math.ceil(limit.retryAfterSeconds / 60)} minute(s).`
+    });
+  }
+
   try {
     const { email, token, newPassword } = req.body || {};
     if (!email || !token || !newPassword) {
       return res.status(400).json({ error: 'BadRequest', message: 'Email, recovery token, and new password are required.' });
     }
-    if (String(newPassword).length < 8) {
-      return res.status(400).json({ error: 'WeakPassword', message: 'Password must be at least 8 characters.' });
+    const result = dbInstance.resetUserPasswordWithToken(String(email), String(token), String(newPassword));
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'ResetInvalid',
+        message: result.message || 'Reset link is invalid or has expired.'
+      });
     }
-    const ok = dbInstance.resetUserPasswordWithToken(String(email), String(token), String(newPassword));
-    if (!ok) {
-      return res.status(400).json({ error: 'InvalidToken', message: 'Reset link is invalid or has expired. Please request a new reset email.' });
-    }
-    return res.json({ success: true, message: 'Your password has been updated. You can now sign in.' });
-  } catch (err: any) {
-    return res.status(500).json({ error: 'ResetFailed', message: err.message || 'Could not reset password.' });
+    res.clearCookie('cc_user_session', getCookieSecurityFlags(req));
+    return res.json({ success: true, message: 'Your password has been updated. All previous sessions were signed out.' });
+  } catch {
+    return res.status(500).json({ error: 'ResetFailed', message: 'Could not reset password.' });
   }
 });
 
-// Student Email Verification Request (Dispatches branded ACCOUNT_VERIFICATION email)
-app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
+app.post('/api/auth/send-verification', async (req: AuthenticatedUserRequest, res: Response) => {
+  const clientIp = getNormalizedClientIp(req);
+  const limit = dbInstance.consumeRateLimit(`verif_send:${clientIp}`, 6, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: `Too many verification email requests. Wait ${Math.ceil(limit.retryAfterSeconds / 60)} minute(s).`
+    });
+  }
+
   try {
-    const { email, universityId, studentName } = req.body;
-    if (!email || !email.includes('@')) {
+    const { email, universityId, studentName } = req.body || {};
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
       return res.status(400).json({ error: 'BadRequest', message: 'A valid email address is required.' });
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const code = dbInstance.issueVerificationCode(cleanEmail);
     const matchedUser = dbInstance.getRegisteredUsers().find((u) => u.email?.toLowerCase() === cleanEmail);
-    const targetUni = universityId || matchedUser?.universityId || matchedUser?.universitySlug || 'general';
+    if (!matchedUser) {
+      return res.json({
+        success: true,
+        message: 'If your student account is registered, a verification code has been dispatched.'
+      });
+    }
+
+    const code = dbInstance.issueVerificationCode(cleanEmail);
+    const targetUni = universityId || matchedUser.universityId || matchedUser.universitySlug || 'general';
     const baseUrl = getBaseUrl(req);
 
     const log = await dbInstance.sendUniversityEmail({
@@ -302,11 +669,11 @@ app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
       eventType: 'ACCOUNT_VERIFICATION',
       recipient: cleanEmail,
       variables: {
-        student_name: studentName || matchedUser?.name || cleanEmail.split('@')[0],
+        student_name: studentName || matchedUser.name || cleanEmail.split('@')[0],
         student_email: cleanEmail,
         verification_code: code,
         base_url: baseUrl,
-        continuation_link: `${baseUrl}/verify?code=${code}&email=${encodeURIComponent(cleanEmail)}`
+        continuation_link: `${baseUrl}/verify?code=${encodeURIComponent(code)}&email=${encodeURIComponent(cleanEmail)}`
       },
       idempotencyKey: `email_verif_${cleanEmail}_${Math.floor(Date.now() / 60000)}`
     });
@@ -336,20 +703,39 @@ app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     if (err instanceof EmailDeliveryError) {
-      console.error('[SendVerification][EmailDeliveryError]', err.code, err.message);
       return res.status(400).json({
         success: false,
         error: err.code,
         message: err.message,
-        logId: err.emailLog?.id,
-        diagnostic: {
-          provider: err.provider,
-          httpStatus: err.httpStatus,
-          providerResponse: err.providerResponse
-        }
+        logId: err.emailLog?.id
       });
     }
-    return res.status(500).json({ error: 'VerificationFailed', message: err.message || 'Failed to dispatch verification email.' });
+    return res.status(500).json({ error: 'VerificationFailed', message: 'Failed to dispatch verification email.' });
+  }
+});
+
+app.post('/api/auth/verify-email', (req: Request, res: Response) => {
+  const clientIp = getNormalizedClientIp(req);
+  const limit = dbInstance.consumeRateLimit(`verif_check:${clientIp}`, 10, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: `Too many verification attempts. Wait ${Math.ceil(limit.retryAfterSeconds / 60)} minute(s).`
+    });
+  }
+
+  try {
+    const { email, code } = req.body || {};
+    if (!email || !code) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Email address and verification code are required.' });
+    }
+    const result = dbInstance.verifyStudentEmailCode(String(email), String(code));
+    if (!result.verified) {
+      return res.status(400).json({ error: 'InvalidCode', message: 'Verification code is invalid or expired. Please request a new code.' });
+    }
+    return res.json({ success: true, verified: true, user: result.user, message: `Email ${email} verified successfully.` });
+  } catch {
+    return res.status(500).json({ error: 'VerifyFailed', message: 'Could not verify email.' });
   }
 });
 
@@ -357,19 +743,22 @@ app.post('/api/auth/send-verification', async (req: Request, res: Response) => {
 // SECURE ADMIN DASHBOARD API ENDPOINTS
 // -----------------------------------------------------------------------------
 
-// Admin Overview Metrics (All derived from database)
 app.get('/api/admin/overview', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
-  const overview = dbInstance.getOverview();
-  return res.json(overview);
+  return res.json(dbInstance.getOverview());
 });
 
-// List All Campuses (Admin View)
+app.get('/api/admin/security-events', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
+  return res.json({ events: dbInstance.getSecurityEvents(150) });
+});
+
+app.get('/api/admin/audit-logs/verify', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
+  return res.json(dbInstance.verifyAuditLogChain());
+});
+
 app.get('/api/admin/campuses', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
-  const campuses = dbInstance.getCampuses();
-  return res.json({ campuses });
+  return res.json({ campuses: dbInstance.getCampuses() });
 });
 
-// Create New Campus
 app.post('/api/admin/campuses', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const newCampus = dbInstance.createCampus(req.body, req.admin?.email || 'admin');
@@ -384,63 +773,93 @@ app.post('/api/admin/campuses', requireAdminAuth, (req: AuthenticatedAdminReques
     });
   } catch (err: any) {
     const status = err.message?.includes('already exists') ? 409 : 400;
-    return res.status(status).json({
-      error: 'CampusCreationFailed',
-      message: err.message || 'Failed to create campus.'
-    });
+    return res.status(status).json({ error: 'CampusCreationFailed', message: err.message || 'Failed to create campus.' });
   }
 });
 
-// Update Existing Campus
 app.put('/api/admin/campuses/:id', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const updated = dbInstance.updateCampus(req.params.id, req.body, req.admin?.email || 'admin');
-    return res.json({
-      success: true,
-      campus: updated
-    });
+    return res.json({ success: true, campus: updated });
   } catch (err: any) {
-    return res.status(400).json({
-      error: 'CampusUpdateFailed',
-      message: err.message || 'Failed to update campus.'
-    });
+    return res.status(400).json({ error: 'CampusUpdateFailed', message: err.message || 'Failed to update campus.' });
   }
 });
 
-// Delete Existing Campus
 app.delete('/api/admin/campuses/:id', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     dbInstance.deleteCampus(req.params.id, req.admin?.email || 'admin');
-    return res.json({
-      success: true,
-      message: 'Campus deleted successfully.'
-    });
+    return res.json({ success: true, message: 'Campus deleted successfully.' });
   } catch (err: any) {
-    return res.status(400).json({
-      error: 'CampusDeletionFailed',
-      message: err.message || 'Failed to delete campus.'
-    });
+    return res.status(400).json({ error: 'CampusDeletionFailed', message: err.message || 'Failed to delete campus.' });
   }
 });
 
-// Payment Management
 app.get('/api/admin/payments', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
   const payments = dbInstance.getPayments();
   const totals = dbInstance.getTotalAmountPaid();
-  return res.json({
-    payments,
-    totals,
-    count: payments.length
-  });
+  return res.json({ payments, totals, count: payments.length });
 });
 
-// Instagram Management (operates standalone without Meta Graph API integration)
+app.post('/api/admin/payments/webhook-test', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
+  try {
+    const body = req.body || {};
+    const txnRef = String(body.transactionId || `TXN_TEST_${Date.now()}`).trim();
+    const idempotencyKey = String(body.idempotencyKey || `idem_${Date.now()}`).trim();
+
+    const existingPayments = dbInstance.getPayments();
+    const isDuplicate = existingPayments.some(
+      (p) => p.providerTransactionReference === txnRef || p.idempotencyKey === idempotencyKey
+    );
+
+    if (isDuplicate) {
+      return res.json({
+        success: true,
+        duplicate: true,
+        message: 'Duplicate webhook test safely ignored via idempotency check.'
+      });
+    }
+
+    const payment = dbInstance.recordPayment({
+      submissionId: String(body.submissionId || 'sub_test_hook'),
+      studentUid: String(body.studentUid || 'usr_test_student'),
+      studentName: String(body.studentName || 'Test Student'),
+      universityId: String(body.universityId || 'uni_harvard'),
+      provider: 'STRIPE_CARD',
+      providerTransactionReference: txnRef,
+      amountUsd: Number(body.amountUsd) || 6.00,
+      currency: 'USD',
+      status: 'CONFIRMED',
+      idempotencyKey,
+      verifiedAt: new Date().toISOString()
+    });
+
+    dbInstance.logAudit({
+      actorUid: req.admin?.adminId || 'admin',
+      actorEmail: req.admin?.email || 'admin',
+      actorRole: 'Admin',
+      action: 'ADMIN_WEBHOOK_IDEMPOTENCY_TEST',
+      targetType: 'PAYMENT',
+      targetId: payment.id,
+      details: `Executed idempotency verification test (${txnRef})`
+    });
+
+    return res.json({
+      success: true,
+      duplicate: false,
+      paymentId: payment.id,
+      status: payment.status,
+      message: `Test transaction ${txnRef} saved & idempotency key registered.`
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'WebhookTestFailed', message: err?.message || 'Could not run test.' });
+  }
+});
+
 app.get('/api/admin/instagram', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
-  const accounts = dbInstance.getInstagramAccounts();
-  return res.json({ accounts });
+  return res.json({ accounts: dbInstance.getInstagramAccounts() });
 });
 
-// Admin Connect Instagram Account
 app.post('/api/admin/instagram/connect', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const account = dbInstance.connectInstagramAccount(req.body || {}, req.admin?.email || 'admin');
@@ -450,7 +869,6 @@ app.post('/api/admin/instagram/connect', requireAdminAuth, (req: AuthenticatedAd
   }
 });
 
-// Admin Refresh Instagram Account
 app.post('/api/admin/instagram/:id/refresh', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const account = dbInstance.refreshInstagramAccount(req.params.id, req.admin?.email || 'admin');
@@ -460,7 +878,6 @@ app.post('/api/admin/instagram/:id/refresh', requireAdminAuth, (req: Authenticat
   }
 });
 
-// Disconnect Instagram Account
 app.post('/api/admin/instagram/:id/disconnect', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const updated = dbInstance.disconnectInstagramAccount(req.params.id, req.admin?.email || 'admin');
@@ -470,33 +887,35 @@ app.post('/api/admin/instagram/:id/disconnect', requireAdminAuth, (req: Authenti
   }
 });
 
-// Workspace Instagram Account Routes (no integration setup required)
-app.get('/api/instagram/accounts', (_req: Request, res: Response) => {
-  const accounts = dbInstance.getInstagramAccounts();
-  return res.json({ accounts });
+// Workspace Instagram routes (require authenticated student or admin)
+app.get('/api/instagram/accounts', requireUserOrAdminAuth, (_req: AuthenticatedUserRequest, res: Response) => {
+  return res.json({ accounts: dbInstance.getInstagramAccounts() });
 });
 
-app.post('/api/instagram/accounts', (req: Request, res: Response) => {
+app.post('/api/instagram/accounts', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
   try {
-    const account = dbInstance.connectInstagramAccount(req.body || {}, req.body?.actorEmail || 'system');
+    const actor = req.admin?.email || req.user?.email || 'user';
+    const account = dbInstance.connectInstagramAccount(req.body || {}, actor);
     return res.json({ success: true, account });
   } catch (err: any) {
     return res.status(400).json({ error: 'ConnectFailed', message: err.message });
   }
 });
 
-app.post('/api/instagram/accounts/:id/refresh', (req: Request, res: Response) => {
+app.post('/api/instagram/accounts/:id/refresh', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
   try {
-    const account = dbInstance.refreshInstagramAccount(req.params.id, 'system');
+    const actor = req.admin?.email || req.user?.email || 'user';
+    const account = dbInstance.refreshInstagramAccount(req.params.id, actor);
     return res.json({ success: true, account });
   } catch (err: any) {
     return res.status(400).json({ error: 'RefreshFailed', message: err.message });
   }
 });
 
-app.post('/api/instagram/accounts/:id/disconnect', (req: Request, res: Response) => {
+app.post('/api/instagram/accounts/:id/disconnect', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
   try {
-    const account = dbInstance.disconnectInstagramAccount(req.params.id, 'system');
+    const actor = req.admin?.email || req.user?.email || 'user';
+    const account = dbInstance.disconnectInstagramAccount(req.params.id, actor);
     return res.json({ success: true, account });
   } catch (err: any) {
     return res.status(400).json({ error: 'DisconnectFailed', message: err.message });
@@ -504,10 +923,9 @@ app.post('/api/instagram/accounts/:id/disconnect', (req: Request, res: Response)
 });
 
 // -----------------------------------------------------------------------------
-// CENTRALIZED EMAIL INFRASTRUCTURE & UNIVERSITY EMAIL MANAGEMENT ENDPOINTS
+// CENTRALIZED EMAIL INFRASTRUCTURE & UNIVERSITY EMAIL MANAGEMENT (ADMIN ONLY)
 // -----------------------------------------------------------------------------
 
-// 1. Get Central Email Configuration
 app.get('/api/admin/email/config', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   const config = dbInstance.getCentralEmailConfig();
   const resendStatus = await dbInstance.getResendDomainStatus(req.query.refresh === '1').catch(() => undefined);
@@ -524,22 +942,16 @@ app.get('/api/admin/email/config', requireAdminAuth, async (req: AuthenticatedAd
   return res.json({ config: safeConfig, resendStatus });
 });
 
-// 2. Update Central Email Configuration
 app.post('/api/admin/email/config', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const updates = { ...req.body };
-    // Preserve existing sensitive passwords if masked value sent back
     const existing = dbInstance.getCentralEmailConfig();
-    if (updates.smtpPass === '••••••••••••') {
-      updates.smtpPass = existing.smtpPass;
-    }
-    if (updates.apiKey === '••••••••••••') {
-      updates.apiKey = existing.apiKey;
-    }
+    if (updates.smtpPass === '••••••••••••') updates.smtpPass = existing.smtpPass;
+    if (updates.apiKey === '••••••••••••') updates.apiKey = existing.apiKey;
 
     const saved = dbInstance.saveCentralEmailConfig(updates);
     dbInstance.logAudit({
-      actorUid: 'admin',
+      actorUid: req.admin?.adminId || 'admin',
       actorEmail: req.admin?.email || 'admin',
       actorRole: 'Admin',
       action: 'EMAIL_CONFIG_UPDATED',
@@ -565,19 +977,14 @@ app.post('/api/admin/email/config', requireAdminAuth, async (req: AuthenticatedA
   }
 });
 
-// 3. Get All University Email Identities
 app.get('/api/admin/email/identities', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
-  const identities = dbInstance.getAllUniversityEmailIdentities();
-  return res.json({ identities });
+  return res.json({ identities: dbInstance.getAllUniversityEmailIdentities() });
 });
 
-// 4. Get University Email Identity
 app.get('/api/admin/email/identities/:uniId', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
-  const identity = dbInstance.getUniversityEmailIdentity(req.params.uniId);
-  return res.json({ identity });
+  return res.json({ identity: dbInstance.getUniversityEmailIdentity(req.params.uniId) });
 });
 
-// 5. Save/Update University Email Identity
 app.post('/api/admin/email/identities/:uniId', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const { senderEmail, senderName } = req.body || {};
@@ -596,7 +1003,7 @@ app.post('/api/admin/email/identities/:uniId', requireAdminAuth, (req: Authentic
     });
 
     dbInstance.logAudit({
-      actorUid: 'admin',
+      actorUid: req.admin?.adminId || 'admin',
       actorEmail: req.admin?.email || 'admin',
       actorRole: 'Admin',
       action: 'UNIVERSITY_IDENTITY_UPDATED',
@@ -611,13 +1018,10 @@ app.post('/api/admin/email/identities/:uniId', requireAdminAuth, (req: Authentic
   }
 });
 
-// 6. Get University Email Templates
 app.get('/api/admin/email/templates/:uniId', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
-  const templates = dbInstance.getUniversityEmailTemplates(req.params.uniId);
-  return res.json({ templates });
+  return res.json({ templates: dbInstance.getUniversityEmailTemplates(req.params.uniId) });
 });
 
-// 7. Save University Email Template
 app.post('/api/admin/email/templates/:uniId', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const saved = dbInstance.saveUniversityEmailTemplate({
@@ -626,7 +1030,7 @@ app.post('/api/admin/email/templates/:uniId', requireAdminAuth, (req: Authentica
     });
 
     dbInstance.logAudit({
-      actorUid: 'admin',
+      actorUid: req.admin?.adminId || 'admin',
       actorEmail: req.admin?.email || 'admin',
       actorRole: 'Admin',
       action: 'EMAIL_TEMPLATE_UPDATED',
@@ -641,7 +1045,6 @@ app.post('/api/admin/email/templates/:uniId', requireAdminAuth, (req: Authentica
   }
 });
 
-// 8. Delete Custom Template (Reset to Default)
 app.delete('/api/admin/email/templates/:uniId/:eventType', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     dbInstance.deleteUniversityEmailTemplate(req.params.uniId, req.params.eventType);
@@ -651,10 +1054,9 @@ app.delete('/api/admin/email/templates/:uniId/:eventType', requireAdminAuth, (re
   }
 });
 
-// 9. Preview Template Live
 app.post('/api/admin/email/preview-template', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
-    const { universityId, eventType, customTemplate, sampleVariables } = req.body;
+    const { universityId, eventType, customTemplate, sampleVariables } = req.body || {};
     const preview = dbInstance.previewUniversityEmail({
       universityId: universityId || 'general',
       eventType: eventType || 'WELCOME',
@@ -667,15 +1069,14 @@ app.post('/api/admin/email/preview-template', requireAdminAuth, (req: Authentica
   }
 });
 
-// 10. Send Test Branded Email
 app.post('/api/admin/email/test-template', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
-    const { recipient, universityId, eventType, customVariables } = req.body;
+    const { recipient, universityId, eventType, customVariables } = req.body || {};
     const targetRecipient = recipient || req.admin?.email || 'admin@campusconnect.app';
     const targetUni = universityId || 'general';
     const targetEvent = eventType || 'WELCOME';
-
     const baseUrl = getBaseUrl(req);
+
     const log = await dbInstance.sendUniversityEmail({
       universityId: targetUni,
       eventType: targetEvent,
@@ -699,7 +1100,7 @@ app.post('/api/admin/email/test-template', requireAdminAuth, async (req: Authent
     } else if (log.metadata?.sandboxMode && log.metadata?.routedViaSandboxTo && log.metadata?.sandboxRestriction) {
       responseMessage = `Not delivered to ${targetRecipient}: Resend Sandbox only permits direct delivery to ${log.metadata.routedViaSandboxTo} until a domain is verified at resend.com/domains. A preview copy was sent to ${log.metadata.routedViaSandboxTo} instead.`;
     } else if (log.metadata?.sandboxRestriction) {
-      responseMessage = log.errorMessage || `Email queued in Resend Sandbox Mode. Verify a custom domain at resend.com/domains to deliver to ${targetRecipient}.`;
+      responseMessage = log.errorMessage || `Email queued in Resend Sandbox Mode.`;
     }
 
     return res.status(log.status === 'FAILED' ? 400 : 200).json({
@@ -716,7 +1117,6 @@ app.post('/api/admin/email/test-template', requireAdminAuth, async (req: Authent
     });
   } catch (err: any) {
     if (err instanceof EmailDeliveryError) {
-      console.error('[TestTemplate][EmailDeliveryError]', err.code, err.message);
       const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
       return res.status(400).json({
         success: false,
@@ -732,11 +1132,10 @@ app.post('/api/admin/email/test-template', requireAdminAuth, async (req: Authent
         resendStatus
       });
     }
-    return res.status(500).json({ error: 'TestSendFailed', message: err.message });
+    return res.status(500).json({ error: 'TestSendFailed', message: 'Failed to dispatch test template.' });
   }
 });
 
-// 11. Legacy / Overview Email Endpoint
 app.get('/api/admin/email', requireAdminAuth, async (_req: AuthenticatedAdminRequest, res: Response) => {
   const config = dbInstance.getCentralEmailConfig();
   const logs = dbInstance.getEmailLogs();
@@ -754,7 +1153,6 @@ app.get('/api/admin/email', requireAdminAuth, async (_req: AuthenticatedAdminReq
   return res.json({ config: safeConfig, logs, resendStatus });
 });
 
-// 12. Legacy Test Verification
 app.post('/api/admin/email/send-test', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const recipient = req.body.recipient || req.admin?.email || 'admin@campusconnect.app';
@@ -796,7 +1194,6 @@ app.post('/api/admin/email/send-test', requireAdminAuth, async (req: Authenticat
     });
   } catch (err: any) {
     if (err instanceof EmailDeliveryError) {
-      console.error('[SendTest][EmailDeliveryError]', err.code, err.message);
       const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
       return res.status(400).json({
         success: false,
@@ -812,11 +1209,10 @@ app.post('/api/admin/email/send-test', requireAdminAuth, async (req: Authenticat
         resendStatus
       });
     }
-    return res.status(500).json({ error: 'SendFailed', message: err.message });
+    return res.status(500).json({ error: 'SendFailed', message: 'Failed to send test email.' });
   }
 });
 
-// 13. Manual Retry for Failed / Bounced / Queued Email Delivery
 app.post('/api/admin/email/logs/:id/retry', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const original = dbInstance.getEmailLogById(req.params.id);
@@ -844,7 +1240,7 @@ app.post('/api/admin/email/logs/:id/retry', requireAdminAuth, async (req: Authen
     });
 
     dbInstance.logAudit({
-      actorUid: 'admin',
+      actorUid: req.admin?.adminId || 'admin',
       actorEmail: req.admin?.email || 'admin',
       actorRole: 'Admin',
       action: 'EMAIL_RETRIED',
@@ -872,7 +1268,6 @@ app.post('/api/admin/email/logs/:id/retry', requireAdminAuth, async (req: Authen
     });
   } catch (err: any) {
     if (err instanceof EmailDeliveryError) {
-      console.error('[EmailRetry][EmailDeliveryError]', err.code, err.message);
       const resendStatus = await dbInstance.getResendDomainStatus(false).catch(() => undefined);
       return res.status(400).json({
         success: false,
@@ -888,11 +1283,10 @@ app.post('/api/admin/email/logs/:id/retry', requireAdminAuth, async (req: Authen
         resendStatus
       });
     }
-    return res.status(500).json({ error: 'RetryFailed', message: err.message });
+    return res.status(500).json({ error: 'RetryFailed', message: 'Failed to retry email.' });
   }
 });
 
-// 14. Live Email Infrastructure & SMTP / Resend Diagnostic Probe
 app.post('/api/admin/email/diagnostics', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const { recipient, universityId, eventType, attemptTestSend } = req.body || {};
@@ -903,38 +1297,27 @@ app.post('/api/admin/email/diagnostics', requireAdminAuth, async (req: Authentic
       attemptTestSend: Boolean(attemptTestSend)
     });
     return res.json(report);
-  } catch (err: any) {
-    console.error('[EmailDiagnosticsEndpointError]', err);
-    return res.status(500).json({ error: 'DiagnosticsFailed', message: err?.message || 'Failed to run email diagnostics.' });
+  } catch {
+    return res.status(500).json({ error: 'DiagnosticsFailed', message: 'Failed to run email diagnostics.' });
   }
 });
 
-// Audit Logs
 app.get('/api/admin/audit-logs', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
-  const logs = dbInstance.getAuditLogs();
-  return res.json({ logs });
+  return res.json({ logs: dbInstance.getAuditLogs() });
 });
 
-// Registered Users Management
 app.get('/api/admin/users', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
   const users = dbInstance.getRegisteredUsers();
   return res.json({ users, count: users.length });
 });
 
-// -----------------------------------------------------------------------------
-// PRODUCTION INTEGRATIONS & API KEYS ENDPOINTS
-// -----------------------------------------------------------------------------
-
-// List Production Integrations & Configured Keys
 app.get('/api/admin/integrations', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
-  const integrations = dbInstance.getMaskedIntegrations();
-  return res.json({ integrations });
+  return res.json({ integrations: dbInstance.getMaskedIntegrations() });
 });
 
-// Update Production Integration API Keys
 app.post('/api/admin/integrations/:id', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
-    const updated = dbInstance.updateIntegration(req.params.id, req.body.keys || {}, req.admin?.email || 'admin');
+    const updated = dbInstance.updateIntegration(req.params.id, req.body?.keys || {}, req.admin?.email || 'admin');
     return res.json({
       success: true,
       message: `Credentials for ${updated.name} updated successfully.`,
@@ -945,7 +1328,6 @@ app.post('/api/admin/integrations/:id', requireAdminAuth, (req: AuthenticatedAdm
   }
 });
 
-// Test Production Integration Connection Handshake
 app.post('/api/admin/integrations/:id/test', requireAdminAuth, async (req: AuthenticatedAdminRequest, res: Response) => {
   try {
     const result = await dbInstance.testIntegration(req.params.id, req.admin?.email || 'admin');
@@ -955,22 +1337,29 @@ app.post('/api/admin/integrations/:id/test', requireAdminAuth, async (req: Authe
   }
 });
 
-// Submissions Management (Admin View)
 app.get('/api/admin/submissions', requireAdminAuth, (_req: AuthenticatedAdminRequest, res: Response) => {
-  const submissions = dbInstance.getSubmissions();
-  return res.json({ submissions });
+  return res.json({ submissions: dbInstance.getSubmissions() });
 });
 
-// Admin Review Submission (Approve / Reject)
 app.post('/api/admin/submissions/:id/review', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
-    const { decision, reason } = req.body;
+    const { decision, reason } = req.body || {};
     if (!decision || (decision !== 'APPROVE' && decision !== 'REJECT')) {
       return res.status(400).json({ error: 'BadRequest', message: 'decision must be APPROVE or REJECT.' });
     }
+    const existing = dbInstance.getSubmissionById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'NotFound', message: 'Submission not found.' });
+    }
+    if (decision === 'APPROVE' && existing.paymentStatus !== 'PAYMENT_CONFIRMED') {
+      return res.status(400).json({
+        error: 'PaymentRequired',
+        message: 'Cannot approve a submission without verified payment confirmation.'
+      });
+    }
+
     const updated = dbInstance.updateSubmissionModeration(req.params.id, decision, reason, req.admin?.email || 'admin');
 
-    // Trigger automated email to student asynchronously
     if (updated.studentEmail) {
       const eventType = decision === 'APPROVE' ? 'SUBMISSION_APPROVED' : 'SUBMISSION_REJECTED';
       const baseUrl = getBaseUrl(req);
@@ -987,7 +1376,7 @@ app.post('/api/admin/submissions/:id/review', requireAdminAuth, (req: Authentica
           continuation_link: `${baseUrl}/university/${updated.universitySlug || 'general'}`
         },
         idempotencyKey: `review_${updated.id}_${decision}_${Date.now()}`
-      }).catch(err => console.error('[ReviewEmailTrigger]', err));
+      }).catch((err) => console.error('[ReviewEmailTrigger]', err));
     }
 
     return res.json({ success: true, submission: updated });
@@ -996,18 +1385,28 @@ app.post('/api/admin/submissions/:id/review', requireAdminAuth, (req: Authentica
   }
 });
 
-// Admin-Only Publish to University Instagram Account
 app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
-    const { targetInstagramHandle, customPostUrl } = req.body;
-    const cleanHandle = (targetInstagramHandle || '@campusconnect').replace(/^@/, '');
-    const postCode = Math.random().toString(36).substring(2, 11);
-    const postUrl = customPostUrl || `https://www.instagram.com/p/C_${postCode}/`;
-    
-    // Update authoritative submission state in database
+    const { targetInstagramHandle, customPostUrl } = req.body || {};
+    const existing = dbInstance.getSubmissionById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'NotFound', message: 'Submission not found.' });
+    }
+    if (existing.paymentStatus !== 'PAYMENT_CONFIRMED' || existing.moderationStatus !== 'APPROVED') {
+      return res.status(400).json({
+        error: 'PreconditionFailed',
+        message: 'Submission must have verified payment and moderator approval before publishing.'
+      });
+    }
+
+    const cleanHandle = (targetInstagramHandle || existing.universityInstagramHandle || 'campusconnect').replace(/^@/, '');
+    const postCode = crypto.randomBytes(5).toString('hex');
+    const postUrl = (typeof customPostUrl === 'string' && customPostUrl.trim())
+      ? customPostUrl.trim()
+      : `https://www.instagram.com/p/C_${postCode}/`;
+
     const sub = dbInstance.publishSubmissionToInstagram(req.params.id, postUrl, cleanHandle, req.admin?.email || 'admin');
 
-    // Trigger automated email to student asynchronously
     if (sub.studentEmail) {
       const baseUrl = getBaseUrl(req);
       dbInstance.sendUniversityEmail({
@@ -1018,167 +1417,404 @@ app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req:
           student_name: sub.studentDisplayName,
           student_email: sub.studentEmail,
           submission_reference: sub.id,
-          instagram_post_url: postUrl,
+          instagram_post_url: sub.instagramPostUrl,
           university_instagram: cleanHandle,
           base_url: baseUrl,
           continuation_link: `${baseUrl}/university/${sub.universitySlug || 'general'}`
         },
         idempotencyKey: `publish_${sub.id}_${Date.now()}`
-      }).catch(err => console.error('[PublishEmailTrigger]', err));
+      }).catch((err) => console.error('[PublishEmailTrigger]', err));
     }
 
     return res.json({
       success: true,
       publishedAt: sub.publishedAt,
-      instagramPostUrl: postUrl,
+      instagramPostUrl: sub.instagramPostUrl,
       targetHandle: `@${cleanHandle}`,
       submission: sub,
       message: `Post successfully published to official university account @${cleanHandle}!`
     });
   } catch (err: any) {
-    return res.status(400).json({ 
-      error: 'PublishFailed', 
-      message: err.message 
+    return res.status(400).json({ error: 'PublishFailed', message: err.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// SECURE FILE UPLOAD & SIGNED FILE SERVING
+// -----------------------------------------------------------------------------
+
+app.post('/api/uploads/photo', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
+  try {
+    const { dataUrl, universityId } = req.body || {};
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      return res.status(400).json({ error: 'BadRequest', message: 'Image dataUrl is required.' });
+    }
+    const ownerUid = req.admin?.adminId || req.user?.id || 'unknown';
+    const stored = validateAndStoreImageUpload(dataUrl, 8 * 1024 * 1024);
+
+    dbInstance.registerUploadedFile({
+      id: stored.fileId,
+      ownerUid,
+      universityId: typeof universityId === 'string' ? universityId : undefined,
+      mimeType: stored.mimeType,
+      ext: stored.ext,
+      sizeBytes: stored.sizeBytes,
+      sha256: stored.sha256,
+      isPublic: false,
+      createdAt: new Date().toISOString()
+    });
+
+    const signed = signFileAccessToken(stored.fileId, 1800);
+    return res.status(201).json({
+      success: true,
+      fileId: stored.fileId,
+      mimeType: stored.mimeType,
+      sizeBytes: stored.sizeBytes,
+      url: `/api/files/${stored.fileId}`,
+      previewUrl: `/api/files/${stored.fileId}?exp=${signed.exp}&sig=${signed.sig}`
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'UploadRejected', message: err.message || 'Invalid image upload.' });
+  }
+});
+
+app.get('/api/files/:id', (req: AuthenticatedUserRequest, res: Response) => {
+  const fileId = (req.params.id || '').trim();
+  if (!/^[a-zA-Z0-9_-]{8,80}$/.test(fileId)) {
+    return res.status(400).json({ error: 'InvalidFileId', message: 'Malformed file identifier.' });
+  }
+
+  const record = dbInstance.getUploadedFile(fileId);
+  if (!record) {
+    return res.status(404).json({ error: 'NotFound', message: 'File not found.' });
+  }
+
+  let authorized = record.isPublic;
+
+  if (!authorized && req.query.exp && req.query.sig) {
+    authorized = verifyFileAccessToken(fileId, String(req.query.exp), String(req.query.sig));
+  }
+
+  if (!authorized) {
+    const adminToken = extractAdminToken(req);
+    if (adminToken) {
+      const adminSess = dbInstance.validateSession(adminToken);
+      if (adminSess && adminSess.role === 'Admin' && adminSess.mfaVerified) {
+        authorized = true;
+      }
+    }
+  }
+
+  if (!authorized) {
+    const userToken = extractUserToken(req);
+    if (userToken) {
+      const validated = dbInstance.validateUserSession(userToken);
+      if (validated && validated.user.id === record.ownerUid) {
+        authorized = true;
+      }
+    }
+  }
+
+  if (!authorized) {
+    return res.status(403).json({ error: 'Forbidden', message: 'You are not authorized to view this file.' });
+  }
+
+  const filePath = resolvePrivateUploadPath(record.id, record.ext);
+  if (!filePath) {
+    return res.status(404).json({ error: 'NotFound', message: 'File binary unavailable.' });
+  }
+
+  res.setHeader('Content-Type', record.mimeType);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', 'sandbox');
+  res.setHeader('Cache-Control', record.isPublic ? 'public, max-age=3600' : 'private, no-store');
+  return res.sendFile(filePath);
+});
+
+// -----------------------------------------------------------------------------
+// STUDENT SUBMISSIONS & AUTHENTICATED PROFILE ENDPOINTS
+// -----------------------------------------------------------------------------
+
+app.get('/api/submissions', (_req: Request, res: Response) => {
+  return res.json({ submissions: dbInstance.getPublicSubmissions() });
+});
+
+app.get('/api/submissions/mine', requireUserAuth, (req: AuthenticatedUserRequest, res: Response) => {
+  return res.json({ submissions: dbInstance.getSubmissionsByStudent(req.user!.id) });
+});
+
+app.post('/api/submissions', requireUserAuth, (req: AuthenticatedUserRequest, res: Response) => {
+  const clientIp = getNormalizedClientIp(req);
+  const limit = dbInstance.consumeRateLimit(`sub_create:${req.user!.id}:${clientIp}`, 12, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: 'Submission rate limit reached. Please wait a few minutes.'
     });
   }
-});
 
-// Public Submissions API
-app.get('/api/submissions', (_req: Request, res: Response) => {
-  const submissions = dbInstance.getSubmissions();
-  return res.json({ submissions });
-});
-
-app.post('/api/submissions', (req: Request, res: Response) => {
   try {
-    const submission = dbInstance.saveSubmission(req.body);
+    const body = req.body || {};
+    const targetCampus = dbInstance.getCampusBySlug(body.universitySlug || body.universityId || '');
+    if (!targetCampus) {
+      return res.status(400).json({ error: 'InvalidUniversity', message: 'Please select a valid university campus.' });
+    }
 
-    // Trigger automated email confirmation to student asynchronously
-    if (submission.studentEmail) {
+    if (!body.publicationConsent || !body.rightsConfirmed || !body.termsAgreed) {
+      return res.status(400).json({
+        error: 'ConsentRequired',
+        message: 'Publication consent, rights confirmation, and terms agreement are required.'
+      });
+    }
+
+    const resolveSubmissionImage = (rawVal: unknown, fieldName: string): string => {
+      if (typeof rawVal !== 'string' || !rawVal.trim()) {
+        throw new Error(`${fieldName} is required.`);
+      }
+      const trimmed = rawVal.trim();
+      if (trimmed.startsWith('data:')) {
+        const stored = validateAndStoreImageUpload(trimmed, 8 * 1024 * 1024);
+        dbInstance.registerUploadedFile({
+          id: stored.fileId,
+          ownerUid: req.user!.id,
+          universityId: targetCampus.id,
+          mimeType: stored.mimeType,
+          ext: stored.ext,
+          sizeBytes: stored.sizeBytes,
+          sha256: stored.sha256,
+          isPublic: false,
+          createdAt: new Date().toISOString()
+        });
+        return `/api/files/${stored.fileId}`;
+      }
+      if (trimmed.startsWith('/api/files/')) {
+        const fid = trimmed.replace('/api/files/', '').split('?')[0];
+        const rec = dbInstance.getUploadedFile(fid);
+        if (!rec || rec.ownerUid !== req.user!.id) {
+          throw new Error(`Invalid or unauthorized file reference for ${fieldName}.`);
+        }
+        return `/api/files/${fid}`;
+      }
+      const urlCheck = validateSafeHttpUrl(trimmed, { allowHttp: false });
+      if (!urlCheck.valid || !urlCheck.normalized) {
+        throw new Error(`Invalid ${fieldName}: ${urlCheck.reason}`);
+      }
+      return urlCheck.normalized;
+    };
+
+    const safeOriginalPath = resolveSubmissionImage(body.originalImagePath, 'originalImagePath');
+    const safeWatermarkedPath = body.watermarkedImagePath
+      ? resolveSubmissionImage(body.watermarkedImagePath, 'watermarkedImagePath')
+      : safeOriginalPath;
+
+    const cleanId = typeof body.id === 'string' && /^sub_[a-zA-Z0-9_-]{4,40}$/.test(body.id)
+      ? body.id
+      : `sub_${crypto.randomBytes(6).toString('hex')}`;
+
+    const existing = dbInstance.getSubmissionById(cleanId);
+    if (existing && existing.studentUid !== req.user!.id) {
+      return res.status(403).json({ error: 'Forbidden', message: 'Cannot overwrite another student submission.' });
+    }
+
+    // Strictly enforce server-authoritative ownership & workflow state (never trust client status)
+    const authoritativeSubmission: FeaturedSubmission = {
+      id: cleanId,
+      studentUid: req.user!.id,
+      studentDisplayName: String(body.studentDisplayName || req.user!.name || 'Student').trim().slice(0, 100),
+      studentEmail: req.user!.email,
+      studentAvatarUrl: safeWatermarkedPath,
+      universityId: targetCampus.id,
+      universityName: targetCampus.name,
+      universitySlug: targetCampus.slug,
+      universityInstagramHandle: targetCampus.instagramHandle,
+      personalInstagramHandle: typeof body.personalInstagramHandle === 'string'
+        ? body.personalInstagramHandle.trim().replace(/^@/, '').slice(0, 60)
+        : undefined,
+      instagramHandle: typeof body.instagramHandle === 'string'
+        ? body.instagramHandle.trim().slice(0, 62)
+        : undefined,
+      major: typeof body.major === 'string' ? body.major.trim().slice(0, 100) : undefined,
+      classYear: typeof body.classYear === 'string' ? body.classYear.trim().slice(0, 12) : targetCampus.classYear,
+      snapchatHandle: typeof body.snapchatHandle === 'string' ? body.snapchatHandle.trim().slice(0, 60) : undefined,
+      tiktokHandle: typeof body.tiktokHandle === 'string' ? body.tiktokHandle.trim().slice(0, 60) : undefined,
+      originalImagePath: safeOriginalPath,
+      watermarkedImagePath: safeWatermarkedPath,
+      caption: String(body.caption || '').trim().slice(0, 1200),
+      publicationConsent: true,
+      rightsConfirmed: true,
+      termsAgreed: true,
+      paymentStatus: existing?.paymentStatus || 'AWAITING_PAYMENT',
+      paymentReference: existing?.paymentReference,
+      paymentAmount: 6.00,
+      moderationStatus: existing?.moderationStatus || 'PENDING',
+      publishingStatus: existing?.publishingStatus || 'NOT_READY',
+      submittedAt: existing?.submittedAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const saved = dbInstance.saveSubmission(authoritativeSubmission);
+
+    if (saved.studentEmail) {
       const baseUrl = getBaseUrl(req);
       dbInstance.sendUniversityEmail({
-        universityId: submission.universityId || submission.universitySlug || 'general',
+        universityId: saved.universityId || 'general',
         eventType: 'SUBMISSION_RECEIVED',
-        recipient: submission.studentEmail,
+        recipient: saved.studentEmail,
         variables: {
-          student_name: submission.studentDisplayName,
-          student_email: submission.studentEmail,
-          submission_reference: submission.id,
+          student_name: saved.studentDisplayName,
+          student_email: saved.studentEmail,
+          submission_reference: saved.id,
           base_url: baseUrl,
-          continuation_link: `${baseUrl}/university/${submission.universitySlug || 'general'}`
+          continuation_link: `${baseUrl}/university/${saved.universitySlug || 'general'}`
         },
-        idempotencyKey: `sub_recv_${submission.id}`
-      }).catch(err => console.error('[SubmissionReceivedEmailTrigger]', err));
+        idempotencyKey: `sub_recv_${saved.id}`
+      }).catch((err) => console.error('[SubmissionReceivedEmailTrigger]', err));
     }
 
-    return res.status(201).json({ success: true, submission });
+    return res.status(201).json({ success: true, submission: saved });
   } catch (err: any) {
-    return res.status(400).json({ error: 'SubmissionSaveFailed', message: err.message });
+    return res.status(400).json({ error: 'SubmissionSaveFailed', message: err.message || 'Could not save submission.' });
   }
 });
 
-// Verify Student Email Code
-app.post('/api/auth/verify-email', (req: Request, res: Response) => {
-  try {
-    const { email, code } = req.body || {};
-    if (!email || !code) {
-      return res.status(400).json({ error: 'BadRequest', message: 'Email address and verification code are required.' });
-    }
-    const result = dbInstance.verifyStudentEmailCode(String(email), String(code));
-    if (!result.verified) {
-      return res.status(400).json({ error: 'InvalidCode', message: 'Verification code is invalid or expired. Please request a new code.' });
-    }
-    return res.json({ success: true, verified: true, user: result.user, message: `Email ${email} verified successfully.` });
-  } catch (err: any) {
-    return res.status(500).json({ error: 'VerifyFailed', message: err.message || 'Could not verify email.' });
-  }
-});
-
-// Student User Registration
 app.post('/api/users/register', (req: Request, res: Response) => {
-  try {
-    const user = dbInstance.registerUser(req.body);
+  const clientIp = getNormalizedClientIp(req);
+  const limit = dbInstance.consumeRateLimit(`user_reg:${clientIp}`, 10, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: `Too many registration attempts. Please wait ${Math.ceil(limit.retryAfterSeconds / 60)} minute(s).`
+    });
+  }
 
-    // Trigger automated welcome email asynchronously
-    if (user.email) {
+  try {
+    const registered = dbInstance.registerUser(req.body || {});
+    const loginRes = dbInstance.loginUser(registered.email, String(req.body?.password || ''), clientIp);
+    if (loginRes.sessionToken) {
+      res.cookie('cc_user_session', loginRes.sessionToken, {
+        ...getCookieSecurityFlags(req),
+        maxAge: 7 * 24 * 60 * 60 * 1000
+      });
+    }
+
+    if (registered.email) {
       const baseUrl = getBaseUrl(req);
       dbInstance.sendUniversityEmail({
-        universityId: user.universityId || user.universitySlug || 'general',
+        universityId: registered.universityId || registered.universitySlug || 'general',
         eventType: 'WELCOME',
-        recipient: user.email,
+        recipient: registered.email,
         variables: {
-          student_name: user.name,
-          student_email: user.email,
-          university_name: user.universityName,
+          student_name: registered.name,
+          student_email: registered.email,
+          university_name: registered.universityName,
           base_url: baseUrl,
-          continuation_link: user.universitySlug ? `${baseUrl}/university/${user.universitySlug}` : baseUrl
+          continuation_link: registered.universitySlug ? `${baseUrl}/university/${registered.universitySlug}` : baseUrl
         },
-        idempotencyKey: `welcome_${user.id}`
-      }).catch(err => console.error('[WelcomeEmailTrigger]', err));
+        idempotencyKey: `welcome_${registered.id}`
+      }).catch((err) => console.error('[WelcomeEmailTrigger]', err));
     }
 
-    return res.status(201).json({ success: true, user });
+    return res.status(201).json({
+      success: true,
+      user: loginRes.user || registered,
+      expiresAt: loginRes.expiresAt
+    });
   } catch (err: any) {
-    return res.status(400).json({ error: 'UserRegistrationFailed', message: err.message });
+    const status = err.message?.includes('already exists') ? 409 : 400;
+    return res.status(status).json({ error: 'UserRegistrationFailed', message: err.message });
   }
 });
 
-// Student User Login (Verifies password against stored hash if registered with a password)
 app.post('/api/users/login', (req: Request, res: Response) => {
   try {
     const { email, password } = req.body || {};
-    if (!email || !String(email).includes('@')) {
-      return res.status(400).json({ error: 'BadRequest', message: 'A valid email address is required.' });
+    if (!email || !String(email).includes('@') || !password) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Email and password are required.' });
     }
-    const { user, authenticated } = dbInstance.loginUser(String(email), password ? String(password) : undefined);
-    if (!authenticated) {
-      return res.status(401).json({ error: 'AuthenticationFailed', message: 'Incorrect password for this account.' });
+    const clientIp = getNormalizedClientIp(req);
+    const result = dbInstance.loginUser(String(email), String(password), clientIp);
+    if (!result.authenticated || !result.user || !result.sessionToken) {
+      return res.status(result.locked ? 429 : 401).json({
+        error: result.locked ? 'AccountLocked' : 'AuthenticationFailed',
+        message: result.message || 'Invalid email or password.'
+      });
     }
-    return res.json({ success: true, user });
-  } catch (err: any) {
-    return res.status(500).json({ error: 'LoginFailed', message: err.message || 'Failed to sign in.' });
+
+    res.cookie('cc_user_session', result.sessionToken, {
+      ...getCookieSecurityFlags(req),
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    return res.json({
+      success: true,
+      user: result.user,
+      expiresAt: result.expiresAt
+    });
+  } catch {
+    return res.status(500).json({ error: 'LoginFailed', message: 'Failed to sign in.' });
   }
 });
 
-// Student User Password Update
-app.post('/api/users/change-password', (req: Request, res: Response) => {
+app.get('/api/users/me', requireUserAuth, (req: AuthenticatedUserRequest, res: Response) => {
+  return res.json({ authenticated: true, user: req.user });
+});
+
+app.post('/api/users/logout', (req: Request, res: Response) => {
+  const token = extractUserToken(req);
+  if (token) {
+    dbInstance.invalidateUserSession(token);
+  }
+  res.clearCookie('cc_user_session', getCookieSecurityFlags(req));
+  return res.json({ success: true, message: 'Signed out successfully.' });
+});
+
+app.put('/api/users/profile', requireUserAuth, (req: AuthenticatedUserRequest, res: Response) => {
   try {
-    const { email, currentPassword, newPassword } = req.body || {};
-    if (!email || !newPassword) {
-      return res.status(400).json({ error: 'BadRequest', message: 'Email and new password are required.' });
+    const updated = dbInstance.updateUserProfile(req.user!.id, req.body || {});
+    return res.json({ success: true, user: updated });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'ProfileUpdateFailed', message: err.message || 'Could not update profile.' });
+  }
+});
+
+app.post('/api/users/change-password', requireUserAuth, (req: AuthenticatedUserRequest, res: Response) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Current password and new password are required.' });
     }
-    const result = dbInstance.changeUserPassword(String(email), currentPassword ? String(currentPassword) : undefined, String(newPassword));
+    const result = dbInstance.changeUserPassword(req.user!.id, String(currentPassword), String(newPassword));
     if (!result.success) {
       return res.status(400).json({ error: 'PasswordChangeFailed', message: result.message });
     }
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(500).json({ error: 'PasswordChangeFailed', message: err.message || 'Could not update password.' });
+    res.clearCookie('cc_user_session', getCookieSecurityFlags(req));
+    return res.json({
+      success: true,
+      sessionRevoked: true,
+      message: 'Password updated and prior sessions revoked. Please sign in again.'
+    });
+  } catch {
+    return res.status(500).json({ error: 'PasswordChangeFailed', message: 'Could not update password.' });
   }
 });
 
 // -----------------------------------------------------------------------------
-// PUBLIC API ENDPOINTS & PAYMENT GATEWAY WEBHOOK
+// PUBLIC DIRECTORY, PAYMENTS & SIGNED WEBHOOKS
 // -----------------------------------------------------------------------------
 
-// Public Payment Gateway Status
 app.get('/api/payment-config', (_req: Request, res: Response) => {
-  const isConfigured = dbInstance.isIntegrationConfigured('payment_stripe');
-  const integrations = dbInstance.getIntegrations();
-  const stripe = integrations.find(i => i.id === 'payment_stripe');
+  const { publishableKey, secretKey } = resolveStripeCredentials();
+  const configured = Boolean(publishableKey && secretKey);
   return res.json({
-    stripeConfigured: isConfigured,
-    publishableKey: isConfigured && stripe ? stripe.keys.publishableKey : ''
+    stripeConfigured: configured,
+    publishableKey: configured ? publishableKey : ''
   });
 });
 
-// Public Campuses Directory
 app.get('/api/campuses', (_req: Request, res: Response) => {
-  const campuses = dbInstance.getCampuses();
-  return res.json({ campuses });
+  return res.json({ campuses: dbInstance.getCampuses() });
 });
 
-// Public Single Campus by Slug
 app.get('/api/campuses/:slug', (req: Request, res: Response) => {
   const campus = dbInstance.getCampusBySlug(req.params.slug);
   if (!campus) {
@@ -1187,147 +1823,299 @@ app.get('/api/campuses/:slug', (req: Request, res: Response) => {
   return res.json({ campus });
 });
 
-// Stripe Payment Verification Endpoint (Initiated after user card authorization)
-app.post('/api/payments/verify', (req: Request, res: Response) => {
+app.post('/api/payments/create-intent', requireUserAuth, async (req: AuthenticatedUserRequest, res: Response) => {
   try {
-    const { submissionId, studentUid, studentName, universityId, idempotencyKey } = req.body;
-    
-    if (!submissionId || !studentUid) {
-      return res.status(400).json({ error: 'BadRequest', message: 'submissionId and studentUid are required.' });
+    const { submissionId, idempotencyKey } = req.body || {};
+    if (!submissionId) {
+      return res.status(400).json({ error: 'BadRequest', message: 'submissionId is required.' });
     }
 
-    const txnRef = `ch_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 6)}`;
+    const sub = dbInstance.getSubmissionById(String(submissionId));
+    if (!sub) {
+      return res.status(404).json({ error: 'NotFound', message: 'Submission not found.' });
+    }
+    if (sub.studentUid !== req.user!.id) {
+      return res.status(403).json({ error: 'Forbidden', message: 'You can only pay for your own submission.' });
+    }
+    if (sub.paymentStatus === 'PAYMENT_CONFIRMED') {
+      return res.status(409).json({ error: 'AlreadyPaid', message: 'This submission has already been paid and confirmed.' });
+    }
+
+    const { publishableKey, secretKey } = resolveStripeCredentials();
+    if (!secretKey || !publishableKey) {
+      return res.status(503).json({
+        error: 'PaymentGatewayNotConfigured',
+        message: 'Live Stripe payment processing requires STRIPE_SECRET_KEY and VITE_STRIPE_PUBLISHABLE_KEY.'
+      });
+    }
+
+    const bodyParams = new URLSearchParams({
+      amount: '600',
+      currency: 'usd',
+      'metadata[submissionId]': sub.id,
+      'metadata[studentUid]': req.user!.id,
+      'metadata[universityId]': sub.universityId,
+      'automatic_payment_methods[enabled]': 'true'
+    });
+
+    const stripeRes = await fetch('https://api.stripe.com/v1/payment_intents', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${secretKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Idempotency-Key': typeof idempotencyKey === 'string' && idempotencyKey.trim()
+          ? idempotencyKey.trim()
+          : `pi_create_${sub.id}_${req.user!.id}`
+      },
+      body: bodyParams.toString()
+    });
+
+    const intent: any = await stripeRes.json().catch(() => ({}));
+    if (!stripeRes.ok || !intent?.id || !intent?.client_secret) {
+      return res.status(502).json({
+        error: 'StripeError',
+        message: intent?.error?.message || 'Unable to initialize Stripe PaymentIntent.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      paymentIntentId: intent.id,
+      clientSecret: intent.client_secret,
+      publishableKey,
+      amountUsd: 6.00,
+      currency: 'USD'
+    });
+  } catch {
+    return res.status(500).json({ error: 'PaymentInitFailed', message: 'Could not initialize Stripe checkout.' });
+  }
+});
+
+app.post('/api/payments/verify', requireUserAuth, async (req: AuthenticatedUserRequest, res: Response) => {
+  try {
+    const { submissionId, paymentIntentId, idempotencyKey } = req.body || {};
+    if (!submissionId || !paymentIntentId) {
+      return res.status(400).json({
+        error: 'BadRequest',
+        message: 'submissionId and Stripe paymentIntentId are required for server-side verification.'
+      });
+    }
+
+    const sub = dbInstance.getSubmissionById(String(submissionId));
+    if (!sub) {
+      return res.status(404).json({ error: 'NotFound', message: 'Submission not found.' });
+    }
+    if (sub.studentUid !== req.user!.id) {
+      dbInstance.logSecurityEvent(
+        'HIGH',
+        'PAYMENT_IDOR_ATTEMPT',
+        `Student ${req.user!.email} attempted to verify payment for another user's submission ${sub.id}`,
+        req.user!.email,
+        getNormalizedClientIp(req)
+      );
+      return res.status(403).json({ error: 'Forbidden', message: 'You are not authorized to verify this submission payment.' });
+    }
+
+    const { secretKey } = resolveStripeCredentials();
+    if (!secretKey) {
+      return res.status(503).json({
+        error: 'PaymentGatewayNotConfigured',
+        message: 'Stripe secret key is not configured on the server; payment cannot be verified.'
+      });
+    }
+
+    const cleanPi = String(paymentIntentId).trim();
+    if (!cleanPi.startsWith('pi_')) {
+      return res.status(400).json({ error: 'InvalidPaymentIntent', message: 'Invalid Stripe PaymentIntent identifier.' });
+    }
+
+    const stripeRes = await fetch(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(cleanPi)}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${secretKey}`
+      }
+    });
+    const intent: any = await stripeRes.json().catch(() => ({}));
+    if (!stripeRes.ok || !intent?.id) {
+      return res.status(402).json({
+        error: 'PaymentVerificationFailed',
+        message: intent?.error?.message || 'Unable to verify PaymentIntent with Stripe.'
+      });
+    }
+
+    if (
+      intent.status !== 'succeeded' ||
+      Number(intent.amount_received) < 600 ||
+      String(intent.currency || '').toLowerCase() !== 'usd'
+    ) {
+      return res.status(402).json({
+        error: 'PaymentNotSettled',
+        message: `Stripe PaymentIntent status is "${intent.status}" with amount_received=${intent.amount_received}.`
+      });
+    }
+
+    if (
+      (intent.metadata?.submissionId && intent.metadata.submissionId !== sub.id) ||
+      (intent.metadata?.studentUid && intent.metadata.studentUid !== req.user!.id)
+    ) {
+      return res.status(403).json({
+        error: 'PaymentOwnershipMismatch',
+        message: 'Stripe PaymentIntent metadata does not match this submission.'
+      });
+    }
 
     const payment = dbInstance.recordPayment({
-      submissionId,
-      studentUid,
-      studentName: studentName || 'Student',
-      universityId: universityId || 'general',
+      submissionId: sub.id,
+      studentUid: req.user!.id,
+      studentName: sub.studentDisplayName || req.user!.name,
+      universityId: sub.universityId,
       provider: 'STRIPE_CARD',
-      providerTransactionReference: txnRef,
-      amountUsd: 6.00,
+      providerTransactionReference: intent.id,
+      amountUsd: Number(intent.amount_received) / 100,
       currency: 'USD',
       status: 'CONFIRMED',
-      idempotencyKey: idempotencyKey || `idem_${submissionId}_${Date.now()}`,
+      idempotencyKey: typeof idempotencyKey === 'string' && idempotencyKey ? idempotencyKey : `pi_${intent.id}`,
       verifiedAt: new Date().toISOString()
     });
 
-    // Update authoritative submission state in database
-    const sub = dbInstance.getSubmissionById(submissionId);
-    if (sub) {
-      sub.paymentStatus = 'PAYMENT_CONFIRMED';
-      sub.paymentReference = txnRef;
-      sub.paymentAmount = 6.00;
-      sub.updatedAt = new Date().toISOString();
-      dbInstance.saveSubmission(sub);
-    }
+    sub.paymentStatus = 'PAYMENT_CONFIRMED';
+    sub.paymentReference = intent.id;
+    sub.paymentAmount = payment.amountUsd;
+    sub.updatedAt = new Date().toISOString();
+    dbInstance.saveSubmission(sub);
 
-    const recipientEmail = sub?.studentEmail || (typeof req.body?.studentEmail === 'string' ? req.body.studentEmail.trim() : '');
-    if (recipientEmail) {
+    if (sub.studentEmail) {
       const baseUrl = getBaseUrl(req);
-      const targetUniId = sub?.universityId || universityId || 'general';
-      const targetUniSlug = sub?.universitySlug || (typeof req.body?.universitySlug === 'string' ? req.body.universitySlug : 'general');
       dbInstance.sendUniversityEmail({
-        universityId: targetUniId,
+        universityId: sub.universityId || 'general',
         eventType: 'PAYMENT_CONFIRMATION',
-        recipient: recipientEmail,
+        recipient: sub.studentEmail,
         variables: {
-          student_name: payment.studentName || sub?.studentDisplayName || 'Student',
-          student_email: recipientEmail,
-          submission_reference: txnRef,
-          payment_amount: '6.00',
+          student_name: payment.studentName || sub.studentDisplayName,
+          student_email: sub.studentEmail,
+          submission_reference: intent.id,
+          payment_amount: payment.amountUsd.toFixed(2),
           payment_status: 'CONFIRMED',
           base_url: baseUrl,
-          continuation_link: `${baseUrl}/university/${targetUniSlug || 'general'}`
+          continuation_link: `${baseUrl}/university/${sub.universitySlug || 'general'}`
         },
         idempotencyKey: `pay_conf_${payment.id}`
-      }).catch(err => console.error('[PaymentVerifyEmailTrigger]', err));
+      }).catch((err) => console.error('[PaymentVerifyEmailTrigger]', err));
     }
 
     return res.json({
       success: true,
       payment,
-      message: `Stripe transaction ${txnRef} ($6.00 USD) authorized and verified successfully.`
+      message: `Stripe PaymentIntent ${intent.id} ($${payment.amountUsd.toFixed(2)} USD) verified successfully.`
     });
-  } catch (err: any) {
-    return res.status(500).json({ error: 'PaymentFailed', message: err.message });
+  } catch {
+    return res.status(500).json({ error: 'PaymentFailed', message: 'Failed to verify payment.' });
   }
 });
 
-// Payment Gateway Webhook Receiver (Stripe Gateway)
-app.post('/api/payments/webhook', (req: Request, res: Response) => {
+// Cryptographically Signed Stripe Webhook Receiver (Fail-Closed)
+app.post('/api/payments/webhook', (req: any, res: Response) => {
   try {
-    const {
-      transactionId,
-      submissionId,
-      studentUid,
-      studentName,
-      universityId,
-      amountUsd,
-      status,
-      idempotencyKey
-    } = req.body;
+    const { webhookSecret } = resolveStripeCredentials();
+    if (!webhookSecret) {
+      return res.status(503).json({
+        error: 'WebhookSecretNotConfigured',
+        message: 'STRIPE_WEBHOOK_SECRET is not configured on the server.'
+      });
+    }
+
+    const sigHeader = req.headers['stripe-signature'] as string | undefined;
+    const rawBody: Buffer = req.rawBody || Buffer.from(JSON.stringify(req.body || {}), 'utf8');
+
+    if (!verifyStripeWebhookSignature(rawBody, sigHeader, webhookSecret, 300)) {
+      dbInstance.logSecurityEvent(
+        'HIGH',
+        'PAYMENT_WEBHOOK_SIGNATURE_INVALID',
+        `Rejected forged or expired Stripe webhook call from IP ${getNormalizedClientIp(req)}`,
+        undefined,
+        getNormalizedClientIp(req)
+      );
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid or expired Stripe-Signature header.'
+      });
+    }
+
+    const event = req.body || {};
+    const eventType = String(event.type || '');
+    const obj = event.data?.object || {};
+    const txnRef = obj.id || event.id;
+    const submissionId = obj.metadata?.submissionId;
+    const studentUid = obj.metadata?.studentUid;
+    const universityId = obj.metadata?.universityId || 'general';
+    const amountCents = Number(obj.amount_received ?? obj.amount ?? 0);
+    const currency = String(obj.currency || 'usd').toLowerCase();
+
+    if (!txnRef) {
+      return res.status(400).json({ error: 'BadRequest', message: 'Missing transaction reference in webhook payload.' });
+    }
 
     const existingPayments = dbInstance.getPayments();
-    const isDuplicate = existingPayments.some(p => 
-      (transactionId && p.providerTransactionReference === transactionId) ||
-      (idempotencyKey && p.idempotencyKey === idempotencyKey)
+    const isDuplicate = existingPayments.some(
+      (p) => p.providerTransactionReference === txnRef || (event.id && p.idempotencyKey === event.id)
     );
-
     if (isDuplicate) {
       return res.status(200).json({
         received: true,
         duplicate: true,
-        message: `Webhook event for transaction ${transactionId || idempotencyKey} was already processed. Idempotent response.`
+        message: 'Webhook event already processed idempotently.'
       });
     }
 
-    const isFailure = status === 'FAILED';
+    const isFailure = eventType.includes('failed');
+    if (!isFailure && (amountCents < 600 || currency !== 'usd')) {
+      return res.status(400).json({
+        error: 'InvalidPaymentAmount',
+        message: 'Settled payment amount or currency does not meet minimum requirement.'
+      });
+    }
+
+    const sub = submissionId ? dbInstance.getSubmissionById(String(submissionId)) : undefined;
     const payment = dbInstance.recordPayment({
-      submissionId: submissionId || `sub_${Date.now()}`,
-      studentUid: studentUid || 'usr_webhook',
-      studentName: studentName || 'Student',
-      universityId: universityId || 'uni_general',
+      submissionId: sub?.id || String(submissionId || ''),
+      studentUid: sub?.studentUid || String(studentUid || ''),
+      studentName: sub?.studentDisplayName || 'Student',
+      universityId: sub?.universityId || String(universityId),
       provider: 'STRIPE_CARD',
-      providerTransactionReference: transactionId || `TXN_${Date.now()}`,
-      amountUsd: amountUsd || 6.00,
+      providerTransactionReference: String(txnRef),
+      amountUsd: amountCents / 100,
       currency: 'USD',
       status: isFailure ? 'FAILED' : 'CONFIRMED',
-      idempotencyKey: idempotencyKey || `idem_hook_${Date.now()}`,
+      idempotencyKey: event.id || `wh_${txnRef}`,
       verifiedAt: new Date().toISOString()
     });
 
-    if (submissionId) {
-      const sub = dbInstance.getSubmissionById(submissionId);
-      if (sub) {
-        if (!isFailure) {
-          sub.paymentStatus = 'PAYMENT_CONFIRMED';
-          sub.paymentReference = transactionId || payment.providerTransactionReference;
-          sub.paymentAmount = amountUsd || 6.00;
-          sub.updatedAt = new Date().toISOString();
-          dbInstance.saveSubmission(sub);
-        }
+    if (sub) {
+      if (!isFailure) {
+        sub.paymentStatus = 'PAYMENT_CONFIRMED';
+        sub.paymentReference = String(txnRef);
+        sub.paymentAmount = payment.amountUsd;
+        sub.updatedAt = new Date().toISOString();
+        dbInstance.saveSubmission(sub);
+      }
 
-        // Trigger automated email asynchronously
-        if (sub.studentEmail) {
-          const eventType = isFailure ? 'PAYMENT_FAILURE' : 'PAYMENT_CONFIRMATION';
-          const baseUrl = getBaseUrl(req);
-          dbInstance.sendUniversityEmail({
-            universityId: sub.universityId || universityId || 'general',
-            eventType,
-            recipient: sub.studentEmail,
-            variables: {
-              student_name: payment.studentName || sub.studentDisplayName,
-              student_email: sub.studentEmail,
-              submission_reference: transactionId || payment.providerTransactionReference,
-              payment_amount: String(amountUsd || '6.00'),
-              payment_status: isFailure ? 'FAILED' : 'CONFIRMED',
-              base_url: baseUrl,
-              continuation_link: `${baseUrl}/university/${sub.universitySlug || 'general'}`
-            },
-            idempotencyKey: `pay_hook_${payment.id}`
-          }).catch(err => console.error('[PaymentWebhookEmailTrigger]', err));
-        }
+      if (sub.studentEmail) {
+        const baseUrl = getBaseUrl(req);
+        dbInstance.sendUniversityEmail({
+          universityId: sub.universityId || 'general',
+          eventType: isFailure ? 'PAYMENT_FAILURE' : 'PAYMENT_CONFIRMATION',
+          recipient: sub.studentEmail,
+          variables: {
+            student_name: payment.studentName || sub.studentDisplayName,
+            student_email: sub.studentEmail,
+            submission_reference: String(txnRef),
+            payment_amount: payment.amountUsd.toFixed(2),
+            payment_status: isFailure ? 'FAILED' : 'CONFIRMED',
+            base_url: baseUrl,
+            continuation_link: `${baseUrl}/university/${sub.universitySlug || 'general'}`
+          },
+          idempotencyKey: `pay_hook_${payment.id}`
+        }).catch((err) => console.error('[PaymentWebhookEmailTrigger]', err));
       }
     }
 
@@ -1337,24 +2125,17 @@ app.post('/api/payments/webhook', (req: Request, res: Response) => {
       paymentId: payment.id,
       status: payment.status
     });
-  } catch (err: any) {
-    return res.status(400).json({ error: 'WebhookError', message: err.message });
+  } catch {
+    return res.status(400).json({ error: 'WebhookError', message: 'Failed to process Stripe webhook.' });
   }
 });
 
 // -----------------------------------------------------------------------------
-// TRANSACTIONAL EMAIL WEBHOOK RECEIVER (Resend & Email Providers)
+// TRANSACTIONAL EMAIL WEBHOOK RECEIVER (Svix / HMAC Fail-Closed)
 // -----------------------------------------------------------------------------
-const handleEmailWebhook = (req: Request, res: Response) => {
+const handleEmailWebhook = (req: any, res: Response) => {
   try {
-    const body = req.body || {};
-    const eventType = body.type || body.event || 'email.delivered';
-    const emailData = body.data || body;
-    const emailId = emailData.email_id || emailData.id || body.email_id || body.id;
-    const recipient = Array.isArray(emailData.to) ? emailData.to[0] : (emailData.to || body.recipient);
-
-    // Resolve webhook secret from environment secrets or configured DB integration
-    const emailIntegration = dbInstance.getIntegrations().find(i => i.id === 'email_transactional');
+    const emailIntegration = dbInstance.getIntegrations().find((i) => i.id === 'email_transactional');
     const dbWebhookSecret = emailIntegration?.keys?.webhookSecret || emailIntegration?.keys?.resendWebhookSecret || '';
     const webhookSecret = (
       process.env.RESEND_WEBHOOK_SECRET ||
@@ -1364,39 +2145,58 @@ const handleEmailWebhook = (req: Request, res: Response) => {
       ''
     ).trim();
 
+    if (!webhookSecret) {
+      return res.status(503).json({
+        error: 'WebhookSecretNotConfigured',
+        message: 'Email webhook signing secret is not configured.'
+      });
+    }
+
     const svixId = req.headers['svix-id'] as string | undefined;
     const svixTimestamp = req.headers['svix-timestamp'] as string | undefined;
     const svixSig = req.headers['svix-signature'] as string | undefined;
-    const headerSecret = (req.headers['x-webhook-secret'] || req.query.secret) as string | undefined;
+    const headerSecret = req.headers['x-webhook-secret'] as string | undefined;
+    const rawBodyStr: string = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
 
-    let signatureVerified = !webhookSecret;
-    if (webhookSecret && (svixSig || headerSecret)) {
-      if (headerSecret && headerSecret.trim() === webhookSecret) {
-        signatureVerified = true;
-      } else if (svixId && svixTimestamp && svixSig) {
+    let signatureVerified = false;
+    if (headerSecret && timingSafeEqualStr(headerSecret.trim(), webhookSecret)) {
+      signatureVerified = true;
+    } else if (svixId && svixTimestamp && svixSig) {
+      const tsNum = Number(svixTimestamp);
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (Number.isFinite(tsNum) && Math.abs(nowSec - tsNum) <= 300) {
         try {
           const cleanSecret = webhookSecret.startsWith('whsec_') ? webhookSecret.slice(6) : webhookSecret;
           const secretBytes = Buffer.from(cleanSecret, 'base64');
-          const signedContent = `${svixId}.${svixTimestamp}.${JSON.stringify(body)}`;
+          const signedContent = `${svixId}.${svixTimestamp}.${rawBodyStr}`;
           const expectedSig = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64');
-          const signatures = svixSig.split(' ').map(s => s.replace(/^v1,/, '').trim());
-          signatureVerified = signatures.includes(expectedSig) || signatures.includes(webhookSecret);
+          const signatures = svixSig.split(' ').map((s) => s.replace(/^v1,/, '').trim());
+          signatureVerified = signatures.some((sig) => timingSafeEqualStr(sig, expectedSig));
         } catch {
           signatureVerified = false;
         }
-      } else if (svixSig && (svixSig.trim() === webhookSecret || svixSig.includes(webhookSecret))) {
-        signatureVerified = true;
-      }
-
-      if (!signatureVerified) {
-        console.warn('[EmailWebhook] Unauthorized: Invalid webhook secret / Svix signature.');
-        return res.status(401).json({ error: 'Unauthorized', message: 'Invalid webhook signature.' });
       }
     }
 
-    // Map provider event to internal delivery status
+    if (!signatureVerified) {
+      dbInstance.logSecurityEvent(
+        'HIGH',
+        'EMAIL_WEBHOOK_SIGNATURE_INVALID',
+        `Rejected unauthenticated email webhook call from IP ${getNormalizedClientIp(req)}`,
+        undefined,
+        getNormalizedClientIp(req)
+      );
+      return res.status(401).json({ error: 'Unauthorized', message: 'Invalid webhook signature.' });
+    }
+
+    const body = req.body || {};
+    const eventType = body.type || body.event || 'email.delivered';
+    const emailData = body.data || body;
+    const emailId = emailData.email_id || emailData.id || body.email_id || body.id;
+    const recipient = Array.isArray(emailData.to) ? emailData.to[0] : (emailData.to || body.recipient);
+
     let status: 'DELIVERED' | 'QUEUED' | 'FAILED' | 'BOUNCED' = 'DELIVERED';
-    let errorMessage: string | undefined = undefined;
+    let errorMessage: string | undefined;
 
     if (eventType === 'email.bounced' || eventType.includes('bounce')) {
       status = 'BOUNCED';
@@ -1409,27 +2209,17 @@ const handleEmailWebhook = (req: Request, res: Response) => {
       errorMessage = 'Delivery delayed by carrier';
     } else if (eventType === 'email.sent' || eventType === 'email.queued') {
       status = 'QUEUED';
-    } else if (eventType === 'email.delivered' || eventType.includes('delivered')) {
-      status = 'DELIVERED';
     }
 
     const metadataUpdate: Record<string, any> = {
       lastWebhookEvent: eventType,
       lastWebhookAt: new Date().toISOString(),
-      signatureVerified
+      signatureVerified: true
     };
+    if (eventType === 'email.opened') metadataUpdate.openedAt = new Date().toISOString();
+    if (eventType === 'email.clicked') metadataUpdate.clickedAt = new Date().toISOString();
 
-    if (eventType === 'email.opened') {
-      metadataUpdate.openedAt = new Date().toISOString();
-    }
-    if (eventType === 'email.clicked') {
-      metadataUpdate.clickedAt = new Date().toISOString();
-    }
-
-    let updated = null;
-    if (emailId) {
-      updated = dbInstance.updateEmailLogStatus(emailId, status, errorMessage, metadataUpdate);
-    }
+    const updated = emailId ? dbInstance.updateEmailLogStatus(emailId, status, errorMessage, metadataUpdate) : null;
 
     dbInstance.logAudit({
       actorUid: 'email_webhook',
@@ -1446,12 +2236,11 @@ const handleEmailWebhook = (req: Request, res: Response) => {
       event: eventType,
       emailId,
       status,
-      signatureVerified,
-      logUpdated: !!updated
+      signatureVerified: true,
+      logUpdated: Boolean(updated)
     });
-  } catch (err: any) {
-    console.error('[EmailWebhookError]', err);
-    return res.status(400).json({ error: 'WebhookError', message: err?.message || 'Failed to process email webhook.' });
+  } catch {
+    return res.status(400).json({ error: 'WebhookError', message: 'Failed to process email webhook.' });
   }
 };
 
@@ -1459,7 +2248,6 @@ app.post('/api/webhooks/resend', handleEmailWebhook);
 app.post('/api/webhooks/email', handleEmailWebhook);
 app.post('/api/email/webhook', handleEmailWebhook);
 
-// GET verification endpoints for webhook health check and challenge pings
 app.get('/api/webhooks/resend', (_req: Request, res: Response) => {
   return res.status(200).json({ status: 'ACTIVE', provider: 'Resend Email Webhook Gateway' });
 });
@@ -1470,20 +2258,35 @@ app.get('/api/email/webhook', (_req: Request, res: Response) => {
   return res.status(200).json({ status: 'ACTIVE', provider: 'Email Webhook Gateway' });
 });
 
+// Unknown API routes always return clean JSON 404 (never fall through to HTML)
+app.all('/api/*', (_req: Request, res: Response) => {
+  return res.status(404).json({ error: 'NotFound', message: 'API endpoint not found.' });
+});
+
+// Safe Global Error Handler (Suppress stack traces and internal details in HTTP responses)
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'InvalidJson', message: 'Malformed JSON request body.' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'PayloadTooLarge', message: 'Request payload exceeds permitted size limit.' });
+  }
+  console.error('[UnhandledServerError]', err?.message || err);
+  return res.status(500).json({ error: 'InternalServerError', message: 'An unexpected server error occurred.' });
+});
+
 // -----------------------------------------------------------------------------
 // VITE DEV SERVER OR PRODUCTION STATIC FILE SERVING
 // -----------------------------------------------------------------------------
 
 async function startServer() {
   if (!isProduction) {
-    // Mount Vite in middleware mode
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
     });
     app.use(vite.middlewares);
   } else {
-    // Production build static assets
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req: Request, res: Response) => {

@@ -13,6 +13,7 @@ import {
 } from '../src/types';
 import { sqliteStorage } from './sqlite';
 import { findUniversityBySlug, VERIFIED_UNIVERSITIES } from '../src/data/universities';
+import { escapeHtml, sanitizeHexColor, validateSafeHttpUrl } from './security';
 
 // -----------------------------------------------------------------------------
 // 1. DEFAULT UNIVERSITY EMAIL TEMPLATES (9 EVENT TYPES)
@@ -190,6 +191,28 @@ Welcome again to the **{{university_name}}** family!`,
   }
 };
 
+function sanitizeEmailHref(rawUrl: string): string {
+  const trimmed = String(rawUrl || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+    return escapeHtml(trimmed);
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      return escapeHtml(parsed.toString());
+    }
+  } catch {
+    // invalid URL
+  }
+  return '';
+}
+
+function renderSafeSignatureHtml(rawSignature: string): string {
+  const normalized = String(rawSignature || '').replace(/<br\s*\/?>/gi, '\n');
+  return parseSimpleMarkdownToHtml(normalized);
+}
+
 // -----------------------------------------------------------------------------
 // 2. RESPONSIVE HTML EMAIL GENERATOR
 // -----------------------------------------------------------------------------
@@ -205,23 +228,25 @@ export function generateBrandedEmailHtml(params: {
   signatureHtml?: string;
 }): string {
   const { identity, preheader, headline, bodyHtml, buttonText, buttonLink, footerText, signatureHtml } = params;
-  const primaryColor = identity.primaryColor || '#1D64EC';
-  const secondaryColor = identity.secondaryColor || '#0284C7';
-  const rawSignature = identity.signature || `Warm regards,<br />The ${identity.universityName} Student Media Team`;
-  const hasHtmlTags = /<(?:br|p|strong|em|div|span|a)\b/i.test(rawSignature);
-  const signature = signatureHtml || (hasHtmlTags ? rawSignature : parseSimpleMarkdownToHtml(rawSignature));
+  const primaryColor = sanitizeHexColor(identity.primaryColor, '#1D64EC');
+  const secondaryColor = sanitizeHexColor(identity.secondaryColor, '#0284C7');
+  const safeUniName = escapeHtml(identity.universityName || 'CampusConnect');
+  const rawSignature = identity.signature || `Warm regards,\n\nThe ${identity.universityName} Student Media Team`;
+  const signature = signatureHtml || renderSafeSignatureHtml(rawSignature);
 
-  const logoHtml = identity.logoUrl
-    ? `<img src="${identity.logoUrl}" alt="${identity.universityName}" style="max-height: 48px; max-width: 180px; display: block;" />`
-    : `<div style="display: inline-block; background-color: ${primaryColor}; color: #ffffff; font-weight: 800; font-size: 16px; padding: 10px 16px; border-radius: 8px; letter-spacing: -0.5px;">${identity.universityName}</div>`;
+  const safeLogoCheck = identity.logoUrl ? validateSafeHttpUrl(identity.logoUrl, { allowHttp: false }) : { valid: false };
+  const logoHtml = safeLogoCheck.valid && safeLogoCheck.normalized
+    ? `<img src="${escapeHtml(safeLogoCheck.normalized)}" alt="${safeUniName}" style="max-height: 48px; max-width: 180px; display: block;" />`
+    : `<div style="display: inline-block; background-color: ${primaryColor}; color: #ffffff; font-weight: 800; font-size: 16px; padding: 10px 16px; border-radius: 8px; letter-spacing: -0.5px;">${safeUniName}</div>`;
 
-  const buttonHtml = buttonText && buttonLink
+  const safeHref = buttonLink ? sanitizeEmailHref(buttonLink) : '';
+  const buttonHtml = buttonText && safeHref
     ? `
       <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 28px 0;">
         <tr>
           <td align="left" style="border-radius: 8px; background-color: ${primaryColor};">
-            <a href="${buttonLink}" target="_blank" style="display: inline-block; padding: 14px 28px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 700; color: #ffffff; text-decoration: none; border-radius: 8px;">
-              ${buttonText} &rarr;
+            <a href="${safeHref}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 28px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 700; color: #ffffff; text-decoration: none; border-radius: 8px;">
+              ${escapeHtml(buttonText)} &rarr;
             </a>
           </td>
         </tr>
@@ -234,7 +259,7 @@ export function generateBrandedEmailHtml(params: {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${params.subject}</title>
+  <title>${escapeHtml(params.subject)}</title>
   <style>
     body { margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
     table { border-collapse: separate; }
@@ -247,7 +272,7 @@ export function generateBrandedEmailHtml(params: {
   </style>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f1f5f9;">
-  ${preheader ? `<span class="preheader" style="display:none;font-size:1px;color:#f1f5f9;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">${preheader}</span>` : ''}
+  ${preheader ? `<span class="preheader" style="display:none;font-size:1px;color:#f1f5f9;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">${escapeHtml(preheader)}</span>` : ''}
   
   <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f1f5f9; padding: 32px 16px;">
     <tr>
@@ -281,7 +306,7 @@ export function generateBrandedEmailHtml(params: {
           <!-- Body Content -->
           <tr>
             <td style="padding: 36px 36px 28px 36px;">
-              ${headline ? `<h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1.25;">${headline}</h1>` : ''}
+              ${headline ? `<h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1.25;">${escapeHtml(headline)}</h1>` : ''}
               
               <div style="font-size: 15px; line-height: 1.6; color: #334155;">
                 ${bodyHtml}
@@ -299,9 +324,9 @@ export function generateBrandedEmailHtml(params: {
           <!-- University Footer -->
           <tr>
             <td style="background-color: #f8fafc; padding: 24px 36px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
-              ${footerText ? `<p style="margin: 0 0 10px 0; font-size: 12px; color: #64748b;">${footerText}</p>` : ''}
+              ${footerText ? `<p style="margin: 0 0 10px 0; font-size: 12px; color: #64748b;">${escapeHtml(footerText)}</p>` : ''}
               <p style="margin: 0; font-size: 11px; color: #94a3b8;">
-                This email was sent to you on behalf of <strong>${identity.universityName}</strong> via the centralized CampusConnect platform.<br />
+                This email was sent to you on behalf of <strong>${safeUniName}</strong> via the centralized CampusConnect platform.<br />
                 © ${new Date().getFullYear()} CampusConnect Technologies Inc. All rights reserved.
               </p>
             </td>
@@ -327,12 +352,16 @@ export function generateBrandedEmailHtml(params: {
 // -----------------------------------------------------------------------------
 // 3. VARIABLE SUBSTITUTION & MARKDOWN HELPER
 // -----------------------------------------------------------------------------
-export function interpolateVariables(templateStr: string, variables: Record<string, any>): string {
+const URL_VARIABLE_KEYS = new Set(['continuation_link', 'instagram_post_url', 'base_url']);
+
+export function interpolateVariables(templateStr: string, variables: Record<string, any>, escapeValues = false): string {
   if (!templateStr) return '';
   let result = templateStr;
   for (const [key, val] of Object.entries(variables)) {
     const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
-    result = result.replace(pattern, val != null ? String(val) : '');
+    const rawStr = val != null ? String(val) : '';
+    const replacement = escapeValues && !URL_VARIABLE_KEYS.has(key) ? escapeHtml(rawStr) : rawStr;
+    result = result.replace(pattern, replacement);
   }
   return result;
 }
@@ -341,7 +370,7 @@ export function parseSimpleMarkdownToHtml(markdown: string): string {
   if (!markdown) return '';
 
   const formatInline = (text: string) =>
-    text
+    escapeHtml(text)
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>');
 
@@ -438,17 +467,12 @@ let resendStatusCache: {
 } | null = null;
 
 function escapeHtmlSafe(val: string): string {
-  return String(val || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return escapeHtml(val);
 }
 
 export function resolveResendApiKey(centralConfig?: CentralEmailConfig): string {
   const envKey = (
     process.env.RESEND_API_KEY ||
-    process.env.VITE_RESEND_API_KEY ||
     process.env.RESEND_KEY ||
     process.env.RESEND_APIKEY ||
     process.env.RESEND_SECRET ||
@@ -679,7 +703,7 @@ export async function verifySmtpConnection(centralConfigOverride?: CentralEmailC
       auth: { user, pass },
       connectionTimeout: 6000,
       greetingTimeout: 6000,
-      tls: { rejectUnauthorized: false }
+      tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' }
     });
     await transporter.verify();
     const latencyMs = Date.now() - startedAt;
@@ -904,9 +928,7 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
     identity.signature || `Warm regards,\n\n**The ${identity.universityName} Student Media Team**`,
     mergedVariables
   );
-  const signatureHtml = /<(?:br|p|strong|em|div|span|a)\b/i.test(rawSignature)
-    ? rawSignature
-    : parseSimpleMarkdownToHtml(rawSignature);
+  const signatureHtml = renderSafeSignatureHtml(rawSignature);
 
   const bodyHtml = parseSimpleMarkdownToHtml(finalMarkdown);
 
@@ -965,7 +987,8 @@ export async function sendUniversityEmail(params: SendUniversityEmailParams): Pr
         connectionTimeout: 8000,
         greetingTimeout: 8000,
         tls: {
-          rejectUnauthorized: false
+          rejectUnauthorized: true,
+          minVersion: 'TLSv1.2'
         }
       });
 
@@ -1542,9 +1565,7 @@ export function previewUniversityEmail(params: {
     identity.signature || `Warm regards,\n\n**The ${identity.universityName} Student Media Team**`,
     sampleVars
   );
-  const signatureHtml = /<(?:br|p|strong|em|div|span|a)\b/i.test(rawSignature)
-    ? rawSignature
-    : parseSimpleMarkdownToHtml(rawSignature);
+  const signatureHtml = renderSafeSignatureHtml(rawSignature);
 
   const bodyHtml = parseSimpleMarkdownToHtml(finalMarkdown);
 

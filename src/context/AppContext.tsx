@@ -14,8 +14,8 @@ import {
 } from '../types';
 import { VERIFIED_UNIVERSITIES, findUniversityBySlug, findUniversityById } from '../data/universities';
 import { processSubmissionPayment } from '../lib/payment';
-import { loginAdmin, isMasterAdminEmail } from '../lib/adminApi';
-import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { checkAdminSession } from '../lib/adminApi';
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export interface ToastMessage {
@@ -65,7 +65,7 @@ interface AppContextType {
     rightsConfirmed: boolean;
     termsAgreed: boolean;
   }) => Promise<FeaturedSubmission>;
-  payForSubmission: (submissionId: string, provider?: 'STRIPE_CARD' | 'CARD', cardLast4?: string) => Promise<boolean>;
+  payForSubmission: (submissionId: string, provider?: 'STRIPE_CARD' | 'CARD', paymentIntentId?: string) => Promise<boolean>;
   reviewSubmission: (submissionId: string, decision: 'APPROVE' | 'REJECT', reason?: string, options?: { silent?: boolean }) => Promise<void>;
   publishToInstagram: (submissionId: string, instagramPostUrl: string, options?: { silent?: boolean }) => Promise<void>;
 
@@ -278,7 +278,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Synchronize dynamic campuses with Firestore
     const unsub = onSnapshot(
-      collection(db, 'universities'),
+      query(collection(db, 'universities'), where('communityEnabled', '==', true)),
       (snap) => {
         const firestoreList: University[] = [];
         snap.forEach((docSnap) => {
@@ -561,65 +561,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentRoute, entryUniversityContext, getUniversityBySlug]);
 
-  // 2. Authentication & Student Profile
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('campusconnect_auth') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // 2. Authentication & Student Profile (Server-verified via HttpOnly cookies)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [verifiedAdminSession, setVerifiedAdminSession] = useState<boolean>(false);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem('campusconnect_user');
-      if (stored) return JSON.parse(stored);
-    } catch {
-      // ignore
-    }
-    return null;
-  });
+  const isAdmin = verifiedAdminSession;
 
-  const isAdmin = useMemo(() => {
-    const hasAdminToken = typeof window !== 'undefined' && !!localStorage.getItem('campusconnect_admin_token');
-    return hasAdminToken || currentUser?.role === 'Admin' || (currentUser?.email ? currentUser.email.startsWith('admin@') : false);
-  }, [currentUser]);
-
-  // 3. Submissions State
-  const [submissions, setSubmissions] = useState<FeaturedSubmission[]>(() => {
-    try {
-      const stored = localStorage.getItem('campusconnect_submissions');
-      if (stored) {
-        const parsed: FeaturedSubmission[] = JSON.parse(stored);
-        const cleaned = parsed.filter(s => !['sub_tm_001', 'sub_sp_002', 'sub_cb_003', 'sub_test_stripe'].includes(s.id));
-        return cleaned;
-      }
-    } catch {
-      // ignore
-    }
-    return [];
-  });
-
-  // Save submissions to local storage whenever updated
+  // Hydrate student & admin auth states strictly from backend session cookies on mount
   useEffect(() => {
-    try {
-      localStorage.setItem('campusconnect_submissions', JSON.stringify(submissions));
-    } catch {
-      // ignore
-    }
-  }, [submissions]);
-
-  // Sync submissions from server on mount
-  useEffect(() => {
-    fetch('/api/submissions')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d && Array.isArray(d.submissions)) {
-          setSubmissions(d.submissions);
+    let active = true;
+    fetch('/api/users/me', {
+      credentials: 'include',
+      headers: { 'Cache-Control': 'no-store' }
+    })
+      .then(async (res) => {
+        if (!active) return;
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.authenticated && data?.user) {
+            setIsAuthenticated(true);
+            setCurrentUser(data.user);
+            return;
+          }
         }
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+        try {
+          localStorage.removeItem('campusconnect_auth');
+          localStorage.removeItem('campusconnect_user');
+        } catch {}
       })
       .catch(() => {});
+
+    checkAdminSession()
+      .then((res) => {
+        if (!active) return;
+        setVerifiedAdminSession(Boolean(res?.authenticated));
+      })
+      .catch(() => {
+        if (active) setVerifiedAdminSession(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentRoute]);
+
+  // 3. Submissions State
+  const [submissions, setSubmissions] = useState<FeaturedSubmission[]>([]);
+
+  // Sync public published submissions + authenticated user's own submissions from server
+  const syncSubmissionsFromServer = useCallback(async (authenticatedUser: boolean) => {
+    try {
+      const pubRes = await fetch('/api/submissions', { credentials: 'include' });
+      const pubData = pubRes.ok ? await pubRes.json().catch(() => null) : null;
+      const publicSubs: FeaturedSubmission[] = Array.isArray(pubData?.submissions) ? pubData.submissions : [];
+
+      let mySubs: FeaturedSubmission[] = [];
+      if (authenticatedUser) {
+        const mineRes = await fetch('/api/submissions/mine', { credentials: 'include' });
+        if (mineRes.ok) {
+          const mineData = await mineRes.json().catch(() => null);
+          if (Array.isArray(mineData?.submissions)) {
+            mySubs = mineData.submissions;
+          }
+        }
+      }
+
+      const mergedMap = new Map<string, FeaturedSubmission>();
+      publicSubs.forEach((s) => {
+        if (s && s.id) mergedMap.set(s.id, s);
+      });
+      mySubs.forEach((s) => {
+        if (s && s.id) mergedMap.set(s.id, s);
+      });
+      setSubmissions(Array.from(mergedMap.values()));
+    } catch {
+      // ignore network notice
+    }
   }, []);
+
+  useEffect(() => {
+    syncSubmissionsFromServer(isAuthenticated);
+  }, [isAuthenticated, syncSubmissionsFromServer]);
 
   // 4. Payments State
   const [payments, setPayments] = useState<PaymentRecord[]>(() => {
@@ -735,66 +760,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
-  // Auth methods
-  const login = async (email: string, _pass: string): Promise<boolean> => {
+  // Auth methods (Strictly server-authenticated)
+  const login = async (email: string, pass: string): Promise<boolean> => {
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = (_pass || '').trim();
-    
-    // Check if logging in as admin
-    const isAdminUser = isMasterAdminEmail(cleanEmail);
-    
-    if (isAdminUser) {
-      try {
-        const adminRes = await loginAdmin(cleanEmail, cleanPass);
-        if (adminRes.token) {
-          localStorage.setItem('campusconnect_admin_token', adminRes.token);
-          if (adminRes.admin) {
-            localStorage.setItem('campusconnect_admin_user', JSON.stringify(adminRes.admin));
-          }
-        }
-      } catch (err: any) {
-        console.warn('Admin authentication notice:', err);
-        addToast('Admin Authentication Failed', err.message || 'Invalid administrator credentials.', 'error');
-        throw err;
-      }
-    }
-    
-    // Check student account in SQLite if not admin
-    let serverUser: Partial<User> | null = null;
-    if (!isAdminUser) {
-      let authRejected = false;
-      try {
-        const res = await fetch('/api/users/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password: cleanPass })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          authRejected = true;
-          addToast('Authentication Failed', data.message || 'Incorrect email or password.', 'error');
-          throw new Error(data.message || 'Incorrect email or password.');
-        }
-        if (data.user) {
-          serverUser = data.user;
-        }
-      } catch (err: any) {
-        if (authRejected || (err?.message && err.message.includes('Incorrect password'))) {
-          throw err;
-        }
-      }
+    const cleanPass = (pass || '').trim();
+
+    const res = await fetch('/api/users/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password: cleanPass })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.user) {
+      const msg = data.message || 'Incorrect email or password.';
+      addToast('Authentication Failed', msg, 'error');
+      throw new Error(msg);
     }
 
-    const displayName =
-      serverUser?.name ||
-      cleanEmail
-        .split('@')[0]
-        .split(/[._-]/)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ') ||
-      'Campus Student';
-
-    // University association: strictly use what the user selected earlier or stored profile university
+    const serverUser: User = data.user;
     let storedSelectedSlug: string | null = null;
     try {
       storedSelectedSlug =
@@ -804,76 +788,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const associatedUni =
       selectedUniversity ||
       entryUniversityContext ||
-      (serverUser?.universitySlug ? getUniversityBySlug(serverUser.universitySlug) : undefined) ||
+      (serverUser.universitySlug ? getUniversityBySlug(serverUser.universitySlug) : undefined) ||
       (storedSelectedSlug ? getUniversityBySlug(storedSelectedSlug) : undefined) ||
       null;
 
-    const loggedUser: User = {
-      id: serverUser?.id || ('usr_' + Math.random().toString(36).substring(2, 9)),
-      name: displayName,
-      email: cleanEmail,
-      role: isAdminUser ? 'Admin' : 'Student',
-      avatarUrl: serverUser?.avatarUrl || '',
-      universityId: associatedUni?.id || serverUser?.universityId,
-      universityName: associatedUni?.name || serverUser?.universityName,
-      universitySlug: associatedUni?.slug || serverUser?.universitySlug,
-      course: serverUser?.course || '',
-      graduationYear: serverUser?.graduationYear || '',
-      bio: serverUser?.bio || '',
-      interests: serverUser?.interests || [],
-      studentVerificationStatus: serverUser?.studentVerificationStatus || 'UNVERIFIED',
-      onboardingStep: serverUser?.onboardingStep || 0,
-      onboardingCompleted: serverUser?.onboardingCompleted || false
-    };
-
     setIsAuthenticated(true);
-    setCurrentUser(loggedUser);
+    setCurrentUser(serverUser);
+    syncSubmissionsFromServer(true);
 
-    try {
-      localStorage.setItem('campusconnect_auth', 'true');
-      localStorage.setItem('campusconnect_user', JSON.stringify(loggedUser));
-    } catch {
-      // ignore
-    }
+    addToast('Signed In', `Welcome back, ${serverUser.name || cleanEmail}!`, 'success');
 
-    addToast('Signed In', `Welcome back, ${displayName}!`, 'success');
-    
-    if (isAdminUser) {
-      navigateTo('/admin');
+    const redirectUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null;
+    if (redirectUrl && redirectUrl.startsWith('/') && !redirectUrl.startsWith('//')) {
+      navigateTo(redirectUrl);
     } else {
-      const redirectUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null;
-      if (redirectUrl) {
-        navigateTo(redirectUrl);
-      } else {
-        let hasActivePhotos = false;
-        try {
-          const raw = localStorage.getItem('campusconnect_active_draft');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && ((parsed.photos && parsed.photos.length > 0) || parsed.photoUrl)) {
-              hasActivePhotos = true;
-            }
+      let hasActivePhotos = false;
+      try {
+        const raw = localStorage.getItem('campusconnect_active_draft');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && ((parsed.photos && parsed.photos.length > 0) || parsed.photoUrl)) {
+            hasActivePhotos = true;
           }
-        } catch {}
-        if (hasActivePhotos || associatedUni) {
-          navigateTo('/student');
-        } else {
-          navigateTo('/app/dashboard');
         }
+      } catch {}
+      if (hasActivePhotos || associatedUni) {
+        navigateTo('/student');
+      } else {
+        navigateTo('/app/dashboard');
       }
     }
     return true;
   };
 
-  const register = async (name: string, email: string, _pass: string, universitySlug?: string): Promise<boolean> => {
+  const register = async (name: string, email: string, pass: string, universitySlug?: string): Promise<boolean> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
-    const isAdminUser = 
-      cleanEmail === 'campusconnect@gmail.com' || 
-      cleanEmail === 'compusconnect@gmail.com' ||
-      cleanEmail.startsWith('admin@');
 
-    // Resolve target university strictly from explicit slug or prior user selection
     let storedSelectedSlug: string | null = null;
     try {
       storedSelectedSlug =
@@ -887,87 +838,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (storedSelectedSlug ? getUniversityBySlug(storedSelectedSlug) : null) ||
       null;
 
-    // Wipe any legacy/prior session records so new user finds 100% clean state
-    clearAllStudentDrafts();
-    try {
-      localStorage.removeItem('campusconnect_instagram_accounts');
-      localStorage.removeItem('campusconnect_notifications');
-      localStorage.removeItem('campusconnect_submissions');
-      localStorage.removeItem('campusconnect_payments');
-      localStorage.removeItem('campusconnect_audit_logs');
-      localStorage.removeItem('campusconnect_wallet_balance');
-      localStorage.removeItem('campusconnect_wallet_transactions');
-    } catch {}
+    const res = await fetch('/api/users/register', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: cleanName,
+        email: cleanEmail,
+        password: (pass || '').trim(),
+        universityId: targetUni?.id,
+        universityName: targetUni?.name,
+        universitySlug: targetUni?.slug
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.user) {
+      const msg = data.message || 'Could not create student account.';
+      addToast('Registration Failed', msg, 'error');
+      throw new Error(msg);
+    }
 
+    clearAllStudentDrafts();
     setAccounts([]);
     setNotifications([]);
     setSubmissions([]);
     setPayments([]);
     setAuditLogs([]);
 
-    const newUser: User = {
-      id: 'usr_' + Date.now(),
-      name: cleanName,
-      email: cleanEmail,
-      role: isAdminUser ? 'Admin' : 'Student',
-      avatarUrl: '',
-      universityId: targetUni?.id,
-      universityName: targetUni?.name,
-      universitySlug: targetUni?.slug,
-      course: '',
-      graduationYear: '',
-      bio: '',
-      interests: [],
-      studentVerificationStatus: 'UNVERIFIED',
-      onboardingStep: 0,
-      onboardingCompleted: false,
-      createdAt: new Date().toISOString()
-    };
-
+    const registeredUser: User = data.user;
     setIsAuthenticated(true);
-    setCurrentUser(newUser);
+    setCurrentUser(registeredUser);
 
-    try {
-      localStorage.setItem('campusconnect_auth', 'true');
-      localStorage.setItem('campusconnect_user', JSON.stringify(newUser));
-    } catch {
-      // ignore
-    }
-
-    try {
-      fetch('/api/users/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newUser, password: (_pass || '').trim() })
-      }).catch(() => {});
-    } catch {
-      // ignore
-    }
-
-    addToast('Account Created', `Welcome to CampusConnect, ${cleanName}!`, 'success');
-    if (isAdminUser) {
-      navigateTo('/admin');
+    addToast('Account Created', `Welcome to CampusConnect, ${registeredUser.name}!`, 'success');
+    const redirectUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null;
+    if (redirectUrl && redirectUrl.startsWith('/') && !redirectUrl.startsWith('//')) {
+      navigateTo(redirectUrl);
+    } else if (targetUni) {
+      navigateTo('/student');
     } else {
-      const redirectUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null;
-      if (redirectUrl) {
-        navigateTo(redirectUrl);
-      } else {
-        let hasActivePhotos = false;
-        try {
-          const raw = localStorage.getItem('campusconnect_active_draft');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && ((parsed.photos && parsed.photos.length > 0) || parsed.photoUrl)) {
-              hasActivePhotos = true;
-            }
-          }
-        } catch {}
-        if (hasActivePhotos || targetUni) {
-          navigateTo('/student');
-        } else {
-          navigateTo('/app/dashboard');
-        }
-      }
+      navigateTo('/app/dashboard');
     }
     return true;
   };
@@ -1000,6 +909,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const logout = () => {
+    fetch('/api/users/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
     setIsAuthenticated(false);
     setCurrentUser(null);
     setAccounts([]);
@@ -1019,52 +929,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     navigateTo('/login');
   };
 
-  const updateUserProfile = (updates: Partial<User>) => {
+  const updateUserProfile = async (updates: Partial<User>) => {
     if (!currentUser) return;
-    const updated = { ...currentUser, ...updates, updatedAt: new Date().toISOString() };
-    setCurrentUser(updated);
     try {
-      localStorage.setItem('campusconnect_user', JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
-    try {
-      fetch('/api/users/register', {
-        method: 'POST',
+      const res = await fetch('/api/users/profile', {
+        method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      }).catch(() => {});
-    } catch {}
-    addToast('Profile Updated', 'Your student details have been saved.', 'success');
+        body: JSON.stringify(updates)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.user) {
+        addToast('Update Failed', data.message || 'Could not update profile.', 'error');
+        return;
+      }
+      setCurrentUser(data.user);
+      addToast('Profile Updated', 'Your student details have been saved.', 'success');
+    } catch {
+      addToast('Network Issue', 'Could not reach profile update service.', 'error');
+    }
   };
 
-  const completeOnboarding = (updates: Partial<User>) => {
+  const completeOnboarding = async (updates: Partial<User>) => {
     if (!currentUser) return;
-    const updated: User = {
-      ...currentUser,
-      ...updates,
-      onboardingStep: 4,
-      onboardingCompleted: true,
-      updatedAt: new Date().toISOString()
-    };
-    setCurrentUser(updated);
     try {
-      localStorage.setItem('campusconnect_user', JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
-    try {
-      fetch('/api/users/register', {
-        method: 'POST',
+      const res = await fetch('/api/users/profile', {
+        method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      }).catch(() => {});
-    } catch {}
-    addToast('Onboarding Complete!', 'Welcome to your university student community.', 'success');
-    if (updated.universitySlug) {
-      navigateTo(`/university/${updated.universitySlug}`);
-    } else {
-      navigateTo('/student');
+        body: JSON.stringify({
+          ...updates,
+          onboardingStep: 4,
+          onboardingCompleted: true
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.user) {
+        addToast('Save Failed', data.message || 'Could not complete onboarding.', 'error');
+        return;
+      }
+      const updated: User = data.user;
+      setCurrentUser(updated);
+      addToast('Onboarding Complete!', 'Welcome to your university student community.', 'success');
+      if (updated.universitySlug) {
+        navigateTo(`/university/${updated.universitySlug}`);
+      } else {
+        navigateTo('/student');
+      }
+    } catch {
+      addToast('Network Issue', 'Could not reach profile service.', 'error');
     }
   };
 
@@ -1093,113 +1006,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Please select your university before creating a submission.');
     }
 
-    const submissionId = 'sub_' + Math.random().toString(36).substring(2, 9);
-    const newSubmission: FeaturedSubmission = {
-      id: submissionId,
-      studentUid: currentUser.id,
-      studentDisplayName: currentUser.name,
-      studentEmail: currentUser.email,
-      studentAvatarUrl: currentUser.avatarUrl,
-      universityId: uni.id,
-      universityName: uni.name,
-      universitySlug: uni.slug,
-      universityInstagramHandle: uni.instagramHandle,
-      originalImagePath: params.originalImagePath,
-      watermarkedImagePath: params.watermarkedImagePath,
-      caption: params.caption,
-      publicationConsent: params.publicationConsent,
-      rightsConfirmed: params.rightsConfirmed,
-      termsAgreed: params.termsAgreed,
-      paymentStatus: 'AWAITING_PAYMENT',
-      moderationStatus: 'PENDING',
-      publishingStatus: 'NOT_READY',
-      submittedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    const res = await fetch('/api/submissions', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        universityId: uni.id,
+        universitySlug: uni.slug,
+        originalImagePath: params.originalImagePath,
+        watermarkedImagePath: params.watermarkedImagePath,
+        caption: params.caption,
+        publicationConsent: params.publicationConsent,
+        rightsConfirmed: params.rightsConfirmed,
+        termsAgreed: params.termsAgreed
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.submission) {
+      throw new Error(data.message || 'Could not save submission.');
+    }
 
-    setSubmissions((prev) => [newSubmission, ...prev]);
-    try {
-      await fetch('/api/submissions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSubmission)
-      });
-    } catch {}
+    const saved: FeaturedSubmission = data.submission;
+    setSubmissions((prev) => [saved, ...prev.filter((s) => s.id !== saved.id)]);
     addToast('Submission Created', 'Now complete the one-time $6 payment to submit for review.', 'info');
-    return newSubmission;
+    return saved;
   };
 
   const addSubmission = useCallback((newSub: FeaturedSubmission) => {
     setSubmissions((prev) => {
       const filtered = prev.filter((s) => s.id !== newSub.id);
-      const updated = [newSub, ...filtered];
-      try {
-        localStorage.setItem('campusconnect_submissions', JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
-      return updated;
+      return [newSub, ...filtered];
     });
   }, []);
 
   const payForSubmission = async (
     submissionId: string,
     _provider: 'STRIPE_CARD' | 'CARD' = 'STRIPE_CARD',
-    cardLast4?: string
+    paymentIntentId?: string
   ): Promise<boolean> => {
     const sub = submissions.find((s) => s.id === submissionId);
     if (!sub || !currentUser) {
       throw new Error('Submission or user not found');
     }
 
-    // Set status to pending
     setSubmissions((prev) =>
       prev.map((s) => (s.id === submissionId ? { ...s, paymentStatus: 'PAYMENT_PENDING' } : s))
     );
 
     try {
-      // 1. Client execution & simulation
       const result = await processSubmissionPayment({
         submissionId,
         studentUid: currentUser.id,
         studentName: currentUser.name,
         universityId: sub.universityId,
         provider: 'STRIPE_CARD',
-        cardLast4
+        paymentIntentId
       });
 
-      // 2. Server-side authoritative verification & database persistence
-      let verifiedRecord = result.paymentRecord;
-      try {
-        const serverRes = await fetch('/api/payments/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            submissionId,
-            studentUid: currentUser.id,
-            studentName: currentUser.name,
-            studentEmail: currentUser.email,
-            universityId: sub.universityId,
-            universitySlug: sub.universitySlug,
-            provider: 'STRIPE_CARD',
-            idempotencyKey: result.paymentRecord.idempotencyKey
-          })
-        });
-        if (serverRes.ok) {
-          const sData = await serverRes.json();
-          if (sData.payment) {
-            verifiedRecord = sData.payment;
-          }
-        }
-      } catch (sErr) {
-        console.warn('Server payment sync fallback to local record:', sErr);
-      }
-
       if (result.success) {
-        // Record payment
-        setPayments((prev) => [verifiedRecord, ...prev]);
-
-        // Advance submission status to confirmed payment and queued for review
+        setPayments((prev) => [result.paymentRecord, ...prev]);
         setSubmissions((prev) =>
           prev.map((s) =>
             s.id === submissionId
@@ -1214,7 +1079,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           )
         );
 
-        // Add in-app notification
         const newNotif: NotificationItem = {
           id: 'notif_' + Date.now(),
           recipientUid: currentUser.id,
@@ -1247,8 +1111,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reason?: string,
     options?: { silent?: boolean }
   ) => {
-    const hasAdminAccess = isAdmin || (typeof window !== 'undefined' && Boolean(localStorage.getItem('campusconnect_admin_token')));
-    if (!hasAdminAccess) {
+    const sessionValid = isAdmin || (await checkAdminSession().then(r => Boolean(r?.authenticated)).catch(() => false));
+    if (!sessionValid) {
       addToast('Unauthorized', 'Administrator role required to review submissions.', 'error');
       return;
     }
@@ -1277,7 +1141,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
-    // Notify student
     const studentNotif: NotificationItem = {
       id: 'notif_' + Date.now(),
       recipientUid: sub.studentUid,
@@ -1313,8 +1176,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     instagramPostUrl: string,
     options?: { silent?: boolean }
   ) => {
-    const hasAdminAccess = isAdmin || (typeof window !== 'undefined' && Boolean(localStorage.getItem('campusconnect_admin_token')));
-    if (!hasAdminAccess) {
+    const sessionValid = isAdmin || (await checkAdminSession().then(r => Boolean(r?.authenticated)).catch(() => false));
+    if (!sessionValid) {
       addToast('Unauthorized', 'Administrator role required.', 'error');
       return;
     }
@@ -1413,9 +1276,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
-  // Sync Instagram accounts from server database on mount
+  // Sync Instagram accounts only when authenticated (requires server session)
   useEffect(() => {
-    fetch('/api/instagram/accounts')
+    if (!isAuthenticated && !verifiedAdminSession) return;
+    fetch('/api/instagram/accounts', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d && Array.isArray(d.accounts) && d.accounts.length > 0) {
@@ -1428,7 +1292,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       })
       .catch(() => {});
-  }, []);
+  }, [isAuthenticated, verifiedAdminSession]);
 
   // Synchronize accounts to localStorage
   useEffect(() => {
@@ -1503,15 +1367,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setSelectedAccountId(newAccount.id);
 
-    // Persist directly to backend SQLite (no Meta integration required)
     fetch('/api/instagram/accounts', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...newAccount,
         universityId: matchedUni?.id,
-        universityName: matchedUni?.name,
-        actorEmail: currentUser?.email || 'system'
+        universityName: matchedUni?.name
       })
     })
       .then(r => r.ok ? r.json() : null)
@@ -1536,7 +1399,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return a;
     }));
-    fetch(`/api/instagram/accounts/${encodeURIComponent(id)}/refresh`, { method: 'POST' }).catch(() => {});
+    fetch(`/api/instagram/accounts/${encodeURIComponent(id)}/refresh`, {
+      method: 'POST',
+      credentials: 'include'
+    }).catch(() => {});
     addToast('Instagram Synced', `@${targetUsername || 'account'} connection refreshed for 60 days.`, 'success');
   };
 
@@ -1548,7 +1414,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch {}
       return updated;
     });
-    fetch(`/api/instagram/accounts/${encodeURIComponent(id)}/disconnect`, { method: 'POST' }).catch(() => {});
+    fetch(`/api/instagram/accounts/${encodeURIComponent(id)}/disconnect`, {
+      method: 'POST',
+      credentials: 'include'
+    }).catch(() => {});
     addToast('Account Disconnected', 'Instagram account has been disconnected.', 'info');
   };
 

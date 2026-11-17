@@ -565,9 +565,10 @@ export const LoginPage: React.FC = () => {
                       <input
                         type={showPassword ? 'text' : 'password'}
                         required
+                        minLength={10}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Create a secure password"
+                        placeholder="Min 10 chars (upper, lower, number & symbol)"
                         autoComplete="new-password"
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#3B4988] focus:ring-1 focus:ring-[#3B4988] transition-colors shadow-2xs"
                       />

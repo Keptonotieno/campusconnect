@@ -8,7 +8,7 @@ export interface InitiatePaymentParams {
   studentName: string;
   universityId: string;
   provider?: 'STRIPE_CARD';
-  cardLast4?: string;
+  paymentIntentId?: string;
   idempotencyKey?: string;
 }
 
@@ -18,44 +18,87 @@ export interface PaymentVerificationResult {
   message: string;
 }
 
+export interface PaymentGatewayConfig {
+  stripeConfigured: boolean;
+  publishableKey: string;
+}
+
+export interface PaymentIntentResponse {
+  success: boolean;
+  paymentIntentId: string;
+  clientSecret: string;
+  publishableKey: string;
+  amountUsd: number;
+  currency: string;
+}
+
+export async function fetchPaymentGatewayConfig(): Promise<PaymentGatewayConfig> {
+  const res = await fetch('/api/payment-config', {
+    credentials: 'include',
+    headers: { 'Cache-Control': 'no-store' }
+  });
+  if (!res.ok) {
+    return { stripeConfigured: false, publishableKey: '' };
+  }
+  return (await res.json()) as PaymentGatewayConfig;
+}
+
+export async function createStripePaymentIntent(
+  submissionId: string,
+  idempotencyKey?: string
+): Promise<PaymentIntentResponse> {
+  const res = await fetch('/api/payments/create-intent', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ submissionId, idempotencyKey })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.paymentIntentId) {
+    throw new Error(data.message || 'Unable to initialize Stripe payment intent.');
+  }
+  return data as PaymentIntentResponse;
+}
+
 /**
- * Initiates and executes an audited Stripe payment transaction with server-side validation & idempotency controls.
+ * Verifies a settled Stripe PaymentIntent exclusively via the authoritative backend API.
  */
-export async function processSubmissionPayment(params: InitiatePaymentParams): Promise<PaymentVerificationResult> {
-  // 1. Enforce idempotency key to prevent double charging
+export async function processSubmissionPayment(
+  params: InitiatePaymentParams
+): Promise<PaymentVerificationResult> {
   const key = params.idempotencyKey || `idem_${params.submissionId}_${Date.now()}`;
-  
-  // 2. Validate input parameters
+
   if (!params.submissionId || !params.studentUid) {
     throw new Error('Invalid payment parameters: submissionId and studentUid are required.');
   }
 
-  // 3. Simulate secure Stripe tokenization and 3D Secure / SSL handshake
-  await new Promise((resolve) => setTimeout(resolve, 1400));
+  let paymentIntentId = params.paymentIntentId;
+  if (!paymentIntentId) {
+    // Initialize server-side PaymentIntent; client must confirm via Stripe before verification
+    await createStripePaymentIntent(params.submissionId, key);
+    throw new Error(
+      'Stripe payment confirmation is required via Stripe Checkout before server verification.'
+    );
+  }
 
-  // Generate trusted provider transaction reference (Stripe charge ID format: ch_...)
-  const txnRef = `ch_${Math.random().toString(36).substring(2, 10)}${Math.random().toString(36).substring(2, 6)}`;
-
-  const paymentRecord: PaymentRecord = {
-    id: 'pay_' + Math.random().toString(36).substring(2, 9),
-    submissionId: params.submissionId,
-    studentUid: params.studentUid,
-    studentName: params.studentName,
-    universityId: params.universityId,
-    provider: 'STRIPE_CARD',
-    providerTransactionReference: txnRef,
-    amountUsd: FEATURED_POST_PRICE_USD,
-    currency: 'USD',
-    status: 'CONFIRMED',
-    idempotencyKey: key,
-    verifiedAt: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+  const verifyRes = await fetch('/api/payments/verify', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      submissionId: params.submissionId,
+      paymentIntentId,
+      idempotencyKey: key
+    })
+  });
+  const data = await verifyRes.json().catch(() => ({}));
+  if (!verifyRes.ok || !data?.payment) {
+    throw new Error(data.message || 'Server-side Stripe payment verification failed.');
+  }
 
   return {
     success: true,
-    paymentRecord,
-    message: `Payment of $${FEATURED_POST_PRICE_USD.toFixed(2)} USD verified via Stripe (Charge ID: ${txnRef}).`
+    paymentRecord: data.payment as PaymentRecord,
+    message: data.message || `Payment of $${FEATURED_POST_PRICE_USD.toFixed(2)} USD verified via Stripe.`
   };
 }

@@ -35,6 +35,23 @@ import {
   runEmailDiagnostics,
   type SendUniversityEmailParams 
 } from './emailService';
+import {
+  hashPasswordScrypt,
+  verifyPasswordConstantTime,
+  dummyPasswordCheck,
+  validatePasswordStrength,
+  encryptSecret,
+  decryptSecret,
+  generateOpaqueToken,
+  generateTotpSecret,
+  buildOtpAuthUri,
+  verifyTotpCode,
+  generateBackupCodes,
+  sha256Hex,
+  timingSafeEqualStr,
+  validateSafeHttpUrl,
+  sanitizeHexColor
+} from './security';
 
 export { EmailDeliveryError };
 export type { 
@@ -53,115 +70,129 @@ export type {
   EmailDiagnosticReport
 };
 
-// Password hashing using Node.js crypto pbkdf2
-export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
-  const generatedSalt = salt || crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, generatedSalt, 10000, 64, 'sha512').toString('hex');
-  return { hash, salt: generatedSalt };
+// Password hashing using Node.js crypto scrypt
+export function hashPassword(password: string): { hash: string; salt: string } {
+  return hashPasswordScrypt(password);
 }
 
-export function verifyPassword(password: string, hash: string, salt: string): boolean {
-  if (!password || !hash || !salt) return false;
-  
-  // Clean input string (remove hidden characters/whitespace)
-  const clean = password.replace(/[\u200B-\u200D\uFEFF]/g, '');
-  const trimmed = clean.trim();
-  if (!trimmed) return false;
-
-  // Candidate variations strictly derived from the submitted password
-  const candidates = Array.from(new Set([
-    password,
-    trimmed,
-    trimmed.charAt(0).toLowerCase() + trimmed.slice(1),
-    trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
-  ]));
-
-  for (const candidate of candidates) {
-    try {
-      const candidateHash = crypto.pbkdf2Sync(candidate, salt, 10000, 64, 'sha512').toString('hex');
-      if (candidateHash === hash) {
-        return true;
-      }
-    } catch {
-      // continue
-    }
-  }
-
-  return false;
+export function verifyPassword(password: string, hash: string, salt?: string): boolean {
+  return verifyPasswordConstantTime(password, hash, salt).valid;
 }
 
 class Database {
-  private loginAttempts: Record<string, { count: number; lockedUntil?: number }> = {};
-
   constructor() {
-    this.ensureMasterAdminAccounts();
+    this.ensureConfiguredAdminAccount();
   }
 
-  // Ensure initial bootstrap and master admins exist in SQLite
-  private ensureMasterAdminAccounts() {
-    const MASTER_HASH = '35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e';
-    const MASTER_SALT = 'b06b24e9b11bcd5c027c9cfa44e65a0f';
+  // Bootstrap admin ONLY from explicit environment secrets (never hardcoded passwords)
+  private ensureConfiguredAdminAccount() {
+    const envAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const envAdminPass = (process.env.ADMIN_PASSWORD || '').trim();
+    if (!envAdminEmail || !envAdminPass) return;
 
-    const defaultMasters = [
-      { id: 'admin_user_keptonotieno', email: 'keptonotieno@gmail.com' },
-      { id: 'admin_secondary_campusconnect', email: 'campusconnect@gmail.com' },
-      { id: 'admin_general_campusconnect', email: 'admin@campusconnect.app' }
-    ];
+    const strength = validatePasswordStrength(envAdminPass, true);
+    if (!strength.valid) {
+      console.warn('[Security] Ignoring weak ADMIN_PASSWORD env var:', strength.message);
+      return;
+    }
 
-    const envAdminEmail = (
-      process.env.ADMIN_EMAIL ||
-      process.env.MASTER_ADMIN_EMAIL ||
-      process.env.ADMIN_USER ||
-      process.env.ADMIN_USERNAME ||
-      process.env.ADMIN_LOGIN ||
-      process.env.DASHBOARD_EMAIL ||
-      process.env.CAMPUSCONNECT_ADMIN_EMAIL ||
-      process.env.ADMIN_ACCESS_EMAIL ||
-      ''
-    ).trim().toLowerCase();
-
-    const envAdminPass = (
-      process.env.ADMIN_PASSWORD ||
-      process.env.ADMIN_PASS ||
-      process.env.ADMIN_PWD ||
-      process.env.ADMIN_SECRET ||
-      process.env.MASTER_ADMIN_PASSWORD ||
-      process.env.DASHBOARD_PASSWORD ||
-      process.env.CAMPUSCONNECT_ADMIN_PASSWORD ||
-      process.env.ADMIN_ACCESS_PASSWORD ||
-      ''
-    ).trim();
-
-    if (envAdminEmail) {
-      defaultMasters.push({
-        id: 'admin_env_' + envAdminEmail.replace(/[^a-z0-9]/g, '_'),
-        email: envAdminEmail
+    const existing = sqliteStorage.getAdminByEmail(envAdminEmail);
+    const { hash, salt } = hashPasswordScrypt(envAdminPass);
+    if (!existing) {
+      sqliteStorage.insertAdmin({
+        id: 'admin_env_' + crypto.randomBytes(6).toString('hex'),
+        email: envAdminEmail,
+        passwordHash: hash,
+        salt,
+        role: 'Admin',
+        createdAt: new Date().toISOString()
       });
+    } else if (!verifyPasswordConstantTime(envAdminPass, existing.passwordHash, existing.salt).valid) {
+      sqliteStorage.updateAdminPassword(existing.id, hash, salt);
+      sqliteStorage.deleteAdminSessionsForAdmin(existing.id);
     }
+  }
 
-    for (const m of defaultMasters) {
-      const existing = sqliteStorage.getAdminByEmail(m.email);
-      if (!existing) {
-        let hashToUse = MASTER_HASH;
-        let saltToUse = MASTER_SALT;
-        if (m.email === envAdminEmail && envAdminPass) {
-          const hashed = hashPassword(envAdminPass);
-          hashToUse = hashed.hash;
-          saltToUse = hashed.salt;
-        }
-        sqliteStorage.insertAdmin({
-          id: m.id,
-          email: m.email,
-          passwordHash: hashToUse,
-          salt: saltToUse,
-          role: 'Admin',
-          createdAt: new Date().toISOString()
-        });
-      } else if (m.email === envAdminEmail && envAdminPass) {
-        const hashed = hashPassword(envAdminPass);
-        sqliteStorage.updateAdminPassword(existing.id, hashed.hash, hashed.salt);
-      }
+  private recordSecurityEvent(
+    severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+    eventType: string,
+    details: string,
+    actorEmail?: string,
+    ipAddress?: string
+  ) {
+    try {
+      sqliteStorage.insertSecurityEvent({
+        id: 'sec_' + crypto.randomBytes(8).toString('hex'),
+        severity,
+        eventType,
+        actorEmail,
+        ipAddress,
+        details,
+        createdAt: new Date().toISOString()
+      });
+    } catch {
+      // non-fatal
     }
+  }
+
+  public logSecurityEvent(
+    severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+    eventType: string,
+    details: string,
+    actorEmail?: string,
+    ipAddress?: string
+  ) {
+    this.recordSecurityEvent(severity, eventType, details, actorEmail, ipAddress);
+  }
+
+  public getSecurityEvents(limit = 100) {
+    return sqliteStorage.getSecurityEvents(limit);
+  }
+
+  public verifyAuditLogChain() {
+    return sqliteStorage.verifyAuditLogChain();
+  }
+
+  public validateUserSession(token: string) {
+    if (!token) return null;
+    const sess = sqliteStorage.getUserSession(token);
+    if (!sess) return null;
+    const user = this.getUserById(sess.userId);
+    if (!user) {
+      sqliteStorage.deleteUserSession(token);
+      return null;
+    }
+    return { session: sess, user };
+  }
+
+  public invalidateUserSession(token: string) {
+    if (token) sqliteStorage.deleteUserSession(token);
+  }
+
+  public consumeRateLimit(key: string, maxAttempts: number, windowMs: number, lockoutMs = windowMs) {
+    return sqliteStorage.consumeRateLimit(key, maxAttempts, windowMs, lockoutMs);
+  }
+
+  public registerUploadedFile(rec: {
+    id: string;
+    ownerUid: string;
+    universityId?: string;
+    mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+    ext: 'jpg' | 'png' | 'webp';
+    sizeBytes: number;
+    sha256: string;
+    isPublic: boolean;
+    createdAt: string;
+  }) {
+    return sqliteStorage.insertUploadedFile(rec);
+  }
+
+  public getUploadedFile(id: string) {
+    return sqliteStorage.getUploadedFile(id);
+  }
+
+  public markUploadedFilePublic(id: string) {
+    sqliteStorage.markUploadedFilePublic(id);
   }
 
   // Admin Management & Bootstrap
@@ -169,35 +200,55 @@ class Database {
     return sqliteStorage.getAdminCount();
   }
 
-  public getAdmins(): Omit<AdminUser, 'passwordHash' | 'salt'>[] {
-    return sqliteStorage.getAdmins().map(({ passwordHash, salt, ...admin }) => admin);
+  public getAdmins(): Omit<AdminUser, 'passwordHash' | 'salt' | 'totpSecretEnc' | 'backupCodesHashJson'>[] {
+    return sqliteStorage.getAdmins().map(({ passwordHash, salt, totpSecretEnc, backupCodesHashJson, ...admin }) => admin);
   }
 
-  public bootstrapAdmin(email: string, password: string): { admin: Omit<AdminUser, 'passwordHash' | 'salt'>; session: AdminSession } {
+  public bootstrapAdmin(
+    email: string,
+    password: string,
+    ip = '127.0.0.1'
+  ): {
+    admin: Omit<AdminUser, 'passwordHash' | 'salt' | 'totpSecretEnc' | 'backupCodesHashJson'>;
+    mfaRequired: true;
+    mfaSetupRequired: true;
+    challengeToken: string;
+    secret: string;
+    otpAuthUri: string;
+    backupCodes: string[];
+  } {
     if (this.getAdminCount() > 0) {
       throw new Error('Bootstrap already completed. An administrator account already exists.');
     }
-    if (!email || !email.includes('@')) {
-      throw new Error('A valid email address is required.');
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      throw new Error('A valid administrator email address is required.');
     }
-    if (!password || password.length < 8) {
-      throw new Error('Password must be at least 8 characters long.');
+    const strength = validatePasswordStrength(password, true);
+    if (!strength.valid) {
+      throw new Error(strength.message || 'Administrator password does not meet security requirements.');
     }
 
-    const { hash, salt } = hashPassword(password);
+    const { hash, salt } = hashPasswordScrypt(password);
+    const totpSecret = generateTotpSecret();
+    const backups = generateBackupCodes(8);
+
     const newAdmin: AdminUser = {
       id: 'admin_' + crypto.randomBytes(6).toString('hex'),
-      email: email.trim().toLowerCase(),
+      email: cleanEmail,
       passwordHash: hash,
       salt,
       role: 'Admin',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      mfaEnabled: false,
+      totpSecretEnc: encryptSecret(totpSecret),
+      backupCodesHashJson: JSON.stringify(backups.hashes)
     };
 
     sqliteStorage.insertAdmin(newAdmin);
 
-    // Create initial session
-    const session = this.createSession(newAdmin);
+    const challengeToken = generateOpaqueToken(24);
+    sqliteStorage.createMfaChallenge(challengeToken, newAdmin.id, newAdmin.email, ip, 10);
 
     this.logAudit({
       actorUid: newAdmin.id,
@@ -206,123 +257,211 @@ class Database {
       action: 'ADMIN_BOOTSTRAP_COMPLETED',
       targetType: 'USER',
       targetId: newAdmin.id,
-      details: `Initial administrator bootstrapped for ${newAdmin.email}`
+      details: `Initial administrator initialized for ${newAdmin.email} (pending MFA verification)`
     });
 
-    const { passwordHash, salt: _, ...safeAdmin } = newAdmin;
-    return { admin: safeAdmin, session };
+    const { passwordHash: _h, salt: _s, totpSecretEnc: _t, backupCodesHashJson: _b, ...safeAdmin } = newAdmin;
+    return {
+      admin: safeAdmin,
+      mfaRequired: true,
+      mfaSetupRequired: true,
+      challengeToken,
+      secret: totpSecret,
+      otpAuthUri: buildOtpAuthUri(newAdmin.email, totpSecret),
+      backupCodes: backups.plain
+    };
   }
 
-  public loginAdmin(email: string, password: string, ip: string): { admin: Omit<AdminUser, 'passwordHash' | 'salt'>; session: AdminSession } {
-    const rawEmail = (email || '').trim().toLowerCase();
-    const rawPassword = (password || '').trim();
+  public loginAdmin(
+    email: string,
+    password: string,
+    ip: string
+  ): {
+    mfaRequired: true;
+    mfaSetupRequired: boolean;
+    challengeToken: string;
+    email: string;
+    secret?: string;
+    otpAuthUri?: string;
+    backupCodes?: string[];
+  } {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const rawPassword = typeof password === 'string' ? password : '';
 
-    // Map common aliases or username shorthand
-    let normalizedEmail = rawEmail;
-    if (rawEmail === 'campusconnect' || rawEmail === 'compusconnect') {
-      normalizedEmail = `${rawEmail}@gmail.com`;
+    // Persistent IP & account rate limiting
+    const ipLimit = sqliteStorage.consumeRateLimit(`admin_ip:${ip}`, 10, 15 * 60 * 1000, 15 * 60 * 1000);
+    if (!ipLimit.allowed) {
+      this.recordSecurityEvent('HIGH', 'ADMIN_RATE_LIMIT_TRIGGERED', `Admin login IP rate limit exceeded from ${ip}`, cleanEmail, ip);
+      throw new Error(`Too many failed login attempts. Please wait ${Math.ceil(ipLimit.retryAfterSeconds / 60)} minute(s) before trying again.`);
     }
 
-    let admin = sqliteStorage.getAdminByEmail(normalizedEmail);
-
-    const envAdminEmail = (
-      process.env.ADMIN_EMAIL ||
-      process.env.MASTER_ADMIN_EMAIL ||
-      process.env.ADMIN_USER ||
-      process.env.ADMIN_USERNAME ||
-      process.env.ADMIN_LOGIN ||
-      process.env.DASHBOARD_EMAIL ||
-      process.env.CAMPUSCONNECT_ADMIN_EMAIL ||
-      process.env.ADMIN_ACCESS_EMAIL ||
-      ''
-    ).trim().toLowerCase();
-
-    const envAdminPass = (
-      process.env.ADMIN_PASSWORD ||
-      process.env.ADMIN_PASS ||
-      process.env.ADMIN_PWD ||
-      process.env.ADMIN_SECRET ||
-      process.env.MASTER_ADMIN_PASSWORD ||
-      process.env.DASHBOARD_PASSWORD ||
-      process.env.CAMPUSCONNECT_ADMIN_PASSWORD ||
-      process.env.ADMIN_ACCESS_PASSWORD ||
-      ''
-    ).trim();
-
-    const isEnvMaster = Boolean(
-      (envAdminEmail && normalizedEmail === envAdminEmail && envAdminPass && rawPassword === envAdminPass) ||
-      (envAdminPass && rawPassword === envAdminPass && (
-        normalizedEmail === 'campusconnect@gmail.com' || 
-        normalizedEmail === 'compusconnect@gmail.com' ||
-        normalizedEmail === 'keptonotieno@gmail.com' || 
-        normalizedEmail === 'admin@campusconnect.app'
-      ))
-    );
-
-    const isMasterHardcoded = (
-      rawEmail === 'campusconnect@gmail.com' || 
-      rawEmail === 'compusconnect@gmail.com' || 
-      rawEmail === 'keptonotieno@gmail.com' || 
-      rawEmail === 'admin@campusconnect.app'
-    ) && rawPassword.toLowerCase() === 'kepton@12romez';
-
-    const isMaster = isEnvMaster || isMasterHardcoded;
-
-    // Auto-bootstrap master admin if not in database yet
-    if (!admin && isMaster) {
-      const { hash, salt } = hashPassword(rawPassword);
-      admin = {
-        id: 'admin_' + normalizedEmail.replace(/[^a-z0-9]/g, '_'),
-        email: normalizedEmail,
-        passwordHash: hash,
-        salt,
-        role: 'Admin',
-        createdAt: new Date().toISOString()
-      };
-      sqliteStorage.insertAdmin(admin);
-    }
-
-    const isPasswordValid = admin ? (isMaster || verifyPassword(rawPassword, admin.passwordHash, admin.salt)) : false;
-
-    // If credentials are valid, immediately clear any previous lockout
-    if (admin && isPasswordValid) {
-      delete this.loginAttempts[ip];
-      sqliteStorage.updateAdminLogin(admin.id, new Date().toISOString());
-    } else {
-      // Check lockout only for invalid attempts
-      const now = Date.now();
-      const attempts = this.loginAttempts[ip] || { count: 0 };
-      if (attempts.lockedUntil && attempts.lockedUntil > now) {
-        const waitMinutes = Math.ceil((attempts.lockedUntil - now) / 60000);
-        throw new Error(`Too many failed login attempts. Please wait ${waitMinutes} minute(s) before trying again.`);
-      }
-
-      attempts.count = (attempts.count || 0) + 1;
-      if (attempts.count >= 6) {
-        attempts.lockedUntil = now + 10 * 60 * 1000;
-      }
-      this.loginAttempts[ip] = attempts;
+    const admin = cleanEmail ? sqliteStorage.getAdminByEmail(cleanEmail) : undefined;
+    if (!admin) {
+      dummyPasswordCheck(rawPassword);
+      this.recordSecurityEvent('MEDIUM', 'ADMIN_LOGIN_UNKNOWN_EMAIL', `Unknown admin login attempt for "${cleanEmail}"`, cleanEmail, ip);
       throw new Error('Invalid email or password.');
     }
 
-    const session = this.createSession(admin);
+    if (admin.lockedUntil && new Date(admin.lockedUntil).getTime() > Date.now()) {
+      const waitMinutes = Math.max(1, Math.ceil((new Date(admin.lockedUntil).getTime() - Date.now()) / 60000));
+      throw new Error(`Account temporarily locked. Please wait ${waitMinutes} minute(s) before trying again.`);
+    }
+
+    const pwCheck = verifyPasswordConstantTime(rawPassword, admin.passwordHash, admin.salt);
+    if (!pwCheck.valid) {
+      const nextCount = (admin.failedLoginCount || 0) + 1;
+      const lockedUntil = nextCount >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null;
+      sqliteStorage.recordAdminFailedLogin(admin.id, nextCount, lockedUntil);
+      this.recordSecurityEvent(
+        nextCount >= 3 ? 'HIGH' : 'MEDIUM',
+        'ADMIN_LOGIN_FAILED',
+        `Failed password attempt #${nextCount} for administrator ${admin.email}`,
+        admin.email,
+        ip
+      );
+      throw new Error(
+        lockedUntil
+          ? 'Too many failed login attempts. Please wait 15 minute(s) before trying again.'
+          : 'Invalid email or password.'
+      );
+    }
+
+    if (pwCheck.needsUpgrade) {
+      const upgraded = hashPasswordScrypt(rawPassword);
+      sqliteStorage.updateAdminPassword(admin.id, upgraded.hash, upgraded.salt);
+    }
+
+    sqliteStorage.resetRateLimit(`admin_ip:${ip}`);
+    sqliteStorage.updateAdminLogin(admin.id, new Date().toISOString());
+
+    const challengeToken = generateOpaqueToken(24);
+    sqliteStorage.createMfaChallenge(challengeToken, admin.id, admin.email, ip, 5);
+
+    // If MFA is not yet enrolled, generate enrollment secret & backup codes (requires verification to obtain session)
+    if (!admin.mfaEnabled || !admin.totpSecretEnc) {
+      const totpSecret = admin.totpSecretEnc ? decryptSecret(admin.totpSecretEnc) : generateTotpSecret();
+      const backups = generateBackupCodes(8);
+      sqliteStorage.updateAdminMfa(
+        admin.id,
+        false,
+        encryptSecret(totpSecret),
+        JSON.stringify(backups.hashes)
+      );
+      return {
+        mfaRequired: true,
+        mfaSetupRequired: true,
+        challengeToken,
+        email: admin.email,
+        secret: totpSecret,
+        otpAuthUri: buildOtpAuthUri(admin.email, totpSecret),
+        backupCodes: backups.plain
+      };
+    }
+
+    return {
+      mfaRequired: true,
+      mfaSetupRequired: false,
+      challengeToken,
+      email: admin.email
+    };
+  }
+
+  public verifyAdminMfaChallenge(
+    challengeToken: string,
+    code: string,
+    ip: string
+  ): {
+    admin: Omit<AdminUser, 'passwordHash' | 'salt' | 'totpSecretEnc' | 'backupCodesHashJson'>;
+    session: AdminSession;
+  } {
+    const mfaLimit = sqliteStorage.consumeRateLimit(`admin_mfa:${ip}`, 8, 10 * 60 * 1000, 10 * 60 * 1000);
+    if (!mfaLimit.allowed) {
+      this.recordSecurityEvent('HIGH', 'ADMIN_MFA_RATE_LIMIT', `Admin MFA rate limit hit from IP ${ip}`, undefined, ip);
+      throw new Error(`Too many MFA attempts. Please wait ${Math.ceil(mfaLimit.retryAfterSeconds / 60)} minute(s).`);
+    }
+
+    const challenge = sqliteStorage.getMfaChallenge(challengeToken);
+    if (!challenge) {
+      throw new Error('MFA challenge expired or invalid. Please sign in again.');
+    }
+
+    const admin = sqliteStorage.getAdminById(challenge.adminId);
+    if (!admin || !admin.totpSecretEnc) {
+      throw new Error('Administrator MFA configuration missing.');
+    }
+
+    const secret = decryptSecret(admin.totpSecretEnc);
+    const cleanCode = (code || '').trim();
+    const totpResult = verifyTotpCode(secret, cleanCode, 1);
+
+    let verified = false;
+    let usedBackupCode = false;
+
+    if (totpResult.valid && totpResult.step !== null) {
+      const freshStep = sqliteStorage.markTotpStepUsed(admin.id, totpResult.step);
+      if (!freshStep) {
+        this.recordSecurityEvent('HIGH', 'ADMIN_MFA_REPLAY_ATTEMPT', `Replay of TOTP code detected for ${admin.email}`, admin.email, ip);
+        throw new Error('That verification code has already been used. Wait for the next 30-second code.');
+      }
+      verified = true;
+    } else if (admin.mfaEnabled && admin.backupCodesHashJson) {
+      try {
+        const hashes: string[] = JSON.parse(admin.backupCodesHashJson);
+        const submittedHash = sha256Hex(cleanCode.toUpperCase());
+        const idx = hashes.findIndex(h => timingSafeEqualStr(h, submittedHash));
+        if (idx !== -1) {
+          hashes.splice(idx, 1);
+          sqliteStorage.updateAdminBackupCodes(admin.id, JSON.stringify(hashes));
+          verified = true;
+          usedBackupCode = true;
+        }
+      } catch {
+        // ignore invalid json
+      }
+    }
+
+    if (!verified) {
+      this.recordSecurityEvent('HIGH', 'ADMIN_MFA_FAILED', `Invalid MFA verification code for ${admin.email}`, admin.email, ip);
+      throw new Error('Invalid 6-digit authenticator code or backup code.');
+    }
+
+    sqliteStorage.markMfaChallengeUsed(challengeToken);
+    sqliteStorage.resetRateLimit(`admin_mfa:${ip}`);
+
+    const wasEnrollment = !admin.mfaEnabled;
+    if (wasEnrollment) {
+      sqliteStorage.updateAdminMfa(admin.id, true, admin.totpSecretEnc, admin.backupCodesHashJson || null);
+      this.logAudit({
+        actorUid: admin.id,
+        actorEmail: admin.email,
+        actorRole: 'Admin',
+        action: 'ADMIN_MFA_ENROLLED',
+        targetType: 'USER',
+        targetId: admin.id,
+        details: `Administrator ${admin.email} enrolled TOTP multi-factor authentication from IP ${ip}`
+      });
+    }
+
+    sqliteStorage.updateAdminLogin(admin.id, new Date().toISOString());
+    const session = this.createSession(admin, ip);
 
     this.logAudit({
       actorUid: admin.id,
       actorEmail: admin.email,
       actorRole: 'Admin',
-      action: 'ADMIN_LOGIN',
+      action: usedBackupCode ? 'ADMIN_LOGIN_BACKUP_CODE' : 'ADMIN_LOGIN',
       targetType: 'USER',
       targetId: admin.id,
-      details: `Administrator logged in from IP ${ip}`
+      details: `Administrator authenticated with MFA from IP ${ip}`
     });
 
-    const { passwordHash, salt, ...safeAdmin } = admin;
+    const refreshed = sqliteStorage.getAdminById(admin.id) || admin;
+    const { passwordHash: _h, salt: _s, totpSecretEnc: _t, backupCodesHashJson: _b, ...safeAdmin } = refreshed;
     return { admin: safeAdmin, session };
   }
 
-  public createSession(admin: AdminUser): AdminSession {
-    const token = 'sess_' + crypto.randomBytes(32).toString('hex');
+  public createSession(admin: AdminUser, ipAddress = '127.0.0.1'): AdminSession {
+    const token = 'sess_' + generateOpaqueToken(32);
     const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(); // 4 hours
 
     const session: AdminSession = {
@@ -331,7 +470,9 @@ class Database {
       email: admin.email,
       role: 'Admin',
       createdAt: new Date().toISOString(),
-      expiresAt
+      expiresAt,
+      ipAddress,
+      mfaVerified: true
     };
 
     return sqliteStorage.createSession(session);
@@ -340,7 +481,7 @@ class Database {
   public validateSession(token: string): AdminSession | null {
     if (!token) return null;
     const session = sqliteStorage.getSession(token);
-    if (!session) return null;
+    if (!session || !session.mfaVerified) return null;
 
     if (new Date(session.expiresAt).getTime() < Date.now()) {
       this.invalidateSession(token);
@@ -435,15 +576,22 @@ class Database {
       ? (data.instagramHandle.startsWith('@') ? data.instagramHandle : `@${data.instagramHandle}`)
       : `@${slug.replace(/-/g, '_')}_campusconnect`;
 
+    const assertOptionalHttpsUrl = (val?: string, label = 'URL'): string | undefined => {
+      if (!val || !val.trim()) return undefined;
+      const check = validateSafeHttpUrl(val, { allowHttp: false, allowRelative: true });
+      if (!check.valid) throw new Error(`Invalid ${label}: ${check.reason}`);
+      return check.normalized;
+    };
+
     const newCampus: University = {
       id: 'uni_' + slug.replace(/-/g, '_'),
       name: data.name.trim(),
       slug,
-      logoUrl: data.logoUrl || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
-      coverUrl: data.coverUrl || 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
+      logoUrl: assertOptionalHttpsUrl(data.logoUrl, 'logoUrl') || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=200&q=80',
+      coverUrl: assertOptionalHttpsUrl(data.coverUrl, 'coverUrl') || 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
       description: data.description?.trim() || `${data.name} student community and official Instagram featured network.`,
       location: data.location?.trim() || 'Global Campus Community',
-      officialWebsiteUrl: data.officialWebsiteUrl?.trim() || `https://www.${slug}.edu`,
+      officialWebsiteUrl: assertOptionalHttpsUrl(data.officialWebsiteUrl, 'officialWebsiteUrl') || `https://www.${slug}.edu`,
       instagramProfileUrl: `https://instagram.com/${cleanHandle.replace(/^@/, '')}`,
       instagramHandle: cleanHandle,
       communityEnabled: data.communityEnabled !== undefined ? Boolean(data.communityEnabled) : true,
@@ -451,10 +599,10 @@ class Database {
       featuredCount: 0,
       established: data.established || new Date().getFullYear().toString(),
       classYear: data.classYear || '2031',
-      primaryColor: data.primaryColor || '#004B87',
-      accentColor: data.accentColor || '#0284C7',
-      gradientFrom: data.gradientFrom || data.primaryColor || '#004B87',
-      gradientTo: data.gradientTo || '#002D54',
+      primaryColor: sanitizeHexColor(data.primaryColor, '#004B87'),
+      accentColor: sanitizeHexColor(data.accentColor, '#0284C7'),
+      gradientFrom: sanitizeHexColor(data.gradientFrom || data.primaryColor, '#004B87'),
+      gradientTo: sanitizeHexColor(data.gradientTo, '#002D54'),
       tagline: data.tagline || `${data.name} forever.`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -488,9 +636,22 @@ class Database {
       }
     }
 
+    const sanitizedUpdates: Partial<University> = { ...updates };
+    for (const field of ['logoUrl', 'coverUrl', 'officialWebsiteUrl', 'instagramProfileUrl'] as const) {
+      if (typeof sanitizedUpdates[field] === 'string' && sanitizedUpdates[field]!.trim()) {
+        const check = validateSafeHttpUrl(sanitizedUpdates[field]!, { allowHttp: false, allowRelative: true });
+        if (!check.valid) throw new Error(`Invalid ${field}: ${check.reason}`);
+        sanitizedUpdates[field] = check.normalized;
+      }
+    }
+    if (sanitizedUpdates.primaryColor) sanitizedUpdates.primaryColor = sanitizeHexColor(sanitizedUpdates.primaryColor, campus.primaryColor);
+    if (sanitizedUpdates.accentColor) sanitizedUpdates.accentColor = sanitizeHexColor(sanitizedUpdates.accentColor, campus.accentColor);
+    if (sanitizedUpdates.gradientFrom) sanitizedUpdates.gradientFrom = sanitizeHexColor(sanitizedUpdates.gradientFrom, campus.gradientFrom || '#004B87');
+    if (sanitizedUpdates.gradientTo) sanitizedUpdates.gradientTo = sanitizeHexColor(sanitizedUpdates.gradientTo, campus.gradientTo || '#002D54');
+
     const updatedCampus: University = {
       ...campus,
-      ...updates,
+      ...sanitizedUpdates,
       id: campus.id, // prevent ID change
       updatedAt: new Date().toISOString()
     };
@@ -686,51 +847,215 @@ class Database {
     return sqliteStorage.getAllUsers().map(u => this.sanitizeUser(u as any));
   }
 
-  public registerUser(user: Partial<User> & { password?: string }): User {
-    const cleanEmail = user.email?.toLowerCase().trim() || '';
-    const existing = cleanEmail ? sqliteStorage.getUserByEmail(cleanEmail) : null;
-    const creds = user.password && user.password.length >= 6
-      ? hashPassword(user.password)
-      : null;
+  public getUserById(id: string): User | null {
+    const u = sqliteStorage.getUserById(id);
+    return u ? this.sanitizeUser(u as any) : null;
+  }
 
-    const newUser: User & { passwordHash?: string; passwordSalt?: string } = {
-      ...existing,
-      id: user.id || existing?.id || ('usr_' + crypto.randomBytes(6).toString('hex')),
-      name: user.name || existing?.name || 'Student',
+  public registerUser(user: Partial<User> & { password?: string }): User {
+    const cleanEmail = (user.email || '').toLowerCase().trim();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      throw new Error('A valid email address is required.');
+    }
+
+    const existing = sqliteStorage.getUserByEmail(cleanEmail);
+    if (existing) {
+      throw new Error('An account with this email already exists. Please sign in instead.');
+    }
+
+    const strength = validatePasswordStrength(user.password || '', false);
+    if (!strength.valid) {
+      throw new Error(strength.message || 'Password does not meet security requirements.');
+    }
+
+    // Ground university scope if supplied
+    let resolvedUniversityId = user.universityId;
+    let resolvedUniversityName = user.universityName;
+    let resolvedUniversitySlug = user.universitySlug;
+    if (resolvedUniversitySlug || resolvedUniversityId) {
+      const campus = this.getCampusBySlug(resolvedUniversitySlug || resolvedUniversityId || '');
+      if (campus) {
+        resolvedUniversityId = campus.id;
+        resolvedUniversityName = campus.name;
+        resolvedUniversitySlug = campus.slug;
+      }
+    }
+
+    const creds = hashPasswordScrypt(user.password!);
+    const nowIso = new Date().toISOString();
+
+    const newUser: User & { passwordHash: string; passwordSalt: string; passwordUpdatedAt: string } = {
+      id: 'usr_' + crypto.randomBytes(8).toString('hex'),
+      name: (user.name || 'Student').trim().slice(0, 100),
       email: cleanEmail,
-      role: user.role || existing?.role || 'Student',
-      avatarUrl: user.avatarUrl || existing?.avatarUrl || '',
-      universityId: user.universityId || existing?.universityId,
-      universityName: user.universityName || existing?.universityName,
-      universitySlug: user.universitySlug || existing?.universitySlug,
-      course: user.course || existing?.course || 'Undergraduate Studies',
-      graduationYear: user.graduationYear || existing?.graduationYear || '2028',
-      studentVerificationStatus: existing?.studentVerificationStatus || user.studentVerificationStatus || 'UNVERIFIED',
-      createdAt: existing?.createdAt || user.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      ...(creds ? { passwordHash: creds.hash, passwordSalt: creds.salt } : {})
+      role: 'Student', // Strictly enforce lowest privilege on public registration
+      avatarUrl: '',
+      universityId: resolvedUniversityId,
+      universityName: resolvedUniversityName,
+      universitySlug: resolvedUniversitySlug,
+      course: (user.course || 'Undergraduate Studies').trim().slice(0, 100),
+      graduationYear: (user.graduationYear || '2028').trim().slice(0, 12),
+      studentVerificationStatus: 'UNVERIFIED', // Must complete email verification
+      onboardingStep: 1,
+      onboardingCompleted: false,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      passwordHash: creds.hash,
+      passwordSalt: creds.salt,
+      passwordUpdatedAt: nowIso
     };
+
     const saved = sqliteStorage.upsertUser(newUser);
     return this.sanitizeUser(saved as any);
   }
 
-  public loginUser(email: string, password?: string): { user: User | null; authenticated: boolean } {
-    const cleanEmail = (email || '').toLowerCase().trim();
-    const existing = sqliteStorage.getUserByEmail(cleanEmail);
+  public updateUserProfile(userId: string, updates: Partial<User>): User {
+    const existing = sqliteStorage.getUserById(userId);
     if (!existing) {
-      return { user: null, authenticated: true };
+      throw new Error('User account not found.');
     }
-    if (existing.passwordHash && existing.passwordSalt) {
-      if (!password || !verifyPassword(password, existing.passwordHash, existing.passwordSalt)) {
-        return { user: null, authenticated: false };
+
+    let safeAvatar = existing.avatarUrl || '';
+    if (typeof updates.avatarUrl === 'string') {
+      const trimmed = updates.avatarUrl.trim();
+      if (!trimmed) {
+        safeAvatar = '';
+      } else if (trimmed.startsWith('/api/files/')) {
+        safeAvatar = trimmed;
+      } else {
+        const urlCheck = validateSafeHttpUrl(trimmed, { allowHttp: false });
+        if (!urlCheck.valid) throw new Error(`Invalid avatarUrl: ${urlCheck.reason}`);
+        safeAvatar = urlCheck.normalized || '';
       }
     }
-    return { user: this.sanitizeUser(existing), authenticated: true };
+
+    let resolvedUniId = existing.universityId;
+    let resolvedUniName = existing.universityName;
+    let resolvedUniSlug = existing.universitySlug;
+    if (updates.universitySlug || updates.universityId) {
+      const campus = this.getCampusBySlug(updates.universitySlug || updates.universityId || '');
+      if (campus) {
+        resolvedUniId = campus.id;
+        resolvedUniName = campus.name;
+        resolvedUniSlug = campus.slug;
+      }
+    }
+
+    const allowedHousing = new Set(['On Campus', 'Off Campus', 'Looking for Roommate', 'Not Specified']);
+    const safeHousing =
+      typeof updates.housingPreference === 'string' && allowedHousing.has(updates.housingPreference)
+        ? (updates.housingPreference as User['housingPreference'])
+        : existing.housingPreference;
+
+    const updated: User & { passwordHash?: string; passwordSalt?: string } = {
+      ...existing,
+      ...(typeof updates.name === 'string' && updates.name.trim() ? { name: updates.name.trim().slice(0, 100) } : {}),
+      ...(typeof updates.phone === 'string' ? { phone: updates.phone.trim().slice(0, 32) } : {}),
+      ...(typeof updates.course === 'string' ? { course: updates.course.trim().slice(0, 100) } : {}),
+      ...(typeof updates.major === 'string' ? { major: updates.major.trim().slice(0, 100) } : {}),
+      ...(typeof updates.graduationYear === 'string' ? { graduationYear: updates.graduationYear.trim().slice(0, 12) } : {}),
+      ...(typeof updates.bio === 'string' ? { bio: updates.bio.trim().slice(0, 500) } : {}),
+      ...(typeof updates.personalInstagramHandle === 'string'
+        ? { personalInstagramHandle: updates.personalInstagramHandle.trim().replace(/^@/, '').slice(0, 60) }
+        : {}),
+      ...(safeHousing ? { housingPreference: safeHousing } : {}),
+      ...(Array.isArray(updates.interests) ? { interests: updates.interests.slice(0, 12).map(i => String(i).slice(0, 40)) } : {}),
+      ...(typeof updates.onboardingStep === 'number' && [0, 1, 2, 3, 4].includes(updates.onboardingStep)
+        ? { onboardingStep: updates.onboardingStep }
+        : {}),
+      ...(typeof updates.onboardingCompleted === 'boolean' ? { onboardingCompleted: updates.onboardingCompleted } : {}),
+      avatarUrl: safeAvatar,
+      universityId: resolvedUniId,
+      universityName: resolvedUniName,
+      universitySlug: resolvedUniSlug,
+      // Explicitly preserve immutable identity & security fields
+      id: existing.id,
+      email: existing.email,
+      role: existing.role,
+      studentVerificationStatus: existing.studentVerificationStatus,
+      updatedAt: new Date().toISOString()
+    };
+
+    const saved = sqliteStorage.upsertUser(updated);
+    return this.sanitizeUser(saved as any);
+  }
+
+  public loginUser(
+    email: string,
+    password: string,
+    ip = '127.0.0.1'
+  ): { user: User | null; authenticated: boolean; sessionToken?: string; expiresAt?: string; locked?: boolean; message?: string } {
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const rawPassword = typeof password === 'string' ? password : '';
+
+    const ipLimit = sqliteStorage.consumeRateLimit(`user_ip:${ip}`, 15, 15 * 60 * 1000, 15 * 60 * 1000);
+    if (!ipLimit.allowed) {
+      return {
+        user: null,
+        authenticated: false,
+        locked: true,
+        message: `Too many login attempts. Please wait ${Math.ceil(ipLimit.retryAfterSeconds / 60)} minute(s).`
+      };
+    }
+
+    const acctLimit = sqliteStorage.consumeRateLimit(`user_acct:${cleanEmail}`, 6, 15 * 60 * 1000, 15 * 60 * 1000);
+    if (!acctLimit.allowed) {
+      this.recordSecurityEvent('HIGH', 'USER_LOCKOUT_TRIGGERED', `Student account temporarily locked due to brute-force attempts: ${cleanEmail}`, cleanEmail, ip);
+      return {
+        user: null,
+        authenticated: false,
+        locked: true,
+        message: `Too many failed attempts for this account. Wait ${Math.ceil(acctLimit.retryAfterSeconds / 60)} minute(s).`
+      };
+    }
+
+    const existing = cleanEmail ? sqliteStorage.getUserByEmail(cleanEmail) : null;
+    if (!existing || !existing.passwordHash) {
+      dummyPasswordCheck(rawPassword);
+      return { user: null, authenticated: false, message: 'Invalid email or password.' };
+    }
+
+    const pwCheck = verifyPasswordConstantTime(rawPassword, existing.passwordHash, existing.passwordSalt);
+    if (!pwCheck.valid) {
+      this.recordSecurityEvent('MEDIUM', 'USER_LOGIN_FAILED', `Failed login attempt for student ${cleanEmail}`, cleanEmail, ip);
+      return { user: null, authenticated: false, message: 'Invalid email or password.' };
+    }
+
+    sqliteStorage.resetRateLimit(`user_ip:${ip}`);
+    sqliteStorage.resetRateLimit(`user_acct:${cleanEmail}`);
+
+    const prevIp = (existing as any).lastLoginIp;
+    if (prevIp && prevIp !== ip) {
+      this.recordSecurityEvent('LOW', 'USER_NEW_IP_LOGIN', `Student ${cleanEmail} signed in from a new IP ${ip} (previous: ${prevIp})`, cleanEmail, ip);
+    }
+
+    const updatedFields: any = {
+      ...existing,
+      lastLoginAt: new Date().toISOString(),
+      lastLoginIp: ip
+    };
+    if (pwCheck.needsUpgrade) {
+      const upgraded = hashPasswordScrypt(rawPassword);
+      updatedFields.passwordHash = upgraded.hash;
+      updatedFields.passwordSalt = upgraded.salt;
+    }
+    const saved = sqliteStorage.upsertUser(updatedFields);
+
+    const sessionToken = 'usr_sess_' + generateOpaqueToken(32);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+    sqliteStorage.createUserSession(sessionToken, saved.id, saved.email, ip, expiresAt);
+
+    return {
+      user: this.sanitizeUser(saved as any),
+      authenticated: true,
+      sessionToken,
+      expiresAt
+    };
   }
 
   public issueVerificationCode(email: string): string {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    sqliteStorage.createAuthToken(email, 'EMAIL_VERIFY', code, 60);
+    const code = String(crypto.randomInt(100000, 1000000));
+    sqliteStorage.createAuthToken(email, 'EMAIL_VERIFY', code, 30);
     return code;
   }
 
@@ -739,92 +1064,76 @@ class Database {
     if (!ok) return { verified: false, user: null };
     const cleanEmail = email.toLowerCase().trim();
     const existing = sqliteStorage.getUserByEmail(cleanEmail);
-    if (existing) {
-      const updated = sqliteStorage.upsertUser({
-        ...existing,
-        studentVerificationStatus: 'VERIFIED',
-        updatedAt: new Date().toISOString()
-      });
-      return { verified: true, user: this.sanitizeUser(updated as any) };
+    if (!existing) {
+      return { verified: false, user: null };
     }
-    const created = sqliteStorage.upsertUser({
-      id: 'usr_' + crypto.randomBytes(6).toString('hex'),
-      name: cleanEmail.split('@')[0] || 'Student',
-      email: cleanEmail,
-      role: 'Student',
+    const updated = sqliteStorage.upsertUser({
+      ...existing,
       studentVerificationStatus: 'VERIFIED',
-      createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
-    return { verified: true, user: this.sanitizeUser(created as any) };
+    return { verified: true, user: this.sanitizeUser(updated as any) };
   }
 
-  public issuePasswordResetToken(email: string): string {
-    const token = crypto.randomBytes(24).toString('hex');
-    sqliteStorage.createAuthToken(email, 'PASSWORD_RESET', token, 45);
+  public issuePasswordResetToken(email: string): string | null {
+    const cleanEmail = email.toLowerCase().trim();
+    const existing = sqliteStorage.getUserByEmail(cleanEmail);
+    if (!existing) return null;
+    const token = generateOpaqueToken(32);
+    sqliteStorage.createAuthToken(cleanEmail, 'PASSWORD_RESET', token, 30);
     return token;
   }
 
-  public resetUserPasswordWithToken(email: string, token: string, newPassword: string): boolean {
-    if (!email || !token || !newPassword || newPassword.length < 8) return false;
-    const ok = sqliteStorage.verifyAndConsumeAuthToken(email, 'PASSWORD_RESET', token);
-    if (!ok) return false;
-    const creds = hashPassword(newPassword);
-    const existing = sqliteStorage.getUserByEmail(email);
-    if (existing) {
-      sqliteStorage.upsertUser({
-        ...existing,
-        passwordHash: creds.hash,
-        passwordSalt: creds.salt,
-        updatedAt: new Date().toISOString()
-      });
-    } else {
-      sqliteStorage.upsertUser({
-        id: 'usr_' + crypto.randomBytes(6).toString('hex'),
-        name: email.split('@')[0] || 'Student',
-        email: email.toLowerCase().trim(),
-        role: 'Student',
-        studentVerificationStatus: 'UNVERIFIED',
-        passwordHash: creds.hash,
-        passwordSalt: creds.salt,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+  public resetUserPasswordWithToken(email: string, token: string, newPassword: string): { success: boolean; message?: string } {
+    const strength = validatePasswordStrength(newPassword, false);
+    if (!strength.valid) {
+      return { success: false, message: strength.message };
     }
-    return true;
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const existing = cleanEmail ? sqliteStorage.getUserByEmail(cleanEmail) : null;
+    if (!existing) {
+      return { success: false, message: 'Reset link is invalid or has expired.' };
+    }
+    const ok = sqliteStorage.verifyAndConsumeAuthToken(cleanEmail, 'PASSWORD_RESET', token);
+    if (!ok) {
+      return { success: false, message: 'Reset link is invalid or has expired.' };
+    }
+    const creds = hashPasswordScrypt(newPassword);
+    sqliteStorage.upsertUser({
+      ...existing,
+      passwordHash: creds.hash,
+      passwordSalt: creds.salt,
+      updatedAt: new Date().toISOString()
+    });
+    // Revoke all active student sessions after password reset
+    sqliteStorage.deleteUserSessionsForUser(existing.id);
+    this.recordSecurityEvent('MEDIUM', 'USER_PASSWORD_RESET', `Password reset completed and active sessions revoked for ${cleanEmail}`, cleanEmail);
+    return { success: true };
   }
 
-  public changeUserPassword(email: string, currentPassword: string | undefined, newPassword: string): { success: boolean; message: string } {
-    if (!email || !newPassword || newPassword.length < 8) {
-      return { success: false, message: 'New password must be at least 8 characters.' };
+  public changeUserPassword(userId: string, currentPassword: string, newPassword: string): { success: boolean; message: string } {
+    const strength = validatePasswordStrength(newPassword, false);
+    if (!strength.valid) {
+      return { success: false, message: strength.message || 'Password does not meet security requirements.' };
     }
-    const existing = sqliteStorage.getUserByEmail(email);
-    if (existing && existing.passwordHash && existing.passwordSalt) {
-      if (!currentPassword || !verifyPassword(currentPassword, existing.passwordHash, existing.passwordSalt)) {
-        return { success: false, message: 'Current password is incorrect.' };
-      }
+    const existing = sqliteStorage.getUserById(userId);
+    if (!existing || !existing.passwordHash) {
+      return { success: false, message: 'Authenticated user account not found.' };
     }
-    const creds = hashPassword(newPassword);
-    if (existing) {
-      sqliteStorage.upsertUser({
-        ...existing,
-        passwordHash: creds.hash,
-        passwordSalt: creds.salt,
-        updatedAt: new Date().toISOString()
-      });
-    } else {
-      sqliteStorage.upsertUser({
-        id: 'usr_' + crypto.randomBytes(6).toString('hex'),
-        name: email.split('@')[0] || 'Student',
-        email: email.toLowerCase().trim(),
-        role: 'Student',
-        studentVerificationStatus: 'UNVERIFIED',
-        passwordHash: creds.hash,
-        passwordSalt: creds.salt,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+    if (!currentPassword || !verifyPasswordConstantTime(currentPassword, existing.passwordHash, existing.passwordSalt).valid) {
+      return { success: false, message: 'Current password is incorrect.' };
     }
+
+    const creds = hashPasswordScrypt(newPassword);
+    sqliteStorage.upsertUser({
+      ...existing,
+      passwordHash: creds.hash,
+      passwordSalt: creds.salt,
+      updatedAt: new Date().toISOString()
+    });
+    // Revoke existing sessions on password change
+    sqliteStorage.deleteUserSessionsForUser(existing.id);
+    this.recordSecurityEvent('LOW', 'USER_PASSWORD_CHANGED', `Password changed and prior sessions revoked for ${existing.email}`, existing.email);
     return { success: true, message: 'Password updated successfully.' };
   }
 
@@ -833,12 +1142,30 @@ class Database {
     return sqliteStorage.getAllSubmissions();
   }
 
+  public getPublicSubmissions(): Partial<FeaturedSubmission>[] {
+    return sqliteStorage
+      .getAllSubmissions()
+      .filter((s) => s.moderationStatus === 'APPROVED' && s.publishingStatus === 'PUBLISHED')
+      .map(({ studentEmail: _e, studentUid: _u, originalImagePath: _o, ...pub }) => pub);
+  }
+
+  public getSubmissionsByStudent(studentUid: string): FeaturedSubmission[] {
+    if (!studentUid) return [];
+    return sqliteStorage.getAllSubmissions().filter((s) => s.studentUid === studentUid);
+  }
+
   public getSubmissionById(id: string): FeaturedSubmission | undefined {
     return sqliteStorage.getSubmissionById(id);
   }
 
   public saveSubmission(submission: FeaturedSubmission): FeaturedSubmission {
     return sqliteStorage.saveSubmission(submission);
+  }
+
+  private extractUploadedFileId(url?: string): string | null {
+    if (!url || typeof url !== 'string') return null;
+    const match = url.match(/\/api\/files\/([a-f0-9-]+)(?:[?#]|$)/i);
+    return match ? match[1] : null;
   }
 
   public updateSubmissionModeration(id: string, decision: 'APPROVE' | 'REJECT', reason: string | undefined, actorEmail: string): FeaturedSubmission {
@@ -873,7 +1200,15 @@ class Database {
     const sub = sqliteStorage.getSubmissionById(id);
     if (!sub) throw new Error(`Submission "${id}" not found.`);
 
-    const finalPostUrl = (postUrl || '').trim() || `https://www.instagram.com/p/CC_${crypto.randomBytes(4).toString('hex')}/`;
+    const trimmedUrl = (postUrl || '').trim();
+    let finalPostUrl = `https://www.instagram.com/p/CC_${crypto.randomBytes(4).toString('hex')}/`;
+    if (trimmedUrl) {
+      const check = validateSafeHttpUrl(trimmedUrl, { allowHttp: false });
+      if (!check.valid || !check.normalized) {
+        throw new Error(`Invalid Instagram post URL: ${check.reason}`);
+      }
+      finalPostUrl = check.normalized;
+    }
     const normalizedHandle = (cleanHandle || sub.universityInstagramHandle || 'campusconnect').replace(/^@/, '');
 
     sub.publishingStatus = 'PUBLISHED';
@@ -884,6 +1219,11 @@ class Database {
     sub.publishedAt = new Date().toISOString();
     sub.updatedAt = new Date().toISOString();
     sqliteStorage.saveSubmission(sub);
+
+    if (sub.moderationStatus === 'APPROVED') {
+      const wmId = this.extractUploadedFileId(sub.watermarkedImagePath);
+      if (wmId) sqliteStorage.markUploadedFilePublic(wmId);
+    }
 
     // Update linked Instagram account metrics if matched in SQLite
     try {
@@ -1247,8 +1587,22 @@ class Database {
     let resolvedStatus: IntegrationConfig['status'] = 'CONNECTED';
     if (id === 'payment_stripe') {
       const pub = target.keys.publishableKey || '';
-      const mode = pub.includes('live') ? 'Production Live' : 'Test Sandbox';
-      handshakeDetail = `Stripe Gateway API connection verified. Validated key prefix (${pub.substring(0, 10)}...) operating in ${mode} mode.`;
+      const sec = target.keys.secretKey || '';
+      if (!sec || !sec.startsWith('sk_')) {
+        throw new Error('Valid Stripe Secret Key (sk_test_... or sk_live_...) is required.');
+      }
+      const stripeRes = await fetch('https://api.stripe.com/v1/balance', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${sec}`
+        }
+      });
+      if (!stripeRes.ok) {
+        const stripeErr: any = await stripeRes.json().catch(() => ({}));
+        throw new Error(`Stripe API handshake failed: ${stripeErr?.error?.message || `HTTP ${stripeRes.status}`}`);
+      }
+      const mode = pub.includes('live') || sec.includes('live') ? 'Production Live' : 'Test Sandbox';
+      handshakeDetail = `Live Stripe API connection verified (${mode} mode). Authenticated key prefix ${sec.substring(0, 10)}... against api.stripe.com.`;
     } else if (id === 'email_transactional') {
       const centralCfg = this.getCentralEmailConfig();
       const envResendKey = (
@@ -1302,7 +1656,7 @@ class Database {
             user: target.keys.smtpUser,
             pass: target.keys.smtpPassword
           },
-          tls: { rejectUnauthorized: false }
+          tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' }
         });
         await transporter.verify();
         handshakeDetail = `Live SMTP TLS handshake with ${target.keys.smtpHost}:${port} verified successfully. Sender: ${target.keys.senderEmail || 'notifications@campusconnect.app'}.`;

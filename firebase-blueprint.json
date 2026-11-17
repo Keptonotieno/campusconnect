@@ -5,107 +5,106 @@
       "description": "Represents a university community profile and associated official Instagram account",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "slug": { "type": "string" },
-        "logoUrl": { "type": "string" },
-        "description": { "type": "string" },
-        "location": { "type": "string" },
-        "officialWebsiteUrl": { "type": "string" },
-        "instagramProfileUrl": { "type": "string" },
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "slug": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-z0-9\\-]+$" },
+        "logoUrl": { "type": "string", "maxLength": 1000 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "location": { "type": "string", "maxLength": 200 },
+        "officialWebsiteUrl": { "type": "string", "maxLength": 1000 },
+        "instagramProfileUrl": { "type": "string", "maxLength": 1000 },
         "communityEnabled": { "type": "boolean" },
         "studentCount": { "type": "number" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "name", "slug", "communityEnabled"]
     },
     "User": {
       "title": "User",
-      "description": "Student user profile and university affiliation",
+      "description": "Student user profile and university affiliation (PII restricted to owner and verified admins)",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "displayName": { "type": "string" },
-        "email": { "type": "string" },
-        "universityId": { "type": "string" },
-        "profilePhotoUrl": { "type": "string" },
-        "bio": { "type": "string" },
-        "course": { "type": "string" },
-        "graduationYear": { "type": "string" },
-        "interests": { "type": "string" },
-        "personalInstagramUrl": { "type": "string" },
-        "housingPreference": { "type": "string" },
-        "studentVerificationStatus": { "type": "string" },
-        "onboardingStatus": { "type": "string" },
-        "role": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 254 },
+        "universityId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profilePhotoUrl": { "type": "string", "maxLength": 1000 },
+        "bio": { "type": "string", "maxLength": 1000 },
+        "course": { "type": "string", "maxLength": 160 },
+        "graduationYear": { "type": "string", "maxLength": 16 },
+        "interests": { "type": "string", "maxLength": 500 },
+        "personalInstagramUrl": { "type": "string", "maxLength": 500 },
+        "housingPreference": { "type": "string", "maxLength": 160 },
+        "studentVerificationStatus": { "type": "string", "enum": ["UNVERIFIED", "PENDING", "VERIFIED"] },
+        "onboardingStatus": { "type": "string", "enum": ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] },
+        "role": { "type": "string", "enum": ["Student", "Admin"] },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
       },
-      "required": ["id", "displayName", "email", "universityId"]
+      "required": ["id", "displayName", "email", "universityId", "role", "studentVerificationStatus"]
     },
     "FeaturedSubmission": {
       "title": "FeaturedSubmission",
       "description": "Student photo submission for official university Instagram featuring",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "studentUid": { "type": "string" },
-        "studentDisplayName": { "type": "string" },
-        "studentEmail": { "type": "string" },
-        "universityId": { "type": "string" },
-        "universityName": { "type": "string" },
-        "originalImagePath": { "type": "string" },
-        "watermarkedImagePath": { "type": "string" },
-        "caption": { "type": "string" },
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentUid": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "studentDisplayName": { "type": "string", "maxLength": 120 },
+        "studentEmail": { "type": "string", "maxLength": 254 },
+        "universityId": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "universityName": { "type": "string", "maxLength": 160 },
+        "originalImagePath": { "type": "string", "maxLength": 1000 },
+        "watermarkedImagePath": { "type": "string", "maxLength": 1000 },
+        "caption": { "type": "string", "maxLength": 2200 },
         "publicationConsent": { "type": "boolean" },
         "termsAgreed": { "type": "boolean" },
         "rightsConfirmed": { "type": "boolean" },
-        "paymentStatus": { "type": "string" },
-        "moderationStatus": { "type": "string" },
-        "publishingStatus": { "type": "string" },
-        "instagramPostUrl": { "type": "string" },
-        "rejectionReason": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "paymentStatus": { "type": "string", "enum": ["DRAFT", "AWAITING_PAYMENT", "PAYMENT_PENDING", "PAYMENT_CONFIRMED", "PAYMENT_FAILED"] },
+        "moderationStatus": { "type": "string", "enum": ["PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED"] },
+        "publishingStatus": { "type": "string", "enum": ["NOT_READY", "READY_TO_PUBLISH", "PUBLISHING", "PUBLISHED", "FAILED"] },
+        "instagramPostUrl": { "type": "string", "maxLength": 500 },
+        "rejectionReason": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "studentUid", "universityId", "publicationConsent", "paymentStatus", "moderationStatus", "publishingStatus"]
     },
     "Payment": {
       "title": "Payment",
-      "description": "One-time $6 USD / KES payment record for student featured post consideration",
+      "description": "Server-verified $6 USD Stripe transaction record for student featured post consideration",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "submissionId": { "type": "string" },
-        "studentUid": { "type": "string" },
-        "universityId": { "type": "string" },
-        "provider": { "type": "string" },
-        "providerTransactionReference": { "type": "string" },
+        "id": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "submissionId": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "studentUid": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "universityId": { "type": "string", "maxLength": 128 },
+        "provider": { "type": "string", "maxLength": 40 },
+        "providerTransactionReference": { "type": "string", "maxLength": 128 },
         "amount": { "type": "number" },
-        "currency": { "type": "string" },
-        "amountKes": { "type": "number" },
-        "status": { "type": "string" },
-        "idempotencyKey": { "type": "string" },
-        "verifiedAt": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "currency": { "type": "string", "maxLength": 10 },
+        "status": { "type": "string", "enum": ["PENDING", "CONFIRMED", "FAILED", "REFUNDED"] },
+        "idempotencyKey": { "type": "string", "maxLength": 128 },
+        "verifiedAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "submissionId", "studentUid", "amount", "currency", "status"]
     },
     "AuditLog": {
       "title": "AuditLog",
-      "description": "Administrative actions and security audit log",
+      "description": "Tamper-resistant administrative actions and security audit log",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "actorUid": { "type": "string" },
-        "actorRole": { "type": "string" },
-        "action": { "type": "string" },
-        "targetType": { "type": "string" },
-        "targetId": { "type": "string" },
-        "timestamp": { "type": "string" },
-        "relevantMetadata": { "type": "string" }
+        "id": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "actorRole": { "type": "string", "maxLength": 40 },
+        "action": { "type": "string", "maxLength": 100 },
+        "targetType": { "type": "string", "maxLength": 64 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "relevantMetadata": { "type": "string", "maxLength": 2000 }
       },
       "required": ["id", "actorUid", "action", "timestamp"]
     },
@@ -114,27 +113,27 @@
       "description": "In-app notifications for students on submission and publishing status",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "recipientUid": { "type": "string" },
-        "type": { "type": "string" },
-        "title": { "type": "string" },
-        "message": { "type": "string" },
-        "relatedSubmissionId": { "type": "string" },
+        "id": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "recipientUid": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 200 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "relatedSubmissionId": { "type": "string", "maxLength": 128 },
         "read": { "type": "boolean" },
-        "readAt": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "readAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "recipientUid", "title", "message"]
     },
     "Admin": {
       "title": "Admin",
-      "description": "Authorized administrator records for role-based access control",
+      "description": "Authorized administrator records for server-verified role-based access control",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "email": { "type": "string" },
-        "role": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "id": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 254 },
+        "role": { "type": "string", "enum": ["Admin"] },
+        "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "email", "role"]
     },
@@ -143,7 +142,7 @@
       "description": "Health check document for connection verification",
       "type": "object",
       "properties": {
-        "status": { "type": "string" }
+        "status": { "type": "string", "maxLength": 64 }
       }
     }
   },
@@ -158,7 +157,7 @@
     },
     "/users/{userId}": {
       "schema": "User",
-      "description": "Stores student user accounts, universities, and profile details"
+      "description": "Stores student user accounts, universities, and profile details (PII private)"
     },
     "/featuredSubmissions/{submissionId}": {
       "schema": "FeaturedSubmission",
@@ -166,11 +165,11 @@
     },
     "/payments/{paymentId}": {
       "schema": "Payment",
-      "description": "Stores verified one-time $6 USD / KES payments with server transaction references"
+      "description": "Stores server-verified one-time $6 USD Stripe payments (client writes forbidden)"
     },
     "/auditLogs/{logId}": {
       "schema": "AuditLog",
-      "description": "Stores administrative moderation and publishing audit trail"
+      "description": "Stores administrative moderation and publishing audit trail (client writes forbidden)"
     },
     "/notifications/{notificationId}": {
       "schema": "Notification",

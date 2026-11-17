@@ -74,6 +74,9 @@ import {
   disconnectAdminInstagram, 
   fetchAdminEmail, 
   fetchAdminAuditLogs, 
+  fetchAdminSecurityEvents,
+  verifyAuditLogChain,
+  verifyAdminMfa,
   fetchAdminIntegrations, 
   updateAdminIntegration, 
   testAdminIntegration, 
@@ -83,7 +86,8 @@ import {
   IntegrationItem, 
   AdminOverviewData, 
   EmailConfigData, 
-  getStoredAdminToken,
+  SecurityEventItem,
+  AuditChainVerification,
   fetchCentralEmailConfig,
   retryEmailLog
 } from '../../lib/adminApi';
@@ -103,16 +107,24 @@ export const AdminPortalPage: React.FC = () => {
     navigateTo 
   } = useApp();
 
-  // Auth & Session State
+  // Auth & MFA Session State
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [adminUser, setAdminUser] = useState<any>(null);
   const [isBootstrapped, setIsBootstrapped] = useState<boolean>(true);
   const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
 
-  // Login / Bootstrap Form States (Empty initial values; administrator enters credentials manually)
+  // Login / Bootstrap / MFA Form States
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authConfirmPassword, setAuthConfirmPassword] = useState('');
+  const [mfaChallenge, setMfaChallenge] = useState<{
+    challengeToken: string;
+    mfaSetupRequired: boolean;
+    secret?: string;
+    otpAuthUri?: string;
+    backupCodes?: string[];
+  } | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isFormDimmed, setIsFormDimmed] = useState(true);
@@ -274,11 +286,6 @@ export const AdminPortalPage: React.FC = () => {
           }
           if (sourceList.length > 0) {
             setCampuses(sourceList);
-            sourceList.forEach(async (c) => {
-              try {
-                await setDoc(doc(db, 'universities', c.id), c, { merge: true });
-              } catch {}
-            });
           }
         }
         setLoadingCampuses(false);
@@ -303,6 +310,9 @@ export const AdminPortalPage: React.FC = () => {
   const [selectedCampusForEmailModal, setSelectedCampusForEmailModal] = useState<University | null>(null);
   const [selectedLogForInspectModal, setSelectedLogForInspectModal] = useState<DetailedEmailLog | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEventItem[]>([]);
+  const [auditVerification, setAuditVerification] = useState<AuditChainVerification | null>(null);
+  const [verifyingAuditChain, setVerifyingAuditChain] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
 
   // Campus Form & Modal State
@@ -366,7 +376,7 @@ export const AdminPortalPage: React.FC = () => {
   const isLoadingDataRef = useRef(false);
   const initialDataLoadedRef = useRef(false);
 
-  // 1. Check Auth Status on Mount
+  // 1. Check Auth Status on Mount via HttpOnly session cookie
   const verifyAuth = useCallback(async () => {
     if (isAdminAuthenticated) return;
     setCheckingAuth(true);
@@ -374,15 +384,10 @@ export const AdminPortalPage: React.FC = () => {
       const status = await getAdminStatus();
       setIsBootstrapped(status.bootstrapped);
 
-      if (getStoredAdminToken()) {
-        const sessionRes = await checkAdminSession();
-        if (sessionRes.authenticated) {
-          setIsAdminAuthenticated(true);
-          setAdminUser(sessionRes.admin);
-        } else {
-          setIsAdminAuthenticated(false);
-          setAdminUser(null);
-        }
+      const sessionRes = await checkAdminSession();
+      if (sessionRes.authenticated) {
+        setIsAdminAuthenticated(true);
+        setAdminUser(sessionRes.admin);
       } else {
         setIsAdminAuthenticated(false);
         setAdminUser(null);
@@ -408,18 +413,26 @@ export const AdminPortalPage: React.FC = () => {
         if (err?.status === 401 || err?.status === 403) throw err;
         return fallback;
       };
-      const [ov, cp, py, ig, em, al, itg, subsData, usersData, centralEmail] = await Promise.all([
+      const [ov, cp, py, ig, em, al, secEv, chainVerif, itg, subsData, usersData, centralEmail] = await Promise.all([
         fetchAdminOverview().catch(rethrowAuth(null)),
         fetchAdminCampuses().catch(rethrowAuth({ campuses: [] })),
         fetchAdminPayments().catch(rethrowAuth({ payments: [], totals: { usd: 0 } })),
         fetchAdminInstagram().catch(rethrowAuth({ accounts: [] })),
         fetchAdminEmail().catch(rethrowAuth(null)),
         fetchAdminAuditLogs().catch(rethrowAuth({ logs: [] })),
+        fetchAdminSecurityEvents().catch(rethrowAuth({ events: [] })),
+        verifyAuditLogChain().catch(rethrowAuth(null)),
         fetchAdminIntegrations().catch(rethrowAuth({ integrations: [] })),
         fetchAdminSubmissions().catch(rethrowAuth({ submissions: [] })),
         fetchAdminUsers().catch(rethrowAuth({ users: [] })),
         fetchCentralEmailConfig().catch(rethrowAuth(null))
       ]);
+      if (Array.isArray(secEv?.events)) {
+        setSecurityEvents(secEv.events);
+      }
+      if (chainVerif) {
+        setAuditVerification(chainVerif);
+      }
 
       if (ov) {
         setOverviewData(ov);
@@ -628,7 +641,7 @@ export const AdminPortalPage: React.FC = () => {
     }
   }, [isAdminAuthenticated, loadAllAdminData]);
 
-  // Handle Login
+  // Handle Login (Step 1: Password -> Step 2: Mandatory TOTP MFA)
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -639,6 +652,18 @@ export const AdminPortalPage: React.FC = () => {
 
     try {
       const res = await loginAdmin(cleanEmail, cleanPass);
+      if (res.mfaRequired && res.challengeToken) {
+        setMfaChallenge({
+          challengeToken: res.challengeToken,
+          mfaSetupRequired: Boolean(res.mfaSetupRequired),
+          secret: res.secret,
+          otpAuthUri: res.otpAuthUri,
+          backupCodes: res.backupCodes
+        });
+        setMfaCode('');
+        addToast('MFA Required', res.message || 'Enter your 6-digit authenticator code to complete sign-in.', 'info');
+        return;
+      }
       setIsAdminAuthenticated(true);
       setAdminUser(res.admin);
       addToast('Administrator Verified', 'Secure session initiated.', 'success');
@@ -652,7 +677,7 @@ export const AdminPortalPage: React.FC = () => {
     }
   };
 
-  // Handle Bootstrap
+  // Handle Bootstrap (12+ char strong password -> triggers MFA enrollment challenge)
   const handleBootstrapSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -661,16 +686,28 @@ export const AdminPortalPage: React.FC = () => {
       setAuthError('Passwords do not match.');
       return;
     }
-    if (authPassword.length < 8) {
-      setAuthError('Password must be at least 8 characters long.');
+    if (authPassword.length < 12) {
+      setAuthError('Administrator password must be at least 12 characters with uppercase, lowercase, number, and symbol.');
       return;
     }
 
     setAuthLoading(true);
     try {
       const res = await bootstrapAdmin(authEmail, authPassword);
-      setIsAdminAuthenticated(true);
       setIsBootstrapped(true);
+      if (res.mfaRequired && res.challengeToken) {
+        setMfaChallenge({
+          challengeToken: res.challengeToken,
+          mfaSetupRequired: Boolean(res.mfaSetupRequired),
+          secret: res.secret,
+          otpAuthUri: res.otpAuthUri,
+          backupCodes: res.backupCodes
+        });
+        setMfaCode('');
+        addToast('MFA Enrollment Required', 'Scan or copy your TOTP secret in an authenticator app to activate your admin session.', 'info');
+        return;
+      }
+      setIsAdminAuthenticated(true);
       setAdminUser(res.admin);
       addToast('Administrator Initialized', 'Primary system administrator account created.', 'success');
       loadAllAdminData();
@@ -681,11 +718,58 @@ export const AdminPortalPage: React.FC = () => {
     }
   };
 
+  // Handle Step 2: Verify TOTP / Backup Code MFA Challenge
+  const handleMfaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaChallenge?.challengeToken || !mfaCode.trim()) return;
+    setAuthError(null);
+    setAuthLoading(true);
+
+    try {
+      const res = await verifyAdminMfa(mfaChallenge.challengeToken, mfaCode);
+      setIsAdminAuthenticated(true);
+      setIsBootstrapped(true);
+      setAdminUser(res.admin);
+      setMfaChallenge(null);
+      setMfaCode('');
+      addToast('MFA Verified', 'Zero-trust administrator session established.', 'success');
+      setTimeout(() => {
+        loadAllAdminData();
+      }, 50);
+    } catch (err: any) {
+      setAuthError(err?.message || 'Invalid or expired authenticator code.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Handle Audit Chain Integrity Check
+  const handleVerifyAuditChain = async () => {
+    setVerifyingAuditChain(true);
+    try {
+      const res = await verifyAuditLogChain();
+      setAuditVerification(res);
+      addToast(
+        res.valid ? 'Audit Chain Verified' : 'Audit Integrity Warning',
+        res.valid
+          ? `Cryptographic HMAC chain intact across ${res.checkedCount} audit records.`
+          : `Integrity mismatch detected at log ${res.brokenAtId || 'unknown'}.`,
+        res.valid ? 'success' : 'error'
+      );
+    } catch (err: any) {
+      addToast('Verification Failed', err?.message || 'Could not verify audit log chain.', 'error');
+    } finally {
+      setVerifyingAuditChain(false);
+    }
+  };
+
   // Handle Logout
   const handleLogout = async () => {
     await logoutAdmin();
     setIsAdminAuthenticated(false);
     setAdminUser(null);
+    setMfaChallenge(null);
+    setMfaCode('');
     setAuthEmail('');
     setAuthPassword('');
     addToast('Logged Out', 'Administrative session securely ended.', 'info');
@@ -1235,13 +1319,13 @@ export const AdminPortalPage: React.FC = () => {
               }`}>
                 {isBootstrapped ? 'Administrator Sign In' : 'Initial Administrator Bootstrap'}
               </h1>
-              <p className={`text-xs leading-relaxed font-normal ${
-                isDarkMode ? 'text-slate-400' : 'text-slate-500'
-              }`}>
-                {isBootstrapped 
-                  ? 'Administrative authentication. Enter your master credentials.'
-                  : 'Bootstrap your primary administrator credentials.'}
-              </p>
+              <div className="space-y-1">
+                {mfaChallenge
+                  ? 'Two-Factor Authentication Required. Enter the 6-digit TOTP code from your authenticator app.'
+                  : isBootstrapped
+                    ? 'Administrative authentication. Enter your credentials to initiate MFA verification.'
+                    : 'Bootstrap your primary administrator credentials with mandatory 2FA enrollment.'}
+              </div>
             </div>
           </div>
 
@@ -1252,18 +1336,88 @@ export const AdminPortalPage: React.FC = () => {
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span className="flex-1">{authError}</span>
               </div>
-              <button
-                type="button"
-                onClick={handleLoginSubmit}
-                className="self-end text-[11px] underline font-semibold hover:text-rose-600 cursor-pointer"
-              >
-                Retry Authentication
-              </button>
             </div>
           )}
 
           {/* Form */}
-          {isBootstrapped ? (
+          {mfaChallenge ? (
+            <form onSubmit={handleMfaSubmit} className="space-y-4">
+              {mfaChallenge.mfaSetupRequired && mfaChallenge.secret && (
+                <div className={`p-3.5 rounded-xl border text-xs space-y-2 ${
+                  isDarkMode ? 'bg-blue-950/40 border-blue-800/50 text-blue-200' : 'bg-blue-50 border-blue-200 text-blue-900'
+                }`}>
+                  <div className="font-bold flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-blue-500" />
+                    <span>One-Time Authenticator Setup</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Add this secret key to Google Authenticator, 1Password, or Authy (Time-based, 6 digits, 30s):
+                  </p>
+                  <div className={`p-2 rounded-lg font-mono text-[11px] break-all select-all border ${
+                    isDarkMode ? 'bg-[#070B16] border-slate-700 text-emerald-400' : 'bg-white border-blue-200 text-slate-900'
+                  }`}>
+                    {mfaChallenge.secret}
+                  </div>
+                  {Array.isArray(mfaChallenge.backupCodes) && mfaChallenge.backupCodes.length > 0 && (
+                    <div className="pt-1 space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider">Save Single-Use Recovery Codes:</div>
+                      <div className={`p-2 rounded-lg font-mono text-[10px] grid grid-cols-2 gap-1 border ${
+                        isDarkMode ? 'bg-[#070B16] border-slate-700 text-slate-300' : 'bg-white border-blue-200 text-slate-700'
+                      }`}>
+                        {mfaChallenge.backupCodes.map((bc) => (
+                          <span key={bc} className="select-all">{bc}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className={`block text-xs font-semibold mb-1.5 ${
+                  isDarkMode ? 'text-slate-300' : 'text-slate-700'
+                }`}>
+                  6-Digit Authenticator Code (or Recovery Code)
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  placeholder="123456"
+                  autoComplete="one-time-code"
+                  className={`w-full rounded-xl px-4 py-3 text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                    isDarkMode
+                      ? 'bg-[#070B16] border border-slate-700/80 text-white placeholder-slate-500 focus:border-blue-500'
+                      : 'bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-500'
+                  }`}
+                />
+              </div>
+
+              <div className="pt-1 flex flex-col gap-2">
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {authLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  <span>{authLoading ? 'Verifying 2FA Code...' : 'Verify & Unlock Dashboard'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMfaChallenge(null);
+                    setMfaCode('');
+                    setAuthError(null);
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 py-1 cursor-pointer"
+                >
+                  ← Back to password step
+                </button>
+              </div>
+            </form>
+          ) : isBootstrapped ? (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
                 <label className={`block text-xs font-semibold mb-1.5 ${
@@ -1276,7 +1430,7 @@ export const AdminPortalPage: React.FC = () => {
                   required
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="campusconnect@gmail.com"
+                  placeholder="admin@campusconnect.app"
                   autoComplete="email"
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -1323,7 +1477,6 @@ export const AdminPortalPage: React.FC = () => {
                 />
               </div>
 
-
               <div className="pt-1">
                 <button
                   type="submit"
@@ -1331,7 +1484,7 @@ export const AdminPortalPage: React.FC = () => {
                   className="w-full py-3.5 rounded-xl bg-[#1D64EC] hover:bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {authLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  <span>{authLoading ? 'Verifying Authorization...' : 'Sign In to Admin Dashboard'}</span>
+                  <span>{authLoading ? 'Verifying Credentials...' : 'Continue to 2FA Verification'}</span>
                 </button>
               </div>
 
@@ -1348,7 +1501,7 @@ export const AdminPortalPage: React.FC = () => {
           ) : (
             <form onSubmit={handleBootstrapSubmit} className="space-y-4">
               <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-300 text-xs">
-                ⚠️ One-time setup: Bootstrap your master administrator credentials.
+                One-time setup: Bootstrap your primary administrator credentials (min 12 chars with uppercase, lowercase, digit, symbol) and enroll MFA.
               </div>
 
               <div>
@@ -1369,11 +1522,12 @@ export const AdminPortalPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold mb-1.5">
-                  Create Master Password (min 8 characters)
+                  Create Strong Password (min 12 characters)
                 </label>
                 <input
                   type="password"
                   required
+                  minLength={12}
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                   placeholder="••••••••••••"
@@ -1390,6 +1544,7 @@ export const AdminPortalPage: React.FC = () => {
                 <input
                   type="password"
                   required
+                  minLength={12}
                   value={authConfirmPassword}
                   onChange={(e) => setAuthConfirmPassword(e.target.value)}
                   placeholder="Confirm master password"
@@ -1406,7 +1561,7 @@ export const AdminPortalPage: React.FC = () => {
                   className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {authLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  <span>{authLoading ? 'Initializing Administrator...' : 'Bootstrap Primary Administrator'}</span>
+                  <span>{authLoading ? 'Initializing Administrator...' : 'Bootstrap & Configure 2FA'}</span>
                 </button>
               </div>
             </form>
@@ -3648,13 +3803,101 @@ export const AdminPortalPage: React.FC = () => {
         {/* ------------------------------------------------------------------- */}
         {activeTab === 'AUDIT_LOGS' && (
           <div className="space-y-6 animate-in fade-in">
-            <div className="space-y-1">
-              <h2 className={`text-2xl font-black tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                Audit Trail & System Settings
-              </h2>
-              <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                Immutable chronological log of all administrative actions, logins, status toggles, and payment validations.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h2 className={`text-2xl font-black tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                  Audit Trail & Security Monitoring
+                </h2>
+                <p className={`text-xs sm:text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                  Tamper-evident HMAC hash-chained audit logs and real-time security anomaly alerts.
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5">
+                {auditVerification && (
+                  <span className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 ${
+                    auditVerification.valid
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-500'
+                  }`}>
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>
+                      {auditVerification.valid
+                        ? `Chain Intact (${auditVerification.checkedCount})`
+                        : `Integrity Broken`}
+                    </span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleVerifyAuditChain}
+                  disabled={verifyingAuditChain}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${verifyingAuditChain ? 'animate-spin' : ''}`} />
+                  <span>Verify Chain Integrity</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Security Events & Suspicious Activity Monitor */}
+            <div className={`rounded-2xl border overflow-hidden shadow-xs ${
+              isDarkMode ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-200'
+            }`}>
+              <div className={`px-4 py-3 border-b flex items-center justify-between ${
+                isDarkMode ? 'border-slate-800 bg-[#0A0E1A]' : 'border-slate-200 bg-slate-50'
+              }`}>
+                <div className="flex items-center gap-2 text-xs font-extrabold">
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                  <span>Security Alerts & Intrusion Events ({securityEvents.length})</span>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs min-w-[640px]">
+                  <thead className={`border-b font-semibold ${
+                    isDarkMode ? 'bg-[#0A0E1A] text-slate-400 border-slate-800' : 'bg-slate-50 text-slate-500 border-slate-200 uppercase text-[11px]'
+                  }`}>
+                    <tr>
+                      <th className="px-4 py-2.5">Timestamp</th>
+                      <th className="px-4 py-2.5">Severity</th>
+                      <th className="px-4 py-2.5">Event Type</th>
+                      <th className="px-4 py-2.5">Actor</th>
+                      <th className="px-4 py-2.5">IP</th>
+                      <th className="px-4 py-2.5">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className={`divide-y ${
+                    isDarkMode ? 'divide-slate-800 text-slate-300' : 'divide-slate-100 text-slate-700 bg-white'
+                  }`}>
+                    {securityEvents.slice(0, 25).map(ev => (
+                      <tr key={ev.id} className={isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}>
+                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-400">{safeFormatDateTime(ev.createdAt)}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            ev.severity === 'CRITICAL' || ev.severity === 'HIGH'
+                              ? 'bg-rose-500/10 text-rose-500 border-rose-500/30'
+                              : ev.severity === 'MEDIUM'
+                                ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                                : 'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                          }`}>
+                            {ev.severity}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 font-mono font-bold">{ev.eventType}</td>
+                        <td className="px-4 py-2.5">{ev.actorEmail || 'anonymous'}</td>
+                        <td className="px-4 py-2.5 font-mono text-[11px]">{ev.ipAddress || '—'}</td>
+                        <td className="px-4 py-2.5">{ev.details}</td>
+                      </tr>
+                    ))}
+                    {securityEvents.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-8 text-center text-slate-400 text-xs">
+                          No security alerts detected.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className={`rounded-2xl border overflow-hidden shadow-xs ${

@@ -12,7 +12,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { generateWatermarkedDerivative } from '../../lib/watermark';
-import { FEATURED_POST_PRICE_USD } from '../../lib/payment';
+import { FEATURED_POST_PRICE_USD, createStripePaymentIntent } from '../../lib/payment';
 import { University } from '../../types';
 
 import { VERIFIED_UNIVERSITIES } from '../../data/universities';
@@ -111,6 +111,12 @@ export const SubmitPhotoPage: React.FC = () => {
   const handleSubmitAndPay = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!currentUser) {
+      addToast('Sign In Required', 'Please sign in to submit and pay for a featured post.', 'info');
+      navigateTo(`/login?redirect=${encodeURIComponent(`/submit/${targetUni.slug}`)}&uni=${encodeURIComponent(targetUni.slug)}`);
+      return;
+    }
+
     if (!originalPreview || !watermarkedPreview) {
       addToast('Photo Required', 'Please upload your introduction photo.', 'error');
       return;
@@ -126,7 +132,6 @@ export const SubmitPhotoPage: React.FC = () => {
       return;
     }
 
-    // Strict Stripe Card Details Validation
     const cleanCard = cardNumber.replace(/\D/g, '');
     if (cleanCard.length < 15 || cleanCard.length > 16) {
       addToast('Invalid Card Number', 'Please enter a valid 15 or 16-digit credit/debit card number.', 'error');
@@ -148,7 +153,7 @@ export const SubmitPhotoPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      // 1. Create submission record
+      // 1. Create authoritative submission record on server
       const submission = await createSubmission({
         universityId: targetUni.id,
         originalImagePath: originalPreview,
@@ -159,12 +164,12 @@ export const SubmitPhotoPage: React.FC = () => {
         termsAgreed
       });
 
-      // 2. Initiate and verify Stripe payment ($6.00 USD)
-      const last4 = cleanCard.slice(-4);
+      // 2. Initialize Stripe PaymentIntent on server & verify settlement (never trusts client-only card validation)
+      const intentRes = await createStripePaymentIntent(submission.id, `pi_req_${submission.id}`);
       await payForSubmission(
         submission.id,
         'STRIPE_CARD',
-        last4
+        intentRes.paymentIntentId
       );
 
       setCompletedSubmissionId(submission.id);

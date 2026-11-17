@@ -1,10 +1,10 @@
-import { 
-  University, 
-  PaymentRecord, 
-  InstagramAccount, 
-  AuditLogItem, 
-  FeaturedSubmission, 
+import {
+  University,
+  PaymentRecord,
+  InstagramAccount,
+  AuditLogItem,
   User,
+  FeaturedSubmission,
   CentralEmailConfig,
   UniversityEmailIdentity,
   UniversityEmailTemplate,
@@ -18,14 +18,36 @@ import { VERIFIED_UNIVERSITIES } from '../data/universities';
 export interface AdminAuthResponse {
   success: boolean;
   message?: string;
+  mfaRequired?: boolean;
+  mfaSetupRequired?: boolean;
+  challengeToken?: string;
+  secret?: string;
+  otpAuthUri?: string;
+  backupCodes?: string[];
   admin?: {
     id: string;
     email: string;
     role: 'Admin';
+    mfaVerified?: boolean;
     expiresAt?: string;
   };
-  token?: string;
   expiresAt?: string;
+}
+
+export interface SecurityEventItem {
+  id: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  eventType: string;
+  actorEmail?: string;
+  ipAddress?: string;
+  details: string;
+  createdAt: string;
+}
+
+export interface AuditChainVerification {
+  valid: boolean;
+  checkedCount: number;
+  brokenAtId?: string;
 }
 
 export interface AdminOverviewData {
@@ -94,349 +116,62 @@ export interface IntegrationItem {
   keys: Record<string, string>;
 }
 
-// Token storage key
-const TOKEN_KEY = 'campusconnect_admin_token';
 const USER_KEY = 'campusconnect_admin_user';
 
-// Authorized Master Administrator Emails
-const AUTHORIZED_ADMIN_EMAILS = [
-  'campusconnect@gmail.com',
-  'compusconnect@gmail.com',
-  'keptonotieno@gmail.com',
-  'admin@campusconnect.app',
-  'admin@campusconnect.internal'
-];
-
-/**
- * Checks if an email is an authorized administrator.
- * Resilient against iOS auto-capitalization, trailing spaces, and zero-width characters.
- */
-export function isMasterAdminEmail(email: string): boolean {
-  const norm = (email || '').trim().toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '');
-  if (!norm) return false;
-  return (
-    AUTHORIZED_ADMIN_EMAILS.includes(norm) ||
-    norm.startsWith('admin@') ||
-    norm.endsWith('@campusconnect.internal')
-  );
-}
-
-/**
- * Validates master password variants (handling iOS auto-capitalization and casing).
- */
-export function isMasterPassword(pass: string): boolean {
-  const clean = (pass || '').trim().replace(/[\u200B-\u200D\uFEFF]/g, '');
-  if (!clean) return false;
-  const lower = clean.toLowerCase();
-  return lower === 'kepton@12romez';
-}
-
-export function getStoredAdminToken(): string | null {
+function clearLegacyTokenArtifacts() {
   try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setStoredAdminToken(token: string | null) {
-  try {
-    if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-    }
+    localStorage.removeItem('campusconnect_admin_token');
+    localStorage.removeItem(USER_KEY);
   } catch {
     // ignore
   }
 }
 
-// Default integrations without any hardcoded keys (clean production initial state)
-const DEFAULT_INITIAL_INTEGRATIONS: IntegrationItem[] = [
-  {
-    id: 'payment_stripe',
-    name: 'Stripe Gateway',
-    category: 'Payment Processing',
-    status: 'NOT_CONFIGURED',
-    configured: false,
-    lastVerifiedAt: null,
-    details: 'Processes student $6.00 feature fees with 256-bit SSL encryption. Requires Stripe publishable and secret keys to activate live checkouts.',
-    keys: {
-      publishableKey: '',
-      secretKey: '',
-      webhookSecret: ''
-    }
-  },
-  {
-    id: 'email_transactional',
-    name: 'Transactional Email Service',
-    category: 'Notifications & Verification',
-    status: 'NOT_CONFIGURED',
-    configured: false,
-    lastVerifiedAt: null,
-    details: 'Centralized Resend & SMTP transactional email service for university-branded student notifications.',
-    keys: {
-      provider: 'RESEND',
-      smtpHost: '',
-      smtpPort: '587',
-      smtpUser: '',
-      smtpPassword: '',
-      senderEmail: 'notifications@campusconnect.app',
-      senderName: 'CampusConnect Global',
-      apiKey: '',
-      webhookSecret: ''
-    }
-  }
-];
-
-// Local Storage Helpers for Resilient Client Operation (Cloudflare Workers / Static Sites)
-function getLocalIntegrations(): IntegrationItem[] {
-  try {
-    const raw = localStorage.getItem('campusconnect_integrations');
-    if (raw) {
-      const parsed: IntegrationItem[] = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.some(i => i.id === 'payment_stripe')) {
-        return parsed.filter(i => i.id !== 'meta_instagram');
-      }
-    }
-  } catch {}
-  return DEFAULT_INITIAL_INTEGRATIONS;
-}
-
-function saveLocalIntegrations(integrations: IntegrationItem[]) {
-  try {
-    localStorage.setItem('campusconnect_integrations', JSON.stringify(integrations));
-  } catch {}
-}
-
-function getLocalSubmissions(): FeaturedSubmission[] {
-  try {
-    const raw = localStorage.getItem('campusconnect_submissions');
-    if (raw) {
-      const parsed: FeaturedSubmission[] = JSON.parse(raw);
-      // Strictly filter out any legacy mock submissions
-      return parsed.filter(s => !['sub_tm_001', 'sub_sp_002', 'sub_cb_003', 'sub_test_stripe'].includes(s.id));
-    }
-  } catch {}
-  return [];
-}
-
-function saveLocalSubmissions(subs: FeaturedSubmission[]) {
-  try {
-    localStorage.setItem('campusconnect_submissions', JSON.stringify(subs));
-  } catch {}
-}
-
-function getLocalPayments(): PaymentRecord[] {
-  try {
-    const raw = localStorage.getItem('campusconnect_payments');
-    if (raw) {
-      const parsed: PaymentRecord[] = JSON.parse(raw);
-      return parsed.filter(p => !['pay_tm_001', 'pay_sp_002', 'pay_cb_003', 'pay_0589034319b0'].includes(p.id));
-    }
-  } catch {}
-  return [];
-}
-
-function saveLocalPayments(payments: PaymentRecord[]) {
-  try {
-    localStorage.setItem('campusconnect_payments', JSON.stringify(payments));
-  } catch {}
-}
-
-function getLocalUsers(): User[] {
-  try {
-    const raw = localStorage.getItem('campusconnect_users');
-    if (raw) {
-      const parsed: User[] = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {}
-  return [];
-}
-
-function getLocalCampuses(): University[] {
-  try {
-    const raw = localStorage.getItem('campusconnect_campuses');
-    if (raw) {
-      const list = JSON.parse(raw);
-      if (Array.isArray(list) && list.length > 0) return list;
-    }
-  } catch {}
-  return VERIFIED_UNIVERSITIES;
-}
-
-function saveLocalCampuses(campuses: University[]) {
-  try {
-    localStorage.setItem('campusconnect_campuses', JSON.stringify(campuses));
-  } catch {}
-}
-
-function getLocalAuditLogs(): AuditLogItem[] {
-  try {
-    const raw = localStorage.getItem('campusconnect_audit_logs');
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return [];
-}
-
-function appendLocalAuditLog(action: string, targetType: AuditLogItem['targetType'], targetId: string, details?: string) {
-  try {
-    const logs = getLocalAuditLogs();
-    const newLog: AuditLogItem = {
-      id: 'log_' + Date.now(),
-      actorUid: 'admin_master',
-      actorEmail: 'campusconnect@gmail.com',
-      actorRole: 'Admin',
-      action,
-      targetType,
-      targetId,
-      details,
-      timestamp: new Date().toISOString()
-    };
-    logs.unshift(newLog);
-    localStorage.setItem('campusconnect_audit_logs', JSON.stringify(logs.slice(0, 100)));
-  } catch {}
-}
-
 /**
- * Robust fetch wrapper that communicates with the Express backend if reachable,
- * and gracefully falls back to persistent client storage if the host returns 405 (Method Not Allowed),
- * 404 (Not Found), 502/503, non-JSON HTML (SPA redirect on Cloudflare Workers), or network failure.
+ * Authoritative HTTP fetch wrapper for Admin APIs.
+ * Strictly authenticates via HttpOnly secure session cookies (`credentials: 'include'`)
+ * and never fabricates auth, payment, or mutation responses client-side.
  */
 async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const token = getStoredAdminToken();
   const headers = new Headers(options.headers || {});
   headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   headers.set('Pragma', 'no-cache');
-
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
 
   if (options.body && typeof options.body === 'string' && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
-  let res: Response | null = null;
-  let isBackendError = false;
-
+  let res: Response;
   try {
     res = await fetch(endpoint, {
       credentials: 'include',
       ...options,
       headers
     });
-  } catch (err) {
-    // Network failure, offline, or CORS rejection
-    isBackendError = true;
-  }
-
-  // If server responded with 200-299, verify it is genuine JSON and NOT an SPA index.html fallback
-  if (res && res.ok) {
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      try {
-        const data = await res.json();
-        if (data && typeof data === 'object') {
-          return data as T;
-        }
-      } catch {
-        // Corrupt or non-JSON payload; fall through to error/fallback handling below
-      }
-    }
-  }
-
-  const status = res?.status || 0;
-  const contentType = res ? (res.headers.get('content-type') || '') : '';
-  const isSpaHtmlResponse = Boolean(res && res.ok && !contentType.includes('application/json'));
-  const cleanPath = endpoint.split('?')[0];
-
-  // Never mask authentication failures (401/403) with fake local mock data
-  if (status === 401) {
-    setStoredAdminToken(null);
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
-      localStorage.removeItem('campusconnect_auth');
-    } catch {}
-  }
-
-  const isCriticalTransactionalRoute =
-    cleanPath.startsWith('/api/admin/email') ||
-    cleanPath.startsWith('/api/admin/integrations');
-
-  // Critical email & integration routes must never be faked in the browser.
-  // If a static host (e.g., Cloudflare Workers static assets) returns SPA HTML, 404, 405, or fails network,
-  // surface a clear error explaining that the Express backend is required.
-  if (
-    isCriticalTransactionalRoute &&
-    (isBackendError || isSpaHtmlResponse || status === 405 || status === 404)
-  ) {
-    const err = new Error(
-      'Email & integration APIs require the CampusConnect Node/Express backend server (not available on static-only hosting). Open the full-stack CampusConnect app URL to save Resend credentials and send live emails.'
-    );
-    (err as any).status = status || 503;
+  } catch {
+    const err = new Error('Unable to reach the CampusConnect backend server.');
+    (err as any).status = 503;
     throw err;
   }
 
-  // Only allow static fallback when no Express backend route exists (404/405/SPA HTML/network offline)
-  // for non-critical read-only directory views.
-  if (
-    !isCriticalTransactionalRoute &&
-    (isBackendError || isSpaHtmlResponse || status === 405 || status === 404)
-  ) {
-    const fallbackData = handleLocalFallbackRoute<T>(endpoint, options);
-    if (fallbackData !== null) {
-      return fallbackData;
+  const contentType = res.headers.get('content-type') || '';
+
+  if (res.ok) {
+    if (contentType.includes('application/json')) {
+      return (await res.json()) as T;
     }
-    const cleanEndpoint = endpoint.split('?')[0];
-    if (cleanEndpoint.includes('campuses')) {
-      return { campuses: getLocalCampuses() } as unknown as T;
-    }
-    if (cleanEndpoint.includes('payments')) {
-      const pmts = getLocalPayments();
-      const tot = pmts.reduce((sum, p) => sum + (p.amountUsd || 0), 0);
-      return { payments: pmts, totals: { usd: tot }, count: pmts.length } as unknown as T;
-    }
-    if (cleanEndpoint.includes('instagram')) {
-      return { accounts: [] } as unknown as T;
-    }
-    if (cleanEndpoint.includes('audit-logs')) {
-      return { logs: getLocalAuditLogs() } as unknown as T;
-    }
-    if (cleanEndpoint.includes('submissions')) {
-      return { submissions: getLocalSubmissions() } as unknown as T;
-    }
-    if (cleanEndpoint.includes('users')) {
-      const usrs = getLocalUsers();
-      return { users: usrs, count: usrs.length } as unknown as T;
-    }
-    if (cleanEndpoint.includes('overview')) {
-      const campuses = getLocalCampuses();
-      const payments = getLocalPayments();
-      const totalUsd = payments.reduce((sum, p) => sum + (p.amountUsd || 0), 0);
-      return {
-        totalAmountPaid: { usd: totalUsd, formattedUsd: `$${totalUsd.toFixed(2)}` },
-        connectedInstagramAccounts: campuses.filter(c => c.instagramHandle).length,
-        registeredUsers: getLocalUsers().length,
-        successfulPayments: payments.length,
-        totalCampuses: campuses.length,
-        activeCampuses: campuses.filter(c => c.communityEnabled !== false).length,
-        integrations: getLocalIntegrations(),
-        recentDeliveries: [],
-        recentAuditLogs: getLocalAuditLogs().slice(0, 10)
-      } as unknown as T;
-    }
-    return { success: true, processedLocally: true } as unknown as T;
+    const err = new Error('Unexpected non-JSON response from backend server.');
+    (err as any).status = 502;
+    throw err;
   }
 
-  // If it's a real 401/403/400 with a JSON error payload from the actual backend
-  let errorMsg = status === 405 
-    ? 'Endpoint requires backend server.' 
-    : `Request failed with status ${status}`;
+  if (res.status === 401 || res.status === 403) {
+    clearLegacyTokenArtifacts();
+  }
+
+  let errorMsg = `Request failed with status ${res.status}`;
   let responseData: any = null;
-  if (res) {
+  if (contentType.includes('application/json')) {
     try {
       responseData = await res.json();
       errorMsg = responseData.message || responseData.error || errorMsg;
@@ -446,427 +181,56 @@ async function adminFetch<T>(endpoint: string, options: RequestInit = {}): Promi
   }
 
   const err = new Error(errorMsg);
-  (err as any).status = status;
+  (err as any).status = res.status;
   if (responseData) {
     (err as any).data = responseData;
   }
   throw err;
 }
 
-/**
- * Seamless client-side route fallback for static deployments (Cloudflare Workers, Pages, GitHub Pages).
- * Ensures full dashboard functionality without any mock data interference.
- */
-function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}): T | null {
-  const method = (options.method || 'GET').toUpperCase();
-  const cleanEndpoint = endpoint.split('?')[0];
-
-  // 1. Overview metrics
-  if (cleanEndpoint === '/api/admin/overview' && method === 'GET') {
-    const payments = getLocalPayments();
-    const campuses = getLocalCampuses();
-    const integrations = getLocalIntegrations();
-    const auditLogs = getLocalAuditLogs();
-
-    const totalUsd = payments.reduce((sum, p) => sum + (p.amountUsd || 0), 0);
-
-    const overview: AdminOverviewData = {
-      totalAmountPaid: {
-        usd: totalUsd,
-        formattedUsd: `$${totalUsd.toFixed(2)}`
-      },
-      connectedInstagramAccounts: campuses.filter(c => c.instagramHandle).length,
-      registeredUsers: getLocalUsers().length,
-      successfulPayments: payments.length,
-      totalCampuses: campuses.length,
-      activeCampuses: campuses.filter(c => c.communityEnabled !== false).length,
-      integrations: integrations.map(i => ({
-        id: i.id,
-        name: i.name,
-        category: i.category,
-        status: (i.status === 'PENDING_CONFIGURATION' ? 'STANDBY' : i.status) as 'CONNECTED' | 'STANDBY' | 'DEGRADED' | 'NOT_CONFIGURED',
-        verifiedAt: i.lastVerifiedAt,
-        details: i.details,
-        configured: i.configured
-      })),
-      recentDeliveries: [],
-      recentAuditLogs: auditLogs.slice(0, 10)
-    };
-    return overview as unknown as T;
-  }
-
-  // 2. Campuses List
-  if (cleanEndpoint === '/api/admin/campuses' && method === 'GET') {
-    return { campuses: getLocalCampuses() } as unknown as T;
-  }
-
-  // 3. Create Campus
-  if (cleanEndpoint === '/api/admin/campuses' && method === 'POST') {
-    try {
-      const body = JSON.parse(options.body as string || '{}');
-      const campuses = getLocalCampuses();
-      const newCampus: University = {
-        id: 'uni_' + (body.slug || Date.now()),
-        name: body.name || 'New Campus',
-        slug: body.slug || 'campus-' + Date.now(),
-        instagramHandle: body.instagramHandle || '@campus',
-        location: body.location || 'United States',
-        description: body.description || '',
-        logoUrl: body.logoUrl || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
-        coverUrl: body.coverUrl || 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1200&q=80',
-        officialWebsiteUrl: body.officialWebsiteUrl || `https://${body.slug || 'campus'}.edu`,
-        instagramProfileUrl: `https://instagram.com/${(body.instagramHandle || 'campus').replace('@', '')}`,
-        primaryColor: body.primaryColor || '#004B87',
-        accentColor: body.accentColor || '#0284C7',
-        classYear: body.classYear || '2031',
-        tagline: body.tagline || 'Official University Community',
-        communityEnabled: body.communityEnabled !== false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      campuses.unshift(newCampus);
-      saveLocalCampuses(campuses);
-      appendLocalAuditLog('CAMPUS_CREATED', 'UNIVERSITY', newCampus.id, `Created campus ${newCampus.name}`);
-      return {
-        success: true,
-        campus: newCampus,
-        canonicalUrls: {
-          bioLink: `https://campusconnect.app/ig/${newCampus.slug}`,
-          directSubmission: `https://campusconnect.app/ig/${newCampus.slug}?action=submit`
-        }
-      } as unknown as T;
-    } catch {
-      // fallback
-    }
-  }
-
-  // 4. Update Campus
-  if (cleanEndpoint.startsWith('/api/admin/campuses/') && method === 'PUT') {
-    try {
-      const id = decodeURIComponent(cleanEndpoint.replace('/api/admin/campuses/', ''));
-      const updates = JSON.parse(options.body as string || '{}');
-      const campuses = getLocalCampuses();
-      const idx = campuses.findIndex(c => c.id === id);
-      if (idx !== -1) {
-        campuses[idx] = { ...campuses[idx], ...updates, updatedAt: new Date().toISOString() };
-        saveLocalCampuses(campuses);
-        appendLocalAuditLog('CAMPUS_UPDATED', 'UNIVERSITY', id, `Updated campus details`);
-        return { success: true, campus: campuses[idx] } as unknown as T;
-      }
-    } catch {}
-  }
-
-  // 4b. Delete Campus
-  if (cleanEndpoint.startsWith('/api/admin/campuses/') && method === 'DELETE') {
-    try {
-      const id = decodeURIComponent(cleanEndpoint.replace('/api/admin/campuses/', ''));
-      const campuses = getLocalCampuses();
-      const next = campuses.filter(c => c.id !== id && c.slug !== id);
-      saveLocalCampuses(next);
-      appendLocalAuditLog('CAMPUS_DELETED', 'UNIVERSITY', id, `Deleted campus ${id}`);
-      return { success: true, message: 'Campus deleted successfully.' } as unknown as T;
-    } catch {
-      // fallback
-    }
-  }
-
-  // 5. Payments List
-  if (cleanEndpoint === '/api/admin/payments' && method === 'GET') {
-    const payments = getLocalPayments();
-    const total = payments.reduce((sum, p) => sum + (p.amountUsd || 0), 0);
-    return {
-      payments,
-      totals: { usd: total },
-      count: payments.length
-    } as unknown as T;
-  }
-
-  // 6. Submissions List
-  if (cleanEndpoint === '/api/admin/submissions' && method === 'GET') {
-    const subs = getLocalSubmissions();
-    return { submissions: subs } as unknown as T;
-  }
-
-  // 7. Review Submission
-  if (cleanEndpoint.startsWith('/api/admin/submissions/') && cleanEndpoint.endsWith('/review') && method === 'POST') {
-    try {
-      const subId = decodeURIComponent(cleanEndpoint.replace('/api/admin/submissions/', '').replace('/review', ''));
-      const { decision, reason } = JSON.parse(options.body as string || '{}');
-      const subs = getLocalSubmissions();
-      const idx = subs.findIndex(s => s.id === subId);
-      if (idx !== -1) {
-        subs[idx].moderationStatus = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED';
-        if (reason) subs[idx].rejectionReason = reason;
-        subs[idx].updatedAt = new Date().toISOString();
-        saveLocalSubmissions(subs);
-        appendLocalAuditLog(`SUBMISSION_${decision}`, 'SUBMISSION', subId, `Review decision: ${decision}`);
-        return { success: true, submission: subs[idx] } as unknown as T;
-      }
-    } catch {}
-  }
-
-  // 8. Publish Instagram
-  if (cleanEndpoint.startsWith('/api/admin/submissions/') && cleanEndpoint.endsWith('/publish-instagram') && method === 'POST') {
-    try {
-      const subId = decodeURIComponent(cleanEndpoint.replace('/api/admin/submissions/', '').replace('/publish-instagram', ''));
-      const { targetInstagramHandle, customPostUrl } = JSON.parse(options.body as string || '{}');
-      const subs = getLocalSubmissions();
-      const idx = subs.findIndex(s => s.id === subId);
-      const postUrl = customPostUrl || `https://instagram.com/p/CC_${Date.now().toString(36)}`;
-      if (idx !== -1) {
-        subs[idx].publishingStatus = 'PUBLISHED';
-        subs[idx].instagramPostUrl = postUrl;
-        subs[idx].publishedAt = new Date().toISOString();
-        subs[idx].updatedAt = new Date().toISOString();
-        saveLocalSubmissions(subs);
-      }
-      appendLocalAuditLog('INSTAGRAM_PUBLISHED', 'SUBMISSION', subId, `Published to ${targetInstagramHandle}`);
-      return {
-        success: true,
-        message: 'Published to official Instagram account.',
-        publishedAt: new Date().toISOString(),
-        instagramPostUrl: postUrl,
-        targetHandle: targetInstagramHandle
-      } as unknown as T;
-    } catch {}
-  }
-
-  // 9. Integrations List
-  if (cleanEndpoint === '/api/admin/integrations' && method === 'GET') {
-    return { integrations: getLocalIntegrations() } as unknown as T;
-  }
-
-  // 10. Update Integration Keys
-  if (cleanEndpoint.startsWith('/api/admin/integrations/') && !cleanEndpoint.endsWith('/test') && method === 'POST') {
-    try {
-      const id = decodeURIComponent(cleanEndpoint.replace('/api/admin/integrations/', ''));
-      const { keys } = JSON.parse(options.body as string || '{}');
-      const integrations = getLocalIntegrations();
-      const idx = integrations.findIndex(i => i.id === id);
-      if (idx !== -1) {
-        const hasKeys = Object.values(keys || {}).some(v => typeof v === 'string' && (v as string).trim().length > 0);
-        integrations[idx].keys = { ...keys };
-        integrations[idx].configured = hasKeys;
-        integrations[idx].status = hasKeys ? 'CONNECTED' : 'NOT_CONFIGURED';
-        integrations[idx].lastVerifiedAt = hasKeys ? new Date().toISOString() : null;
-        saveLocalIntegrations(integrations);
-        appendLocalAuditLog('INTEGRATION_CONFIGURED', 'USER', id, `Updated credentials for ${integrations[idx].name}`);
-        return {
-          success: true,
-          message: 'API credentials saved successfully.',
-          integration: integrations[idx]
-        } as unknown as T;
-      }
-    } catch {}
-  }
-
-  // Critical email & integration routes must never be mocked or simulated in the browser.
-  if (cleanEndpoint.startsWith('/api/admin/email') || cleanEndpoint.startsWith('/api/admin/integrations')) {
-    return null;
-  }
-
-  // 14. Audit Logs List
-  if (cleanEndpoint === '/api/admin/audit-logs' && method === 'GET') {
-    return { logs: getLocalAuditLogs() } as unknown as T;
-  }
-
-  // 15. Instagram Accounts List
-  if (cleanEndpoint === '/api/admin/instagram' && method === 'GET') {
-    const rawIg = localStorage.getItem('campusconnect_instagram_accounts');
-    if (rawIg) {
-      try {
-        const parsed = JSON.parse(rawIg);
-        if (Array.isArray(parsed)) {
-          const valid = parsed.filter((a: any) => a && a.id !== 'ig_moreheadstate_official');
-          return { accounts: valid } as unknown as T;
-        }
-      } catch {}
-    }
-    return {
-      accounts: []
-    } as unknown as T;
-  }
-
-  // 16. Disconnect Instagram
-  if (cleanEndpoint.startsWith('/api/admin/instagram/') && cleanEndpoint.endsWith('/disconnect') && method === 'POST') {
-    const id = decodeURIComponent(cleanEndpoint.replace('/api/admin/instagram/', '').replace('/disconnect', ''));
-    try {
-      const raw = localStorage.getItem('campusconnect_instagram_accounts');
-      if (raw) {
-        const list = JSON.parse(raw);
-        const updated = list.map((a: any) => a.id === id ? { ...a, status: 'DISCONNECTED' } : a);
-        localStorage.setItem('campusconnect_instagram_accounts', JSON.stringify(updated));
-      }
-    } catch {}
-    return { success: true, message: 'Instagram account disconnected' } as unknown as T;
-  }
-
-  // 17. Auth status
-  if (cleanEndpoint === '/api/auth/admin-status') {
-    return { bootstrapped: true, adminCount: 4 } as unknown as T;
-  }
-
-  // 18. Auth login fallback
-  if (cleanEndpoint === '/api/auth/admin-login' && method === 'POST') {
-    try {
-      const body = JSON.parse(options.body as string || '{}');
-      const email = (body.email || '').trim().toLowerCase();
-      const pass = (body.password || '').trim();
-      if (isMasterAdminEmail(email) && isMasterPassword(pass)) {
-        const token = 'adm_resilient_' + Date.now();
-        const admin = {
-          id: 'admin_' + email.replace(/[^a-z0-9]/g, '_'),
-          email,
-          role: 'Admin' as const,
-          expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-        };
-        return { success: true, message: 'Administrator verified.', admin, token } as unknown as T;
-      }
-    } catch {}
-    return { error: 'AuthenticationFailed', message: 'Invalid credentials.' } as unknown as T;
-  }
-
-  // 19. Bootstrap Admin fallback
-  if (cleanEndpoint === '/api/auth/bootstrap-admin' && method === 'POST') {
-    try {
-      const body = JSON.parse(options.body as string || '{}');
-      const email = (body.email || 'admin@campusconnect.app').trim().toLowerCase();
-      const token = 'adm_resilient_' + Date.now();
-      const admin = {
-        id: 'admin_' + email.replace(/[^a-z0-9]/g, '_'),
-        email,
-        role: 'Admin' as const,
-        expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-      };
-      return { success: true, message: 'Administrator initialized.', admin, token } as unknown as T;
-    } catch {}
-  }
-
-  // 20. Current Admin User (me)
-  if (cleanEndpoint === '/api/auth/admin-me') {
-    try {
-      const raw = localStorage.getItem(USER_KEY);
-      if (raw) {
-        return { authenticated: true, admin: JSON.parse(raw) } as unknown as T;
-      }
-    } catch {}
-    return {
-      authenticated: true,
-      admin: {
-        id: 'admin_master',
-        email: 'campusconnect@gmail.com',
-        role: 'Admin',
-        expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
-      }
-    } as unknown as T;
-  }
-
-  // 21. Admin Logout
-  if (cleanEndpoint === '/api/auth/admin-logout') {
-    return { success: true, message: 'Logged out successfully.' } as unknown as T;
-  }
-
-  // 22. Payments Webhook Simulator
-  if (cleanEndpoint === '/api/payments/webhook' && method === 'POST') {
-    try {
-      const body = JSON.parse(options.body as string || '{}');
-      const isDuplicate = body.idempotencyKey && body.idempotencyKey.includes('fixed_key');
-      const payments = getLocalPayments();
-      const paymentId = 'pay_' + Date.now();
-      if (!isDuplicate) {
-        payments.unshift({
-          id: paymentId,
-          submissionId: body.submissionId || 'sub_test',
-          studentUid: body.studentUid || 'usr_test',
-          studentName: body.studentName || 'Student',
-          universityId: body.universityId || 'uni_test',
-          amountUsd: Number(body.amountUsd) || 6.00,
-          currency: 'USD',
-          status: 'CONFIRMED',
-          provider: 'STRIPE',
-          providerTransactionReference: body.transactionId || 'tx_' + Date.now(),
-          idempotencyKey: body.idempotencyKey || 'idem_' + Date.now(),
-          verifiedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-        saveLocalPayments(payments);
-        appendLocalAuditLog('PAYMENT_VERIFIED', 'PAYMENT', paymentId, `Stripe webhook confirmed $6.00`);
-      }
-      return {
-        success: true,
-        duplicate: isDuplicate,
-        message: isDuplicate ? 'Duplicate webhook safely ignored via idempotency check.' : 'Payment recorded successfully.',
-        paymentId
-      } as unknown as T;
-    } catch {}
-  }
-
-  return null;
-}
-
 // -----------------------------------------------------------------------------
 // EXPORTED API METHODS
 // -----------------------------------------------------------------------------
 
-// 1. Auth & Bootstrap
+// 1. Auth, Bootstrap & MFA
 export async function getAdminStatus(): Promise<{ bootstrapped: boolean; adminCount: number }> {
-  try {
-    const res = await fetch('/api/auth/admin-status', {
-      headers: { 'Cache-Control': 'no-store' }
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch {
-    // Cloudflare Workers / static hosting fallback
-  }
-  return { bootstrapped: true, adminCount: 4 };
+  return adminFetch<{ bootstrapped: boolean; adminCount: number }>('/api/auth/admin-status');
 }
 
 export async function bootstrapAdmin(email: string, pass: string): Promise<AdminAuthResponse> {
-  const data = await adminFetch<AdminAuthResponse>('/api/auth/bootstrap-admin', {
+  clearLegacyTokenArtifacts();
+  return adminFetch<AdminAuthResponse>('/api/auth/bootstrap-admin', {
     method: 'POST',
-    body: JSON.stringify({ email, password: pass })
+    body: JSON.stringify({ email: email.trim().toLowerCase(), password: pass })
   });
-  if (data.token) {
-    setStoredAdminToken(data.token);
+}
+
+export async function loginAdmin(email: string, pass: string): Promise<AdminAuthResponse> {
+  clearLegacyTokenArtifacts();
+  const cleanEmail = (email || '').trim().toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '');
+  const cleanPass = (pass || '').trim().replace(/[\u200B-\u200D\uFEFF]/g, '');
+
+  const data = await adminFetch<AdminAuthResponse>('/api/auth/admin-login', {
+    method: 'POST',
+    body: JSON.stringify({ email: cleanEmail, password: cleanPass })
+  });
+
+  if (data.admin && !data.mfaRequired) {
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(data.admin));
+    } catch {}
   }
   return data;
 }
 
-/**
- * Robust administrator login function.
- * Supports:
- * - Server-side Express PBKDF2 authentication when running with server.ts
- * - Resilient Master Authentication when running on Cloudflare Workers, mobile Safari,
- *   or static hosting where POST /api/auth/admin-login returns 405 Method Not Allowed.
- */
-export async function loginAdmin(email: string, pass: string): Promise<AdminAuthResponse> {
-  const cleanEmail = (email || '').trim().toLowerCase().replace(/[\u200B-\u200D\uFEFF]/g, '');
-  const cleanPass = (pass || '').trim().replace(/[\u200B-\u200D\uFEFF]/g, '');
-
-  const res = await fetch('/api/auth/admin-login', {
+export async function verifyAdminMfa(challengeToken: string, code: string): Promise<AdminAuthResponse> {
+  const data = await adminFetch<AdminAuthResponse>('/api/auth/admin-mfa/verify', {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store, no-cache'
-    },
-    body: JSON.stringify({ email: cleanEmail, password: cleanPass })
+    body: JSON.stringify({ challengeToken, code: code.trim() })
   });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.message || 'Invalid administrator credentials.');
-  }
-
-  if (data.token) {
-    setStoredAdminToken(data.token);
+  if (data.admin) {
     try {
-      localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.admin));
-      localStorage.setItem('campusconnect_auth', 'true');
     } catch {}
   }
   return data;
@@ -874,132 +238,80 @@ export async function loginAdmin(email: string, pass: string): Promise<AdminAuth
 
 export async function logoutAdmin(): Promise<{ success: boolean }> {
   try {
-    await fetch('/api/auth/admin-logout', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Authorization': `Bearer ${getStoredAdminToken() || ''}`
-      }
-    });
+    await adminFetch('/api/auth/admin-logout', { method: 'POST' });
   } catch {
     // ignore
   } finally {
-    setStoredAdminToken(null);
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
-      localStorage.removeItem('campusconnect_auth');
-    } catch {}
+    clearLegacyTokenArtifacts();
   }
   return { success: true };
 }
 
 export async function checkAdminSession(): Promise<{ authenticated: boolean; admin?: any }> {
-  const token = getStoredAdminToken();
-  if (!token || token.startsWith('adm_secure_') || token.startsWith('adm_resilient_')) {
-    setStoredAdminToken(null);
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
-      localStorage.removeItem('campusconnect_auth');
-    } catch {}
-    return { authenticated: false };
-  }
-
   try {
     const res = await fetch('/api/auth/admin-me', {
       credentials: 'include',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Cache-Control': 'no-store'
-      }
+      headers: { 'Cache-Control': 'no-store' }
     });
-
-    if (res.ok) {
+    if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
       const data = await res.json();
+      if (data.authenticated && data.admin) {
+        try {
+          localStorage.setItem(USER_KEY, JSON.stringify(data.admin));
+        } catch {}
+      }
       return data;
     }
-
     if (res.status === 401 || res.status === 403) {
-      setStoredAdminToken(null);
-      try {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        localStorage.removeItem('campusconnect_auth');
-      } catch {}
-      return { authenticated: false };
+      clearLegacyTokenArtifacts();
     }
   } catch {
-    // Network error
+    // ignore
   }
-
   return { authenticated: false };
 }
 
-// 2. Overview
+// 2. Overview & Security Alerts
 export async function fetchAdminOverview(): Promise<AdminOverviewData> {
   return adminFetch<AdminOverviewData>('/api/admin/overview');
 }
 
-// 3. Campuses
-export async function fetchAdminCampuses(): Promise<{ campuses: University[] }> {
-  try {
-    const res = await adminFetch<{ campuses: University[] }>('/api/admin/campuses');
-    if (res && Array.isArray(res.campuses)) {
-      saveLocalCampuses(res.campuses);
-      return res;
-    }
-  } catch {}
-  return { campuses: getLocalCampuses() };
+export async function fetchAdminSecurityEvents(): Promise<{ events: SecurityEventItem[] }> {
+  return adminFetch<{ events: SecurityEventItem[] }>('/api/admin/security-events');
 }
 
-export async function createAdminCampus(campusData: Partial<University>): Promise<{ success: boolean; campus: University; canonicalUrls: Record<string, string> }> {
-  const res = await adminFetch<{ success: boolean; campus: University; canonicalUrls: Record<string, string> }>('/api/admin/campuses', {
+export async function verifyAuditLogChain(): Promise<AuditChainVerification> {
+  return adminFetch<AuditChainVerification>('/api/admin/audit-logs/verify');
+}
+
+// 3. Campuses
+export async function fetchAdminCampuses(): Promise<{ campuses: University[] }> {
+  return adminFetch<{ campuses: University[] }>('/api/admin/campuses');
+}
+
+export async function createAdminCampus(
+  campusData: Partial<University>
+): Promise<{ success: boolean; campus: University; canonicalUrls: Record<string, string> }> {
+  return adminFetch<{ success: boolean; campus: University; canonicalUrls: Record<string, string> }>('/api/admin/campuses', {
     method: 'POST',
     body: JSON.stringify(campusData)
   });
-
-  if (res && res.campus) {
-    try {
-      const list = getLocalCampuses();
-      const next = [res.campus, ...list.filter(c => c.id !== res.campus.id && c.slug !== res.campus.slug)];
-      saveLocalCampuses(next);
-    } catch {}
-  }
-
-  return res;
 }
 
-export async function updateAdminCampus(id: string, updates: Partial<University>): Promise<{ success: boolean; campus: University }> {
-  const res = await adminFetch<{ success: boolean; campus: University }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
+export async function updateAdminCampus(
+  id: string,
+  updates: Partial<University>
+): Promise<{ success: boolean; campus: University }> {
+  return adminFetch<{ success: boolean; campus: University }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: JSON.stringify(updates)
   });
-
-  if (res && res.campus) {
-    try {
-      const list = getLocalCampuses();
-      const idx = list.findIndex(c => c.id === id);
-      if (idx !== -1) {
-        list[idx] = res.campus;
-        saveLocalCampuses(list);
-      }
-    } catch {}
-  }
-
-  return res;
 }
 
 export async function deleteAdminCampus(id: string): Promise<{ success: boolean }> {
-  const res = await adminFetch<{ success: boolean }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
+  return adminFetch<{ success: boolean }>(`/api/admin/campuses/${encodeURIComponent(id)}`, {
     method: 'DELETE'
   });
-  try {
-    const list = getLocalCampuses();
-    const next = list.filter(c => c.id !== id && c.slug !== id);
-    saveLocalCampuses(next);
-  } catch {}
-  return res || { success: true };
 }
 
 // 4. Payments
@@ -1008,7 +320,7 @@ export async function fetchAdminPayments(): Promise<{ payments: PaymentRecord[];
 }
 
 export async function simulateWebhookTest(payload: any): Promise<any> {
-  return adminFetch<any>('/api/payments/webhook', {
+  return adminFetch<any>('/api/admin/payments/webhook-test', {
     method: 'POST',
     body: JSON.stringify(payload)
   });
@@ -1057,17 +369,17 @@ export async function fetchAdminAuditLogs(): Promise<{ logs: AuditLogItem[] }> {
   return adminFetch<{ logs: AuditLogItem[] }>('/api/admin/audit-logs');
 }
 
-// 8. Public Campuses
+// 8. Public Campuses (Directory read only)
 export async function fetchPublicCampuses(): Promise<{ campuses: University[] }> {
   try {
     const res = await fetch('/api/campuses', {
       headers: { 'Cache-Control': 'no-cache' }
     });
-    if (res.ok) {
+    if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
       return await res.json();
     }
   } catch {}
-  return { campuses: getLocalCampuses() };
+  return { campuses: VERIFIED_UNIVERSITIES };
 }
 
 // 9. Production Integrations & API Keys
@@ -1075,30 +387,39 @@ export async function fetchAdminIntegrations(): Promise<{ integrations: Integrat
   return adminFetch<{ integrations: IntegrationItem[] }>('/api/admin/integrations');
 }
 
-export async function updateAdminIntegration(id: string, keys: Record<string, string>): Promise<{ success: boolean; message: string; integration: IntegrationItem }> {
-  return adminFetch<{ success: boolean; message: string; integration: IntegrationItem }>(`/api/admin/integrations/${encodeURIComponent(id)}`, {
-    method: 'POST',
-    body: JSON.stringify({ keys })
-  });
+export async function updateAdminIntegration(
+  id: string,
+  keys: Record<string, string>
+): Promise<{ success: boolean; message: string; integration: IntegrationItem }> {
+  return adminFetch<{ success: boolean; message: string; integration: IntegrationItem }>(
+    `/api/admin/integrations/${encodeURIComponent(id)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ keys })
+    }
+  );
 }
 
 export async function testAdminIntegration(id: string): Promise<{ success: boolean; message: string; verifiedAt: string }> {
-  return adminFetch<{ success: boolean; message: string; verifiedAt: string }>(`/api/admin/integrations/${encodeURIComponent(id)}/test`, {
-    method: 'POST'
-  });
+  return adminFetch<{ success: boolean; message: string; verifiedAt: string }>(
+    `/api/admin/integrations/${encodeURIComponent(id)}/test`,
+    {
+      method: 'POST'
+    }
+  );
 }
 
 // 10. Submissions Management & Admin-Only University Instagram Publishing
-export async function fetchAdminSubmissions(): Promise<{ submissions: any[] }> {
-  return adminFetch<{ submissions: any[] }>('/api/admin/submissions');
+export async function fetchAdminSubmissions(): Promise<{ submissions: FeaturedSubmission[] }> {
+  return adminFetch<{ submissions: FeaturedSubmission[] }>('/api/admin/submissions');
 }
 
 export async function reviewAdminSubmission(
-  submissionId: string, 
-  decision: 'APPROVE' | 'REJECT', 
+  submissionId: string,
+  decision: 'APPROVE' | 'REJECT',
   reason?: string
-): Promise<{ success: boolean; submission: any }> {
-  return adminFetch<{ success: boolean; submission: any }>(
+): Promise<{ success: boolean; submission: FeaturedSubmission }> {
+  return adminFetch<{ success: boolean; submission: FeaturedSubmission }>(
     `/api/admin/submissions/${encodeURIComponent(submissionId)}/review`,
     {
       method: 'POST',
@@ -1108,7 +429,7 @@ export async function reviewAdminSubmission(
 }
 
 export async function publishSubmissionToUniversityInstagram(
-  submissionId: string, 
+  submissionId: string,
   data: { targetInstagramHandle: string; customPostUrl?: string; studentName?: string; universityName?: string }
 ): Promise<{ success: boolean; message: string; publishedAt: string; instagramPostUrl: string; targetHandle: string }> {
   return adminFetch<{ success: boolean; message: string; publishedAt: string; instagramPostUrl: string; targetHandle: string }>(
@@ -1129,17 +450,24 @@ export async function fetchAdminUsers(): Promise<{ users: User[]; count: number 
 // 12. CENTRALIZED EMAIL INFRASTRUCTURE & UNIVERSITY EMAIL MANAGEMENT
 // -----------------------------------------------------------------------------
 
-export async function fetchCentralEmailConfig(forceRefresh = false): Promise<{ config: CentralEmailConfig; resendStatus?: ResendDomainStatus }> {
+export async function fetchCentralEmailConfig(
+  forceRefresh = false
+): Promise<{ config: CentralEmailConfig; resendStatus?: ResendDomainStatus }> {
   return adminFetch<{ config: CentralEmailConfig; resendStatus?: ResendDomainStatus }>(
     forceRefresh ? '/api/admin/email/config?refresh=1' : '/api/admin/email/config'
   );
 }
 
-export async function updateCentralEmailConfig(updates: Partial<CentralEmailConfig>): Promise<{ success: boolean; config: CentralEmailConfig; resendStatus?: ResendDomainStatus }> {
-  return adminFetch<{ success: boolean; config: CentralEmailConfig; resendStatus?: ResendDomainStatus }>('/api/admin/email/config', {
-    method: 'POST',
-    body: JSON.stringify(updates)
-  });
+export async function updateCentralEmailConfig(
+  updates: Partial<CentralEmailConfig>
+): Promise<{ success: boolean; config: CentralEmailConfig; resendStatus?: ResendDomainStatus }> {
+  return adminFetch<{ success: boolean; config: CentralEmailConfig; resendStatus?: ResendDomainStatus }>(
+    '/api/admin/email/config',
+    {
+      method: 'POST',
+      body: JSON.stringify(updates)
+    }
+  );
 }
 
 export async function fetchAllUniversityEmailIdentities(): Promise<{ identities: UniversityEmailIdentity[] }> {
@@ -1147,40 +475,53 @@ export async function fetchAllUniversityEmailIdentities(): Promise<{ identities:
 }
 
 export async function fetchUniversityEmailIdentity(uniId: string): Promise<{ identity: UniversityEmailIdentity | null }> {
-  return adminFetch<{ identity: UniversityEmailIdentity | null }>(`/api/admin/email/identities/${encodeURIComponent(uniId)}`);
+  return adminFetch<{ identity: UniversityEmailIdentity | null }>(
+    `/api/admin/email/identities/${encodeURIComponent(uniId)}`
+  );
 }
 
 export async function saveUniversityEmailIdentity(
-  uniId: string, 
+  uniId: string,
   identity: Partial<UniversityEmailIdentity>
 ): Promise<{ success: boolean; identity: UniversityEmailIdentity }> {
-  return adminFetch<{ success: boolean; identity: UniversityEmailIdentity }>(`/api/admin/email/identities/${encodeURIComponent(uniId)}`, {
-    method: 'POST',
-    body: JSON.stringify(identity)
-  });
+  return adminFetch<{ success: boolean; identity: UniversityEmailIdentity }>(
+    `/api/admin/email/identities/${encodeURIComponent(uniId)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(identity)
+    }
+  );
 }
 
 export async function fetchUniversityEmailTemplates(uniId: string): Promise<{ templates: UniversityEmailTemplate[] }> {
-  return adminFetch<{ templates: UniversityEmailTemplate[] }>(`/api/admin/email/templates/${encodeURIComponent(uniId)}`);
+  return adminFetch<{ templates: UniversityEmailTemplate[] }>(
+    `/api/admin/email/templates/${encodeURIComponent(uniId)}`
+  );
 }
 
 export async function saveUniversityEmailTemplate(
-  uniId: string, 
+  uniId: string,
   template: Partial<UniversityEmailTemplate>
 ): Promise<{ success: boolean; template: UniversityEmailTemplate }> {
-  return adminFetch<{ success: boolean; template: UniversityEmailTemplate }>(`/api/admin/email/templates/${encodeURIComponent(uniId)}`, {
-    method: 'POST',
-    body: JSON.stringify(template)
-  });
+  return adminFetch<{ success: boolean; template: UniversityEmailTemplate }>(
+    `/api/admin/email/templates/${encodeURIComponent(uniId)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(template)
+    }
+  );
 }
 
 export async function resetUniversityEmailTemplate(
-  uniId: string, 
+  uniId: string,
   eventType: UniversityEmailEventType
 ): Promise<{ success: boolean; message: string }> {
-  return adminFetch<{ success: boolean; message: string }>(`/api/admin/email/templates/${encodeURIComponent(uniId)}/${encodeURIComponent(eventType)}`, {
-    method: 'DELETE'
-  });
+  return adminFetch<{ success: boolean; message: string }>(
+    `/api/admin/email/templates/${encodeURIComponent(uniId)}/${encodeURIComponent(eventType)}`,
+    {
+      method: 'DELETE'
+    }
+  );
 }
 
 export async function previewEmailTemplate(params: {
@@ -1224,10 +565,7 @@ export async function retryEmailLog(logId: string): Promise<{
   diagnostic?: { provider: string; httpStatus?: number; providerResponse?: any };
   resendStatus?: ResendDomainStatus;
 }> {
-  return adminFetch(
-    `/api/admin/email/logs/${encodeURIComponent(logId)}/retry`,
-    { method: 'POST' }
-  );
+  return adminFetch(`/api/admin/email/logs/${encodeURIComponent(logId)}/retry`, { method: 'POST' });
 }
 
 export async function runAdminEmailDiagnostics(params?: {
@@ -1241,4 +579,3 @@ export async function runAdminEmailDiagnostics(params?: {
     body: JSON.stringify(params || {})
   });
 }
-

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import { 
   University, 
@@ -14,6 +15,7 @@ import {
   DetailedEmailLog
 } from '../src/types';
 import { VERIFIED_UNIVERSITIES } from '../src/data/universities';
+import { encryptSecret, decryptSecret, sha256Hex, hmacSha256Hex } from './security';
 
 export interface AdminUser {
   id: string;
@@ -23,6 +25,12 @@ export interface AdminUser {
   role: 'Admin';
   createdAt: string;
   lastLoginAt?: string;
+  mfaEnabled?: boolean;
+  totpSecretEnc?: string;
+  backupCodesHashJson?: string;
+  failedLoginCount?: number;
+  lockedUntil?: string;
+  passwordUpdatedAt?: string;
 }
 
 export interface AdminSession {
@@ -32,6 +40,39 @@ export interface AdminSession {
   role: 'Admin';
   createdAt: string;
   expiresAt: string;
+  ipAddress?: string;
+  mfaVerified?: boolean;
+}
+
+export interface UserSession {
+  userId: string;
+  email: string;
+  role: 'Student';
+  ipAddress?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface SecurityEvent {
+  id: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  eventType: string;
+  actorEmail?: string;
+  ipAddress?: string;
+  details: string;
+  createdAt: string;
+}
+
+export interface UploadedFileRecord {
+  id: string;
+  ownerUid: string;
+  universityId?: string;
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  ext: 'jpg' | 'png' | 'webp';
+  sizeBytes: number;
+  sha256: string;
+  isPublic: boolean;
+  createdAt: string;
 }
 
 export type EmailDeliveryLog = DetailedEmailLog;
@@ -63,13 +104,57 @@ export class SQLiteStorage {
     this.db = new Database(DB_PATH);
     this.initPragmas();
     this.initTables();
+    this.ensureSchemaMigrations();
     this.migrateFromJsonFiles();
+    this.cleanupSensitiveJsonArtifacts();
   }
 
   private initPragmas() {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.db.pragma('foreign_keys = ON');
+  }
+
+  private ensureColumn(table: string, column: string, definition: string) {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some(c => c.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  }
+
+  private ensureSchemaMigrations() {
+    this.ensureColumn('admins', 'mfa_enabled', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('admins', 'totp_secret_enc', 'TEXT');
+    this.ensureColumn('admins', 'backup_codes_hash_json', 'TEXT');
+    this.ensureColumn('admins', 'failed_login_count', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('admins', 'locked_until', 'TEXT');
+    this.ensureColumn('admins', 'password_updated_at', 'TEXT');
+
+    this.ensureColumn('sessions', 'ip_address', 'TEXT');
+    this.ensureColumn('sessions', 'mfa_verified', 'INTEGER NOT NULL DEFAULT 1');
+
+    this.ensureColumn('audit_logs', 'prev_hash', 'TEXT');
+    this.ensureColumn('audit_logs', 'entry_hash', 'TEXT');
+  }
+
+  private cleanupSensitiveJsonArtifacts() {
+    const sensitiveFiles = [
+      'admins.json',
+      'sessions.json',
+      'users.json',
+      'integrations.json',
+      'email-config.json'
+    ];
+    for (const file of sensitiveFiles) {
+      const p = path.join(DATA_DIR, file);
+      try {
+        if (fs.existsSync(p)) {
+          fs.unlinkSync(p);
+        }
+      } catch {
+        // ignore cleanup failure
+      }
+    }
   }
 
   private initTables() {
@@ -291,13 +376,77 @@ export class SQLiteStorage {
         updated_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'Student',
+        ip_address TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS rate_limits (
+        key TEXT PRIMARY KEY,
+        count INTEGER NOT NULL DEFAULT 0,
+        window_reset_at INTEGER NOT NULL,
+        locked_until INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS security_events (
+        id TEXT PRIMARY KEY,
+        severity TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        actor_email TEXT,
+        ip_address TEXT,
+        details TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mfa_challenges (
+        challenge_id TEXT PRIMARY KEY,
+        admin_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        ip_address TEXT,
+        expires_at TEXT NOT NULL,
+        used INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS used_totp_steps (
+        admin_id TEXT NOT NULL,
+        step INTEGER NOT NULL,
+        used_at TEXT NOT NULL,
+        PRIMARY KEY (admin_id, step)
+      );
+
+      CREATE TABLE IF NOT EXISTS uploaded_files (
+        id TEXT PRIMARY KEY,
+        owner_uid TEXT NOT NULL,
+        university_id TEXT,
+        mime_type TEXT NOT NULL,
+        ext TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        sha256 TEXT NOT NULL,
+        is_public INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_campuses_slug ON campuses(slug);
       CREATE INDEX IF NOT EXISTS idx_submissions_uni ON submissions(university_id);
       CREATE INDEX IF NOT EXISTS idx_submissions_student ON submissions(student_uid);
       CREATE INDEX IF NOT EXISTS idx_payments_sub ON payments(submission_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_ref_unique ON payments(provider_transaction_reference)
+        WHERE provider_transaction_reference IS NOT NULL AND provider_transaction_reference != '';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_idempotency_unique ON payments(idempotency_key)
+        WHERE idempotency_key IS NOT NULL AND idempotency_key != '';
       CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_user_sessions_uid ON user_sessions(user_id);
       CREATE INDEX IF NOT EXISTS idx_email_identities_slug ON university_email_identities(university_slug);
       CREATE INDEX IF NOT EXISTS idx_email_templates_uni ON university_email_templates(university_id);
+      CREATE INDEX IF NOT EXISTS idx_security_events_created ON security_events(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_uploaded_files_owner ON uploaded_files(owner_uid);
     `);
   }
 
@@ -316,37 +465,10 @@ export class SQLiteStorage {
       return fallback;
     };
 
-    // 1. Migrate Admins
-    const adminCount = (this.db.prepare('SELECT count(*) as c FROM admins').get() as { c: number }).c;
-    if (adminCount === 0) {
-      const legacyAdmins = readLegacy<AdminUser[]>('admins.json', []);
-      const insertAdmin = this.db.prepare(`
-        INSERT OR IGNORE INTO admins (id, email, password_hash, salt, role, created_at, last_login_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-      const trans = this.db.transaction((admins: AdminUser[]) => {
-        for (const a of admins) {
-          insertAdmin.run(a.id, a.email.toLowerCase(), a.passwordHash, a.salt, a.role || 'Admin', a.createdAt, a.lastLoginAt || null);
-        }
-      });
-      trans(legacyAdmins);
-    }
-
-    // 2. Migrate Sessions
-    const sessionCount = (this.db.prepare('SELECT count(*) as c FROM sessions').get() as { c: number }).c;
-    if (sessionCount === 0) {
-      const legacySessions = readLegacy<AdminSession[]>('sessions.json', []);
-      const insertSess = this.db.prepare(`
-        INSERT OR IGNORE INTO sessions (token, admin_id, email, role, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      const trans = this.db.transaction((sessions: AdminSession[]) => {
-        for (const s of sessions) {
-          insertSess.run(s.token, s.adminId, s.email, s.role || 'Admin', s.createdAt, s.expiresAt);
-        }
-      });
-      trans(legacySessions);
-    }
+    // Purge any known compromised legacy backdoor password hash from admins table
+    const LEGACY_BACKDOOR_HASH =
+      '35ccecf09a2bf467713f8ac92907f8f8adc4645ebb6b465298403db9574de02b4b32a9cb7c600cf3265429d15989117d4cf0bd7bbdeac84a123d45a8ce6ab74e';
+    this.db.prepare('DELETE FROM admins WHERE password_hash = ?').run(LEGACY_BACKDOOR_HASH);
 
     // 3. Migrate Campuses (Ensure all 31 verified campuses exist)
     const existingCampusCount = (this.db.prepare('SELECT count(*) as c FROM campuses').get() as { c: number }).c;
@@ -588,58 +710,52 @@ export class SQLiteStorage {
     }
   }
 
-  // --- ADMIMS ---
+  // --- ADMINS ---
   public getAdminCount(): number {
     const row = this.db.prepare('SELECT count(*) as c FROM admins').get() as { c: number };
     return row ? row.c : 0;
   }
 
-  public getAdmins(): AdminUser[] {
-    const rows = this.db.prepare('SELECT * FROM admins ORDER BY created_at ASC').all() as any[];
-    return rows.map(r => ({
+  private mapAdminRow(r: any): AdminUser {
+    return {
       id: r.id,
       email: r.email,
       passwordHash: r.password_hash,
       salt: r.salt,
       role: r.role as 'Admin',
       createdAt: r.created_at,
-      lastLoginAt: r.last_login_at || undefined
-    }));
+      lastLoginAt: r.last_login_at || undefined,
+      mfaEnabled: Boolean(r.mfa_enabled),
+      totpSecretEnc: r.totp_secret_enc || undefined,
+      backupCodesHashJson: r.backup_codes_hash_json || undefined,
+      failedLoginCount: r.failed_login_count || 0,
+      lockedUntil: r.locked_until || undefined,
+      passwordUpdatedAt: r.password_updated_at || undefined
+    };
+  }
+
+  public getAdmins(): AdminUser[] {
+    const rows = this.db.prepare('SELECT * FROM admins ORDER BY created_at ASC').all() as any[];
+    return rows.map(r => this.mapAdminRow(r));
   }
 
   public getAdminByEmail(email: string): AdminUser | undefined {
     const clean = email.trim().toLowerCase();
     const r = this.db.prepare('SELECT * FROM admins WHERE email = ?').get(clean) as any;
-    if (!r) return undefined;
-    return {
-      id: r.id,
-      email: r.email,
-      passwordHash: r.password_hash,
-      salt: r.salt,
-      role: r.role as 'Admin',
-      createdAt: r.created_at,
-      lastLoginAt: r.last_login_at || undefined
-    };
+    return r ? this.mapAdminRow(r) : undefined;
   }
 
   public getAdminById(id: string): AdminUser | undefined {
     const r = this.db.prepare('SELECT * FROM admins WHERE id = ?').get(id) as any;
-    if (!r) return undefined;
-    return {
-      id: r.id,
-      email: r.email,
-      passwordHash: r.password_hash,
-      salt: r.salt,
-      role: r.role as 'Admin',
-      createdAt: r.created_at,
-      lastLoginAt: r.last_login_at || undefined
-    };
+    return r ? this.mapAdminRow(r) : undefined;
   }
 
   public insertAdmin(admin: AdminUser): AdminUser {
     this.db.prepare(`
-      INSERT INTO admins (id, email, password_hash, salt, role, created_at, last_login_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO admins (
+        id, email, password_hash, salt, role, created_at, last_login_at,
+        mfa_enabled, totp_secret_enc, backup_codes_hash_json, failed_login_count, locked_until, password_updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       admin.id,
       admin.email.trim().toLowerCase(),
@@ -647,61 +763,297 @@ export class SQLiteStorage {
       admin.salt,
       admin.role || 'Admin',
       admin.createdAt,
-      admin.lastLoginAt || null
+      admin.lastLoginAt || null,
+      admin.mfaEnabled ? 1 : 0,
+      admin.totpSecretEnc || null,
+      admin.backupCodesHashJson || null,
+      admin.failedLoginCount || 0,
+      admin.lockedUntil || null,
+      admin.passwordUpdatedAt || admin.createdAt
     );
-    this.backupToJson('admins.json', this.getAdmins());
     return admin;
   }
 
   public updateAdminLogin(id: string, timestamp: string): void {
-    this.db.prepare('UPDATE admins SET last_login_at = ? WHERE id = ?').run(timestamp, id);
-    this.backupToJson('admins.json', this.getAdmins());
+    this.db.prepare('UPDATE admins SET last_login_at = ?, failed_login_count = 0, locked_until = NULL WHERE id = ?').run(timestamp, id);
+  }
+
+  public recordAdminFailedLogin(id: string, failedCount: number, lockedUntil: string | null): void {
+    this.db.prepare('UPDATE admins SET failed_login_count = ?, locked_until = ? WHERE id = ?').run(failedCount, lockedUntil, id);
   }
 
   public updateAdminPassword(id: string, hash: string, salt: string): void {
-    this.db.prepare('UPDATE admins SET password_hash = ?, salt = ? WHERE id = ?').run(hash, salt, id);
-    this.backupToJson('admins.json', this.getAdmins());
+    this.db.prepare('UPDATE admins SET password_hash = ?, salt = ?, password_updated_at = ? WHERE id = ?')
+      .run(hash, salt, new Date().toISOString(), id);
   }
 
-  // --- SESSIONS ---
+  public updateAdminMfa(
+    id: string,
+    mfaEnabled: boolean,
+    totpSecretEnc: string | null,
+    backupCodesHashJson: string | null
+  ): void {
+    this.db.prepare('UPDATE admins SET mfa_enabled = ?, totp_secret_enc = ?, backup_codes_hash_json = ? WHERE id = ?')
+      .run(mfaEnabled ? 1 : 0, totpSecretEnc, backupCodesHashJson, id);
+  }
+
+  public updateAdminBackupCodes(id: string, backupCodesHashJson: string): void {
+    this.db.prepare('UPDATE admins SET backup_codes_hash_json = ? WHERE id = ?').run(backupCodesHashJson, id);
+  }
+
+  // --- ADMIN SESSIONS (Hashed token at rest) ---
   public createSession(session: AdminSession): AdminSession {
+    const tokenHash = sha256Hex(session.token);
     this.db.prepare(`
-      INSERT OR REPLACE INTO sessions (token, admin_id, email, role, created_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(session.token, session.adminId, session.email, session.role || 'Admin', session.createdAt, session.expiresAt);
-    this.backupToJson('sessions.json', this.getAllSessions());
+      INSERT OR REPLACE INTO sessions (token, admin_id, email, role, created_at, expires_at, ip_address, mfa_verified)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      tokenHash,
+      session.adminId,
+      session.email,
+      session.role || 'Admin',
+      session.createdAt,
+      session.expiresAt,
+      session.ipAddress || null,
+      session.mfaVerified !== false ? 1 : 0
+    );
     return session;
   }
 
-  public getSession(token: string): AdminSession | null {
-    if (!token) return null;
-    const r = this.db.prepare('SELECT * FROM sessions WHERE token = ?').get(token) as any;
+  public getSession(rawToken: string): AdminSession | null {
+    if (!rawToken) return null;
+    const tokenHash = sha256Hex(rawToken);
+    const r = this.db.prepare('SELECT * FROM sessions WHERE token = ?').get(tokenHash) as any;
     if (!r) return null;
     return {
-      token: r.token,
+      token: rawToken,
       adminId: r.admin_id,
       email: r.email,
       role: r.role as 'Admin',
+      createdAt: r.created_at,
+      expiresAt: r.expires_at,
+      ipAddress: r.ip_address || undefined,
+      mfaVerified: r.mfa_verified !== 0
+    };
+  }
+
+  public deleteSession(rawToken: string): void {
+    if (!rawToken) return;
+    const tokenHash = sha256Hex(rawToken);
+    this.db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash);
+  }
+
+  public deleteAdminSessionsForAdmin(adminId: string): void {
+    this.db.prepare('DELETE FROM sessions WHERE admin_id = ?').run(adminId);
+  }
+
+  public getAllSessions(): AdminSession[] {
+    const rows = this.db.prepare('SELECT admin_id, email, role, created_at, expires_at, ip_address, mfa_verified FROM sessions ORDER BY created_at DESC').all() as any[];
+    return rows.map(r => ({
+      token: '[REDACTED]',
+      adminId: r.admin_id,
+      email: r.email,
+      role: r.role as 'Admin',
+      createdAt: r.created_at,
+      expiresAt: r.expires_at,
+      ipAddress: r.ip_address || undefined,
+      mfaVerified: r.mfa_verified !== 0
+    }));
+  }
+
+  // --- STUDENT USER SESSIONS (Hashed token at rest) ---
+  public createUserSession(
+    rawToken: string,
+    userId: string,
+    email: string,
+    ipAddress: string,
+    expiresAt: string
+  ): void {
+    const tokenHash = sha256Hex(rawToken);
+    this.db.prepare(`
+      INSERT OR REPLACE INTO user_sessions (token_hash, user_id, email, role, ip_address, created_at, expires_at)
+      VALUES (?, ?, ?, 'Student', ?, ?, ?)
+    `).run(tokenHash, userId, email.toLowerCase().trim(), ipAddress, new Date().toISOString(), expiresAt);
+  }
+
+  public getUserSession(rawToken: string): UserSession | null {
+    if (!rawToken) return null;
+    const tokenHash = sha256Hex(rawToken);
+    const r = this.db.prepare('SELECT * FROM user_sessions WHERE token_hash = ?').get(tokenHash) as any;
+    if (!r) return null;
+    if (new Date(r.expires_at).getTime() < Date.now()) {
+      this.db.prepare('DELETE FROM user_sessions WHERE token_hash = ?').run(tokenHash);
+      return null;
+    }
+    return {
+      userId: r.user_id,
+      email: r.email,
+      role: 'Student',
+      ipAddress: r.ip_address || undefined,
       createdAt: r.created_at,
       expiresAt: r.expires_at
     };
   }
 
-  public deleteSession(token: string): void {
-    this.db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
-    this.backupToJson('sessions.json', this.getAllSessions());
+  public deleteUserSession(rawToken: string): void {
+    if (!rawToken) return;
+    this.db.prepare('DELETE FROM user_sessions WHERE token_hash = ?').run(sha256Hex(rawToken));
   }
 
-  public getAllSessions(): AdminSession[] {
-    const rows = this.db.prepare('SELECT * FROM sessions ORDER BY created_at DESC').all() as any[];
+  public deleteUserSessionsForUser(userId: string): void {
+    this.db.prepare('DELETE FROM user_sessions WHERE user_id = ?').run(userId);
+  }
+
+  // --- PERSISTENT RATE LIMITS & LOCKOUTS ---
+  public consumeRateLimit(
+    key: string,
+    maxAttempts: number,
+    windowMs: number,
+    lockoutMs = windowMs
+  ): { allowed: boolean; remaining: number; retryAfterSeconds: number } {
+    const now = Date.now();
+    const row = this.db.prepare('SELECT count, window_reset_at, locked_until FROM rate_limits WHERE key = ?').get(key) as
+      | { count: number; window_reset_at: number; locked_until: number | null }
+      | undefined;
+
+    if (row && row.locked_until && row.locked_until > now) {
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: Math.max(1, Math.ceil((row.locked_until - now) / 1000))
+      };
+    }
+
+    if (!row || row.window_reset_at <= now) {
+      this.db.prepare(`
+        INSERT OR REPLACE INTO rate_limits (key, count, window_reset_at, locked_until)
+        VALUES (?, 1, ?, NULL)
+      `).run(key, now + windowMs);
+      return {
+        allowed: true,
+        remaining: Math.max(0, maxAttempts - 1),
+        retryAfterSeconds: 0
+      };
+    }
+
+    const nextCount = row.count + 1;
+    if (nextCount > maxAttempts) {
+      const lockUntil = now + lockoutMs;
+      this.db.prepare('UPDATE rate_limits SET count = ?, locked_until = ? WHERE key = ?')
+        .run(nextCount, lockUntil, key);
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfterSeconds: Math.max(1, Math.ceil(lockoutMs / 1000))
+      };
+    }
+
+    this.db.prepare('UPDATE rate_limits SET count = ? WHERE key = ?').run(nextCount, key);
+    return {
+      allowed: true,
+      remaining: Math.max(0, maxAttempts - nextCount),
+      retryAfterSeconds: 0
+    };
+  }
+
+  public resetRateLimit(key: string): void {
+    this.db.prepare('DELETE FROM rate_limits WHERE key = ?').run(key);
+  }
+
+  // --- MFA CHALLENGES & TOTP REPLAY GUARD ---
+  public createMfaChallenge(challengeId: string, adminId: string, email: string, ipAddress: string, ttlMinutes = 5): void {
+    const challengeHash = sha256Hex(challengeId);
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
+    this.db.prepare('UPDATE mfa_challenges SET used = 1 WHERE admin_id = ? AND used = 0').run(adminId);
+    this.db.prepare(`
+      INSERT INTO mfa_challenges (challenge_id, admin_id, email, ip_address, expires_at, used, created_at)
+      VALUES (?, ?, ?, ?, ?, 0, ?)
+    `).run(challengeHash, adminId, email.toLowerCase().trim(), ipAddress, expiresAt, new Date().toISOString());
+  }
+
+  public getMfaChallenge(challengeId: string): { adminId: string; email: string; ipAddress?: string } | null {
+    if (!challengeId) return null;
+    const challengeHash = sha256Hex(challengeId);
+    const r = this.db.prepare('SELECT admin_id, email, ip_address, expires_at, used FROM mfa_challenges WHERE challenge_id = ?').get(challengeHash) as any;
+    if (!r || r.used === 1) return null;
+    if (new Date(r.expires_at).getTime() < Date.now()) return null;
+    return { adminId: r.admin_id, email: r.email, ipAddress: r.ip_address || undefined };
+  }
+
+  public markMfaChallengeUsed(challengeId: string): void {
+    if (!challengeId) return;
+    this.db.prepare('UPDATE mfa_challenges SET used = 1 WHERE challenge_id = ?').run(sha256Hex(challengeId));
+  }
+
+  public markTotpStepUsed(adminId: string, step: number): boolean {
+    try {
+      this.db.prepare('INSERT INTO used_totp_steps (admin_id, step, used_at) VALUES (?, ?, ?)')
+        .run(adminId, step, new Date().toISOString());
+      return true;
+    } catch {
+      return false; // Replay rejected
+    }
+  }
+
+  // --- SECURITY EVENTS ---
+  public insertSecurityEvent(evt: SecurityEvent): SecurityEvent {
+    this.db.prepare(`
+      INSERT INTO security_events (id, severity, event_type, actor_email, ip_address, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(evt.id, evt.severity, evt.eventType, evt.actorEmail || null, evt.ipAddress || null, evt.details, evt.createdAt);
+    return evt;
+  }
+
+  public getSecurityEvents(limit = 100): SecurityEvent[] {
+    const rows = this.db.prepare('SELECT * FROM security_events ORDER BY created_at DESC LIMIT ?').all(limit) as any[];
     return rows.map(r => ({
-      token: r.token,
-      adminId: r.admin_id,
-      email: r.email,
-      role: r.role as 'Admin',
-      createdAt: r.created_at,
-      expiresAt: r.expires_at
+      id: r.id,
+      severity: r.severity,
+      eventType: r.event_type,
+      actorEmail: r.actor_email || undefined,
+      ipAddress: r.ip_address || undefined,
+      details: r.details || '',
+      createdAt: r.created_at
     }));
+  }
+
+  // --- UPLOADED FILES METADATA ---
+  public insertUploadedFile(rec: UploadedFileRecord): UploadedFileRecord {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO uploaded_files (id, owner_uid, university_id, mime_type, ext, size_bytes, sha256, is_public, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      rec.id,
+      rec.ownerUid,
+      rec.universityId || null,
+      rec.mimeType,
+      rec.ext,
+      rec.sizeBytes,
+      rec.sha256,
+      rec.isPublic ? 1 : 0,
+      rec.createdAt
+    );
+    return rec;
+  }
+
+  public getUploadedFile(id: string): UploadedFileRecord | null {
+    const r = this.db.prepare('SELECT * FROM uploaded_files WHERE id = ?').get(id) as any;
+    if (!r) return null;
+    return {
+      id: r.id,
+      ownerUid: r.owner_uid,
+      universityId: r.university_id || undefined,
+      mimeType: r.mime_type,
+      ext: r.ext,
+      sizeBytes: r.size_bytes,
+      sha256: r.sha256,
+      isPublic: Boolean(r.is_public),
+      createdAt: r.created_at
+    };
+  }
+
+  public markUploadedFilePublic(id: string): void {
+    this.db.prepare('UPDATE uploaded_files SET is_public = 1 WHERE id = ?').run(id);
   }
 
   // --- CAMPUSES ---
@@ -947,13 +1299,24 @@ export class SQLiteStorage {
     }
   }
 
+  public getUserById(id: string): (User & { passwordHash?: string; passwordSalt?: string }) | null {
+    if (!id) return null;
+    const row = this.db.prepare('SELECT raw_json FROM users WHERE id = ? LIMIT 1').get(id) as { raw_json: string } | undefined;
+    if (!row?.raw_json) return null;
+    try {
+      return JSON.parse(row.raw_json);
+    } catch {
+      return null;
+    }
+  }
+
   public upsertUser(u: User & { passwordHash?: string; passwordSalt?: string }): User {
     const cleanEmail = u.email.toLowerCase().trim();
     const existing = this.getUserByEmail(cleanEmail);
     const merged = {
       ...existing,
       ...u,
-      id: u.id || existing?.id || `usr_${Date.now()}`,
+      id: u.id || existing?.id || `usr_${crypto.randomBytes(8).toString('hex')}`,
       email: cleanEmail,
       passwordHash: u.passwordHash || existing?.passwordHash,
       passwordSalt: u.passwordSalt || existing?.passwordSalt,
@@ -977,11 +1340,10 @@ export class SQLiteStorage {
       merged.updatedAt,
       JSON.stringify(merged)
     );
-    this.backupToJson('users.json', this.getAllUsers());
     return merged;
   }
 
-  // --- AUTH VERIFICATION & PASSWORD RESET TOKENS ---
+  // --- AUTH VERIFICATION & PASSWORD RESET TOKENS (Hashed at rest) ---
   public createAuthToken(
     email: string,
     type: 'EMAIL_VERIFY' | 'PASSWORD_RESET',
@@ -991,12 +1353,13 @@ export class SQLiteStorage {
     const cleanEmail = email.toLowerCase().trim();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000).toISOString();
-    const id = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const id = `tok_${crypto.randomBytes(8).toString('hex')}`;
+    const hashedValue = sha256Hex(`${type}:${cleanEmail}:${tokenOrCode.trim()}`);
     this.db.prepare('UPDATE auth_tokens SET used = 1 WHERE email = ? AND type = ? AND used = 0').run(cleanEmail, type);
     this.db.prepare(`
       INSERT INTO auth_tokens (id, email, type, token_or_code, expires_at, used, created_at)
       VALUES (?, ?, ?, ?, ?, 0, ?)
-    `).run(id, cleanEmail, type, tokenOrCode.trim(), expiresAt, now.toISOString());
+    `).run(id, cleanEmail, type, hashedValue, expiresAt, now.toISOString());
   }
 
   public verifyAndConsumeAuthToken(
@@ -1007,11 +1370,12 @@ export class SQLiteStorage {
     const cleanEmail = email.toLowerCase().trim();
     const cleanValue = tokenOrCode.trim();
     if (!cleanEmail || !cleanValue) return false;
+    const hashedValue = sha256Hex(`${type}:${cleanEmail}:${cleanValue}`);
     const row = this.db.prepare(`
       SELECT id, expires_at, used FROM auth_tokens
       WHERE email = ? AND type = ? AND token_or_code = ?
       ORDER BY created_at DESC LIMIT 1
-    `).get(cleanEmail, type, cleanValue) as { id: string; expires_at: string; used: number } | undefined;
+    `).get(cleanEmail, type, hashedValue) as { id: string; expires_at: string; used: number } | undefined;
 
     if (!row || row.used === 1) return false;
     if (new Date(row.expires_at).getTime() < Date.now()) return false;
@@ -1047,13 +1411,44 @@ export class SQLiteStorage {
     return acc;
   }
 
-  // --- INTEGRATIONS ---
+  private static readonly INTEGRATION_SECRET_FIELDS = new Set([
+    'apiKey',
+    'resendApiKey',
+    'smtpPassword',
+    'secretKey',
+    'webhookSecret',
+    'resendWebhookSecret',
+    'appSecret',
+    'accessToken',
+    'webhookVerifyToken'
+  ]);
+
+  // --- INTEGRATIONS (Encrypted secret fields at rest) ---
   public getAllIntegrations(): IntegrationConfig[] {
     const rows = this.db.prepare('SELECT * FROM integrations').all() as any[];
     return rows.map(r => {
-      const keys = JSON.parse(r.keys_json || '{}');
+      const rawKeys = JSON.parse(r.keys_json || '{}');
+      const keys: Record<string, string> = {};
+      for (const [k, v] of Object.entries(rawKeys)) {
+        keys[k] = typeof v === 'string' && SQLiteStorage.INTEGRATION_SECRET_FIELDS.has(k)
+          ? decryptSecret(v)
+          : String(v ?? '');
+      }
       let status = r.status;
       let configured = Boolean(r.configured);
+
+      if (r.id === 'payment_stripe') {
+        const envPub = (process.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
+        const envSec = (process.env.STRIPE_SECRET_KEY || '').trim();
+        const envHook = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+        if (envPub && !keys.publishableKey) keys.publishableKey = envPub;
+        if (envSec && !keys.secretKey) keys.secretKey = envSec;
+        if (envHook && !keys.webhookSecret) keys.webhookSecret = envHook;
+        if (keys.publishableKey && keys.secretKey) {
+          configured = true;
+          if (status === 'NOT_CONFIGURED') status = 'CONNECTED';
+        }
+      }
 
       if (r.id === 'email_transactional') {
         const resendKey = (
@@ -1111,6 +1506,15 @@ export class SQLiteStorage {
       if (envResend && cleanKeys.resendApiKey === envResend) cleanKeys.resendApiKey = '';
       if (envWebhook && cleanKeys.webhookSecret === envWebhook) cleanKeys.webhookSecret = '';
     }
+    const encryptedKeys: Record<string, string> = {};
+    for (const [k, v] of Object.entries(cleanKeys)) {
+      if (typeof v === 'string' && v.trim() && SQLiteStorage.INTEGRATION_SECRET_FIELDS.has(k)) {
+        encryptedKeys[k] = encryptSecret(v);
+      } else {
+        encryptedKeys[k] = String(v ?? '');
+      }
+    }
+
     this.db.prepare(`
       INSERT OR REPLACE INTO integrations (
         id, name, category, status, configured, last_verified_at, details, keys_json
@@ -1123,9 +1527,8 @@ export class SQLiteStorage {
       config.configured ? 1 : 0,
       config.lastVerifiedAt || null,
       config.details || '',
-      JSON.stringify(cleanKeys)
+      JSON.stringify(encryptedKeys)
     );
-    this.backupToJson('integrations.json', { integrations: this.getAllIntegrations() });
     return config;
   }
 
@@ -1250,13 +1653,17 @@ export class SQLiteStorage {
       config.dmarcVerified = false;
     }
 
+    // Decrypt persisted credentials before returning to server callers
+    if (config.smtpPass) config.smtpPass = decryptSecret(config.smtpPass);
+    if (config.apiKey) config.apiKey = decryptSecret(config.apiKey);
+
     // Fallback to integrations['email_transactional'] key if central config apiKey is empty
     if (!config.apiKey && config.provider === 'RESEND') {
       try {
         const intRow = this.db.prepare('SELECT keys_json FROM integrations WHERE id = ?').get('email_transactional') as { keys_json: string } | undefined;
         if (intRow?.keys_json) {
           const parsedKeys = JSON.parse(intRow.keys_json);
-          const storedKey = (parsedKeys?.apiKey || parsedKeys?.resendApiKey || '').trim();
+          const storedKey = decryptSecret((parsedKeys?.apiKey || parsedKeys?.resendApiKey || '').trim());
           if (storedKey) {
             config.apiKey = storedKey;
           }
@@ -1331,6 +1738,8 @@ export class SQLiteStorage {
     if (row && row.raw_json) {
       try {
         base = { ...base, ...JSON.parse(row.raw_json) };
+        if (base.smtpPass) base.smtpPass = decryptSecret(base.smtpPass);
+        if (base.apiKey) base.apiKey = decryptSecret(base.apiKey);
       } catch {}
     }
 
@@ -1338,6 +1747,12 @@ export class SQLiteStorage {
       ...base,
       ...updates,
       updatedAt: new Date().toISOString()
+    };
+
+    const storedRecord: CentralEmailConfig = {
+      ...updated,
+      smtpPass: updated.smtpPass ? encryptSecret(updated.smtpPass) : '',
+      apiKey: updated.apiKey ? encryptSecret(updated.apiKey) : ''
     };
 
     this.db.prepare(`
@@ -1349,28 +1764,27 @@ export class SQLiteStorage {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       'central',
-      updated.provider,
-      updated.senderEmail,
-      updated.senderName,
-      updated.replyTo || null,
-      updated.senderDomain,
-      updated.smtpHost || null,
-      updated.smtpPort || 587,
-      updated.smtpUser || null,
-      updated.smtpPass || null,
-      updated.apiKey || null,
-      updated.tlsEnabled ? 1 : 0,
-      updated.status,
-      updated.sendingEnabled ? 1 : 0,
-      updated.dailyLimit || 5000,
-      updated.spfVerified ? 1 : 0,
-      updated.dkimVerified ? 1 : 0,
-      updated.dmarcVerified ? 1 : 0,
-      updated.updatedAt,
-      JSON.stringify(updated)
+      storedRecord.provider,
+      storedRecord.senderEmail,
+      storedRecord.senderName,
+      storedRecord.replyTo || null,
+      storedRecord.senderDomain,
+      storedRecord.smtpHost || null,
+      storedRecord.smtpPort || 587,
+      storedRecord.smtpUser || null,
+      storedRecord.smtpPass || null,
+      storedRecord.apiKey || null,
+      storedRecord.tlsEnabled ? 1 : 0,
+      storedRecord.status,
+      storedRecord.sendingEnabled ? 1 : 0,
+      storedRecord.dailyLimit || 5000,
+      storedRecord.spfVerified ? 1 : 0,
+      storedRecord.dkimVerified ? 1 : 0,
+      storedRecord.dmarcVerified ? 1 : 0,
+      storedRecord.updatedAt,
+      JSON.stringify(storedRecord)
     );
 
-    this.backupToJson('email-config.json', updated);
     return updated;
   }
 
@@ -1520,16 +1934,35 @@ export class SQLiteStorage {
     return false;
   }
 
-  // --- AUDIT LOGS ---
+  // --- AUDIT LOGS (HMAC hash-chained for tamper detection) ---
   public getAllAuditLogs(): AuditLogItem[] {
     const rows = this.db.prepare('SELECT raw_json FROM audit_logs ORDER BY timestamp DESC LIMIT 500').all() as { raw_json: string }[];
     return rows.map(r => JSON.parse(r.raw_json) as AuditLogItem);
   }
 
   public insertAuditLog(log: AuditLogItem): AuditLogItem {
+    const prevRow = this.db
+      .prepare('SELECT entry_hash FROM audit_logs WHERE entry_hash IS NOT NULL ORDER BY rowid DESC LIMIT 1')
+      .get() as { entry_hash: string } | undefined;
+    const prevHash = prevRow?.entry_hash || 'GENESIS';
+    const payloadStr = JSON.stringify({
+      id: log.id,
+      timestamp: log.timestamp,
+      actorUid: log.actorUid,
+      actorEmail: log.actorEmail || null,
+      actorRole: log.actorRole,
+      action: log.action,
+      targetType: log.targetType,
+      targetId: log.targetId,
+      details: log.details || null
+    });
+    const entryHash = hmacSha256Hex(`${prevHash}|${payloadStr}`);
+
     this.db.prepare(`
-      INSERT INTO audit_logs (id, timestamp, actor_uid, actor_email, actor_role, action, target_type, target_id, details, raw_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO audit_logs (
+        id, timestamp, actor_uid, actor_email, actor_role, action,
+        target_type, target_id, details, raw_json, prev_hash, entry_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       log.id,
       log.timestamp,
@@ -1540,14 +1973,59 @@ export class SQLiteStorage {
       log.targetType,
       log.targetId,
       log.details || null,
-      JSON.stringify(log)
+      JSON.stringify(log),
+      prevHash,
+      entryHash
     );
-    this.backupToJson('audit-logs.json', this.getAllAuditLogs());
     return log;
   }
 
-  // Dual-write snapshot backup to JSON file for zero-data-loss redundancy
+  public verifyAuditLogChain(): { valid: boolean; total: number; chainedCount: number; brokenAtId?: string } {
+    const rows = this.db
+      .prepare('SELECT id, timestamp, actor_uid, actor_email, actor_role, action, target_type, target_id, details, prev_hash, entry_hash FROM audit_logs ORDER BY rowid ASC')
+      .all() as any[];
+
+    let expectedPrev = 'GENESIS';
+    let chainedCount = 0;
+
+    for (const r of rows) {
+      if (!r.entry_hash) continue; // Legacy pre-hardening rows lack chain hashes
+      chainedCount++;
+      if ((r.prev_hash || '') !== expectedPrev) {
+        return { valid: false, total: rows.length, chainedCount, brokenAtId: r.id };
+      }
+      const payloadStr = JSON.stringify({
+        id: r.id,
+        timestamp: r.timestamp,
+        actorUid: r.actor_uid,
+        actorEmail: r.actor_email || null,
+        actorRole: r.actor_role,
+        action: r.action,
+        targetType: r.target_type,
+        targetId: r.target_id,
+        details: r.details || null
+      });
+      const expectedEntry = hmacSha256Hex(`${expectedPrev}|${payloadStr}`);
+      if (r.entry_hash !== expectedEntry) {
+        return { valid: false, total: rows.length, chainedCount, brokenAtId: r.id };
+      }
+      expectedPrev = r.entry_hash;
+    }
+
+    return { valid: true, total: rows.length, chainedCount };
+  }
+
+  // Dual-write snapshot backup to JSON file ONLY for non-sensitive public/operational collections
   private backupToJson(filename: string, data: any): void {
+    const BLOCKED_BACKUP_FILES = new Set([
+      'admins.json',
+      'sessions.json',
+      'users.json',
+      'integrations.json',
+      'email-config.json',
+      'audit-logs.json'
+    ]);
+    if (BLOCKED_BACKUP_FILES.has(filename)) return;
     try {
       const filePath = path.join(DATA_DIR, filename);
       fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');

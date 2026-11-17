@@ -1,90 +1,267 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Global Helper Primitives
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
-    function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-    
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
 
-    // Default deny catch-all
+    // Global default deny catch-all
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Universities: Publicly readable directory, manageable by admin portal
-    match /universities/{universityId} {
-      allow read, write: if true;
+    // Core Security Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Connection health check for testConnection()
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && isEmailVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Entity Validation Helpers (No existing()/diff() allowed inside helpers)
+    function isValidUniversity(data) {
+      return data.keys().hasAll(['id', 'name', 'slug', 'communityEnabled']) &&
+        data.keys().hasOnly([
+          'id', 'name', 'slug', 'logoUrl', 'description', 'location',
+          'officialWebsiteUrl', 'instagramProfileUrl', 'communityEnabled',
+          'studentCount', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 160 &&
+        data.slug is string && data.slug.size() >= 2 && data.slug.size() <= 128 &&
+        data.communityEnabled is bool &&
+        (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 1000)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('location' in data) || (data.location is string && data.location.size() <= 200)) &&
+        (!('officialWebsiteUrl' in data) || (data.officialWebsiteUrl is string && data.officialWebsiteUrl.size() <= 1000)) &&
+        (!('instagramProfileUrl' in data) || (data.instagramProfileUrl is string && data.instagramProfileUrl.size() <= 1000)) &&
+        (!('studentCount' in data) || (data.studentCount is number && data.studentCount >= 0));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'displayName', 'email', 'universityId', 'role', 'studentVerificationStatus']) &&
+        data.keys().hasOnly([
+          'id', 'displayName', 'email', 'universityId', 'profilePhotoUrl', 'bio',
+          'course', 'graduationYear', 'interests', 'personalInstagramUrl',
+          'housingPreference', 'studentVerificationStatus', 'onboardingStatus',
+          'role', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        isValidId(data.universityId) &&
+        data.role in ['Student', 'Admin'] &&
+        data.studentVerificationStatus in ['UNVERIFIED', 'PENDING', 'VERIFIED'] &&
+        (!('profilePhotoUrl' in data) || (data.profilePhotoUrl is string && data.profilePhotoUrl.size() <= 1000)) &&
+        (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
+        (!('course' in data) || (data.course is string && data.course.size() <= 160)) &&
+        (!('graduationYear' in data) || (data.graduationYear is string && data.graduationYear.size() <= 16)) &&
+        (!('interests' in data) || (data.interests is string && data.interests.size() <= 500)) &&
+        (!('personalInstagramUrl' in data) || (data.personalInstagramUrl is string && data.personalInstagramUrl.size() <= 500)) &&
+        (!('housingPreference' in data) || (data.housingPreference is string && data.housingPreference.size() <= 160)) &&
+        (!('onboardingStatus' in data) || (data.onboardingStatus is string && data.onboardingStatus in ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED']));
+    }
+
+    function isValidFeaturedSubmission(data) {
+      return data.keys().hasAll([
+          'id', 'studentUid', 'universityId', 'publicationConsent',
+          'paymentStatus', 'moderationStatus', 'publishingStatus'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'studentUid', 'studentDisplayName', 'studentEmail', 'universityId',
+          'universityName', 'originalImagePath', 'watermarkedImagePath', 'caption',
+          'publicationConsent', 'termsAgreed', 'rightsConfirmed', 'paymentStatus',
+          'moderationStatus', 'publishingStatus', 'instagramPostUrl', 'rejectionReason',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.studentUid) &&
+        isValidId(data.universityId) &&
+        data.publicationConsent is bool &&
+        data.paymentStatus in ['DRAFT', 'AWAITING_PAYMENT', 'PAYMENT_PENDING', 'PAYMENT_CONFIRMED', 'PAYMENT_FAILED'] &&
+        data.moderationStatus in ['PENDING', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'] &&
+        data.publishingStatus in ['NOT_READY', 'READY_TO_PUBLISH', 'PUBLISHING', 'PUBLISHED', 'FAILED'] &&
+        (!('studentDisplayName' in data) || (data.studentDisplayName is string && data.studentDisplayName.size() <= 120)) &&
+        (!('studentEmail' in data) || (data.studentEmail is string && data.studentEmail.size() <= 254)) &&
+        (!('universityName' in data) || (data.universityName is string && data.universityName.size() <= 160)) &&
+        (!('originalImagePath' in data) || (data.originalImagePath is string && data.originalImagePath.size() <= 1000)) &&
+        (!('watermarkedImagePath' in data) || (data.watermarkedImagePath is string && data.watermarkedImagePath.size() <= 1000)) &&
+        (!('caption' in data) || (data.caption is string && data.caption.size() <= 2200)) &&
+        (!('termsAgreed' in data) || data.termsAgreed is bool) &&
+        (!('rightsConfirmed' in data) || data.rightsConfirmed is bool) &&
+        (!('instagramPostUrl' in data) || (data.instagramPostUrl is string && data.instagramPostUrl.size() <= 500)) &&
+        (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 1000));
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'recipientUid', 'title', 'message']) &&
+        data.keys().hasOnly([
+          'id', 'recipientUid', 'type', 'title', 'message',
+          'relatedSubmissionId', 'read', 'readAt', 'createdAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.recipientUid) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 1000 &&
+        (!('type' in data) || (data.type is string && data.type.size() <= 64)) &&
+        (!('relatedSubmissionId' in data) || (data.relatedSubmissionId is string && data.relatedSubmissionId.size() <= 128)) &&
+        (!('read' in data) || data.read is bool);
+    }
+
+    function isValidAdmin(data) {
+      return data.keys().hasAll(['id', 'email', 'role']) &&
+        data.keys().hasOnly(['id', 'email', 'role', 'createdAt']) &&
+        isValidId(data.id) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.role == 'Admin';
+    }
+
+    // Connection health check (single document only, no collection listing, no client writes)
     match /test/{testId} {
-      allow read: if true;
+      allow get: if isValidId(testId) && testId == 'connection';
+      allow list, write: if false;
     }
 
-    // Users: Profiles and community listings
+    // Universities: Enabled campuses publicly queryable; all writes restricted to verified Admins
+    match /universities/{universityId} {
+      allow get: if isValidId(universityId) && (existing().communityEnabled == true || isAdmin());
+      allow list: if existing().communityEnabled == true || isAdmin();
+      allow create: if isAdmin() && isValidId(universityId) && isValidUniversity(incoming()) &&
+        incoming().id == universityId;
+      allow update: if isAdmin() && isValidId(universityId) && isValidUniversity(incoming()) &&
+        incoming().id == existing().id;
+      allow delete: if isAdmin() && isValidId(universityId);
+    }
+
+    // Users: Strict PII isolation — readable/writable only by owner or verified Admin
     match /users/{userId} {
-      allow read: if true;
-      allow create: if isOwner(userId) && request.resource.data.role != 'Admin';
-      allow update: if isOwner(userId) && request.resource.data.role == resource.data.role;
-      allow delete: if isAdmin();
-    }
-
-    // Featured Submissions: Protected student photos, consent, and review
-    match /featuredSubmissions/{submissionId} {
-      allow read: if isAdmin() || 
-        (isSignedIn() && resource.data.studentUid == request.auth.uid) ||
-        (resource.data.moderationStatus == 'APPROVED' && resource.data.publishingStatus == 'PUBLISHED');
-      
-      allow create: if isSignedIn() && 
-        request.resource.data.studentUid == request.auth.uid &&
-        request.resource.data.paymentStatus == 'AWAITING_PAYMENT' &&
-        request.resource.data.moderationStatus == 'PENDING';
-      
-      allow update: if isAdmin() || (
-        isSignedIn() && 
-        resource.data.studentUid == request.auth.uid &&
-        // Student can only update draft or resubmission fields, not payment or approval status
-        request.resource.data.paymentStatus == resource.data.paymentStatus &&
-        request.resource.data.moderationStatus == resource.data.moderationStatus &&
-        request.resource.data.publishingStatus == resource.data.publishingStatus
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && existing().id == request.auth.uid);
+      allow create: if isEmailVerified() && isValidId(userId) && isOwner(userId) &&
+        isValidUser(incoming()) &&
+        incoming().id == userId &&
+        incoming().role == 'Student' &&
+        incoming().studentVerificationStatus == 'UNVERIFIED' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isEmailVerified() && isValidId(userId) && isValidUser(incoming()) && (
+        isAdmin() || (
+          isOwner(userId) &&
+          incoming().id == existing().id &&
+          incoming().role == existing().role &&
+          incoming().studentVerificationStatus == existing().studentVerificationStatus &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'profilePhotoUrl', 'bio', 'course', 'graduationYear',
+            'interests', 'personalInstagramUrl', 'housingPreference',
+            'onboardingStatus', 'updatedAt'
+          ])
+        )
       );
-      
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && isValidId(userId);
     }
 
-    // Payments: Audited transaction records
+    // Featured Submissions: Ownership checks + strict state & payment immutability for students
+    match /featuredSubmissions/{submissionId} {
+      allow get: if isValidId(submissionId) && (
+        isAdmin() ||
+        (isSignedIn() && existing().studentUid == request.auth.uid) ||
+        (existing().moderationStatus == 'APPROVED' && existing().publishingStatus == 'PUBLISHED')
+      );
+      allow list: if isAdmin() ||
+        (isSignedIn() && existing().studentUid == request.auth.uid) ||
+        (existing().moderationStatus == 'APPROVED' && existing().publishingStatus == 'PUBLISHED');
+      allow create: if isEmailVerified() && isValidId(submissionId) &&
+        isValidFeaturedSubmission(incoming()) &&
+        incoming().id == submissionId &&
+        incoming().studentUid == request.auth.uid &&
+        incoming().publicationConsent == true &&
+        incoming().paymentStatus == 'AWAITING_PAYMENT' &&
+        incoming().moderationStatus == 'PENDING' &&
+        incoming().publishingStatus == 'NOT_READY' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/universities/$(incoming().universityId));
+      allow update: if isEmailVerified() && isValidId(submissionId) &&
+        isValidFeaturedSubmission(incoming()) && (
+          isAdmin() || (
+            isOwner(existing().studentUid) &&
+            existing().publishingStatus != 'PUBLISHED' &&
+            existing().moderationStatus != 'REJECTED' &&
+            incoming().id == existing().id &&
+            incoming().studentUid == existing().studentUid &&
+            incoming().universityId == existing().universityId &&
+            incoming().paymentStatus == existing().paymentStatus &&
+            incoming().moderationStatus == existing().moderationStatus &&
+            incoming().publishingStatus == existing().publishingStatus &&
+            incoming().createdAt == existing().createdAt &&
+            incoming().updatedAt == request.time &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'caption', 'originalImagePath', 'watermarkedImagePath', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isAdmin() && isValidId(submissionId);
+    }
+
+    // Payments: Owner/Admin read only; all client writes strictly denied (server-verified Stripe API only)
     match /payments/{paymentId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
-      allow create: if isSignedIn() && request.resource.data.studentUid == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow get: if isValidId(paymentId) && (isAdmin() || (isSignedIn() && existing().studentUid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && existing().studentUid == request.auth.uid);
+      allow create, update, delete: if false;
     }
 
-    // Audit Logs: Administrative actions
+    // Audit Logs: Tamper-resistant — verified Admin read only; all client writes strictly denied
     match /auditLogs/{logId} {
-      allow read, write: if isAdmin();
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
     }
 
-    // Notifications: In-app student updates
+    // Notifications: Recipient read + read-flag toggle; Admin create/delete
     match /notifications/{notificationId} {
-      allow read: if isSignedIn() && resource.data.recipientUid == request.auth.uid;
-      allow update: if isSignedIn() && resource.data.recipientUid == request.auth.uid && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
-      allow create, delete: if isAdmin();
+      allow get: if isValidId(notificationId) && (isAdmin() || (isSignedIn() && existing().recipientUid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && existing().recipientUid == request.auth.uid);
+      allow create: if isAdmin() && isValidId(notificationId) && isValidNotification(incoming()) &&
+        incoming().id == notificationId;
+      allow update: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && (
+        isAdmin() || (
+          isOwner(existing().recipientUid) &&
+          incoming().id == existing().id &&
+          incoming().recipientUid == existing().recipientUid &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['read', 'readAt'])
+        )
+      );
+      allow delete: if isAdmin() && isValidId(notificationId);
     }
 
-    // Admins collection
+    // Admins: Strictly restricted — no blanket signed-in enumeration
     match /admins/{adminId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && isValidId(adminId) && isValidAdmin(incoming()) &&
+        incoming().id == adminId;
+      allow delete: if isAdmin() && isValidId(adminId);
     }
   }
 }

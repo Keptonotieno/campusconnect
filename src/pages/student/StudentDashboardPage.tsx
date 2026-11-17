@@ -268,6 +268,7 @@ export const StudentDashboardPage: React.FC = () => {
     try {
       const res = await fetch('/api/auth/send-verification', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: cleanEmail,
@@ -291,8 +292,19 @@ export const StudentDashboardPage: React.FC = () => {
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPassword || newPassword.length < 8) {
-      addToast('Password Too Short', 'New password must be at least 8 characters.', 'error');
+    if (
+      !newPassword ||
+      newPassword.length < 10 ||
+      !/[a-z]/.test(newPassword) ||
+      !/[A-Z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) ||
+      !/[^a-zA-Z0-9]/.test(newPassword)
+    ) {
+      addToast(
+        'Weak Password',
+        'New password must be at least 10 characters and include uppercase, lowercase, a number, and a special character.',
+        'error'
+      );
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -307,9 +319,9 @@ export const StudentDashboardPage: React.FC = () => {
     try {
       const res = await fetch('/api/users/change-password', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: currentUser.email,
           currentPassword,
           newPassword
         })
@@ -322,7 +334,10 @@ export const StudentDashboardPage: React.FC = () => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      addToast('Password Updated', 'Your password has been changed and saved.', 'success');
+      addToast('Password Updated', data.message || 'Your password has been changed and all prior sessions revoked.', 'success');
+      if (data.sessionRevoked) {
+        setTimeout(() => logout(), 600);
+      }
     } catch {
       addToast('Network Issue', 'Could not reach account security service.', 'error');
     } finally {
@@ -1245,9 +1260,10 @@ export const StudentDashboardPage: React.FC = () => {
                   <input
                     type={showNewPass ? 'text' : 'password'}
                     required
+                    minLength={10}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Minimum 8 characters"
+                    placeholder="Min 10 chars (upper, lower, number, symbol)"
                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 pr-10 text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-[#C28B38] focus:ring-1 focus:ring-[#C28B38] transition-colors"
                   />
                   <button

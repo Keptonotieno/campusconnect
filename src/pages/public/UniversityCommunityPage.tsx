@@ -31,7 +31,11 @@ import {
 import { University, FeaturedSubmission } from '../../types';
 import { ACADEMIC_MAJORS } from '../../data/majors';
 import { generateWatermarkedDerivative } from '../../lib/watermark';
-import { FEATURED_POST_PRICE_USD } from '../../lib/payment';
+import {
+  FEATURED_POST_PRICE_USD,
+  createStripePaymentIntent,
+  processSubmissionPayment
+} from '../../lib/payment';
 import { Footer } from '../../components/layout/Footer';
 import { CampusEmblemBadge } from '../../components/common/CampusEmblemBadge';
 
@@ -351,15 +355,10 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   // Loading overlay state matching the video
   const [isNavLoading, setIsNavLoading] = useState(false);
 
-  // Check if student has signed in before
+  // Check if student has an active verified session
   const hasSignedInBefore = useMemo(() => {
-    if (isAuthenticated) return true;
-    try {
-      return localStorage.getItem('campusconnect_auth') === 'true' || !!localStorage.getItem('campusconnect_user');
-    } catch {
-      return false;
-    }
-  }, [isAuthenticated]);
+    return Boolean(isAuthenticated && currentUser);
+  }, [isAuthenticated, currentUser]);
 
   // Check if student has started the procedure of posting photos to this university
   const hasStartedProcedure = useMemo(() => {
@@ -542,6 +541,12 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   const handleStripePayment = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!isAuthenticated || !currentUser) {
+      addToast('Sign In Required', 'Please sign in or create your student account to complete submission and payment. Your draft is saved.', 'info');
+      navigateTo(`/login?redirect=${encodeURIComponent(`/submit/${university.slug}?resume=true`)}&uni=${encodeURIComponent(university.slug)}`);
+      return;
+    }
+
     if (!coverPhoto) {
       addToast('Cover Photo Missing', 'Please go back and upload a cover photo.', 'error');
       return;
@@ -553,7 +558,12 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       return;
     }
 
-    // Card Validations
+    if (!consentPost || !consentRights || !consentFee) {
+      addToast('Consent Required', 'Please accept all legal consent checkboxes to proceed.', 'error');
+      return;
+    }
+
+    // Validate UI formatting only; never transmit raw card PAN/CVC to application backend
     const cleanCard = cardNumber.replace(/\D/g, '');
     if (cleanCard.length < 15 || cleanCard.length > 16) {
       addToast('Invalid Card Number', 'Please enter a valid 15 or 16-digit card number.', 'error');
@@ -569,11 +579,6 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     const cleanCvc = cardCvc.replace(/\D/g, '');
     if (cleanCvc.length < 3 || cleanCvc.length > 4) {
       addToast('Invalid CVC', 'Please enter a 3 or 4-digit security code.', 'error');
-      return;
-    }
-
-    if (!consentPost || !consentRights || !consentFee) {
-      addToast('Consent Required', 'Please accept all legal consent checkboxes to proceed.', 'error');
       return;
     }
 
@@ -606,81 +611,60 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
         `#${university.name.replace(/[^a-zA-Z0-9]/g, '')} #ClassOf${classYearInput} #CampusConnect`
       ].filter(Boolean).join('\n\n');
 
-      const submissionId = 'sub_' + Math.random().toString(36).substring(2, 9);
-      const studentUid = currentUser?.id || `usr_${cleanHandle}_${Date.now().toString(36)}`;
-      const studentEmail = (studentEmailInput || '').trim() || currentUser?.email || `${cleanHandle.toLowerCase()}@student.${university.slug}.edu`;
+      const submissionId = 'sub_' + Math.random().toString(36).substring(2, 11);
 
-      const newSubmission: FeaturedSubmission = {
-        id: submissionId,
-        studentUid,
-        studentDisplayName: cardName.trim() || `@${cleanHandle}`,
-        studentEmail,
-        studentAvatarUrl: coverPhoto.url,
-        universityId: university.id,
-        universityName: university.name,
-        universitySlug: university.slug,
-        universityInstagramHandle: university.instagramHandle,
-        personalInstagramHandle: cleanHandle,
-        instagramHandle: `@${cleanHandle}`,
-        major: selectedMajor || undefined,
-        classYear: classYearInput || university.classYear || '2031',
-        snapchatHandle: snapchatHandle ? snapchatHandle.replace(/^@/, '') : undefined,
-        tiktokHandle: tiktokHandle ? tiktokHandle.replace(/^@/, '') : undefined,
-        originalImagePath: coverPhoto.url,
-        watermarkedImagePath: watermarkedUrl,
-        caption: captionLines,
-        publicationConsent: consentPost,
-        rightsConfirmed: consentRights,
-        termsAgreed: consentFee,
-        paymentStatus: 'PAYMENT_CONFIRMED',
-        paymentAmount: FEATURED_POST_PRICE_USD,
-        moderationStatus: 'PENDING',
-        publishingStatus: 'NOT_READY',
-        submittedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      // 3. Post submission to authoritative server database
+      // 3. Persist authoritative submission record (server forces paymentStatus='AWAITING_PAYMENT')
       const subRes = await fetch('/api/submissions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSubmission)
-      });
-      if (!subRes.ok) {
-        const subErr = await subRes.json().catch(() => ({}));
-        throw new Error(subErr.message || 'Could not save your submission. Please try again.');
-      }
-
-      // Add to local client state immediately
-      addSubmission(newSubmission);
-
-      // 4. Verify & audit Stripe payment with backend
-      const verifyRes = await fetch('/api/payments/verify', {
-        method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          submissionId,
-          studentUid,
-          studentName: newSubmission.studentDisplayName,
-          studentEmail: newSubmission.studentEmail,
+          id: submissionId,
+          studentDisplayName: cardName.trim() || currentUser.name || `@${cleanHandle}`,
           universityId: university.id,
           universitySlug: university.slug,
-          provider: 'STRIPE_CARD',
-          idempotencyKey: `idem_${submissionId}_${Date.now()}`
+          personalInstagramHandle: cleanHandle,
+          instagramHandle: `@${cleanHandle}`,
+          major: selectedMajor || undefined,
+          classYear: classYearInput || university.classYear || '2031',
+          snapchatHandle: snapchatHandle ? snapchatHandle.replace(/^@/, '') : undefined,
+          tiktokHandle: tiktokHandle ? tiktokHandle.replace(/^@/, '') : undefined,
+          originalImagePath: coverPhoto.url,
+          watermarkedImagePath: watermarkedUrl,
+          caption: captionLines,
+          publicationConsent: consentPost,
+          rightsConfirmed: consentRights,
+          termsAgreed: consentFee
         })
       });
-
-      const vData = await verifyRes.json().catch(() => ({}));
-      if (!verifyRes.ok) {
-        throw new Error(vData.message || 'Stripe payment verification failed. Please check your details and try again.');
+      const subData = await subRes.json().catch(() => ({}));
+      if (!subRes.ok || !subData?.submission) {
+        throw new Error(subData.message || 'Could not save your submission. Please try again.');
       }
 
-      let txnRef = `ch_${Math.random().toString(36).substring(2, 11)}`;
-      if (vData.payment?.providerTransactionReference) {
-        txnRef = vData.payment.providerTransactionReference;
-      }
+      const savedSub: FeaturedSubmission = subData.submission;
+      addSubmission(savedSub);
 
-      setCompletedPaymentRef(txnRef);
+      // 4. Initialize Stripe PaymentIntent on server & verify settlement
+      const intentRes = await createStripePaymentIntent(savedSub.id, `pi_req_${savedSub.id}`);
+      const verification = await processSubmissionPayment({
+        submissionId: savedSub.id,
+        studentUid: currentUser.id,
+        studentName: savedSub.studentDisplayName,
+        universityId: university.id,
+        provider: 'STRIPE_CARD',
+        paymentIntentId: intentRes.paymentIntentId,
+        idempotencyKey: `idem_${savedSub.id}_${intentRes.paymentIntentId}`
+      });
+
+      const confirmedSub: FeaturedSubmission = {
+        ...savedSub,
+        paymentStatus: 'PAYMENT_CONFIRMED',
+        paymentReference: verification.paymentRecord.providerTransactionReference
+      };
+      addSubmission(confirmedSub);
+
+      setCompletedPaymentRef(verification.paymentRecord.providerTransactionReference);
       setBuilderStep('SUCCESS');
       setSavedDraftForCampus(null);
       setShowDraftBanner(false);

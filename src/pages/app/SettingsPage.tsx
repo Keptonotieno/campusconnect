@@ -66,7 +66,6 @@ export const SettingsPage: React.FC = () => {
     e.preventDefault();
     updateBusiness({ name: bizName });
     updateUserProfile({ name: bizName, email, phone });
-    addToast('Changes saved', 'Your business details have been updated.', 'success');
   };
 
   const handleSaveNotifications = () => {
@@ -91,6 +90,7 @@ export const SettingsPage: React.FC = () => {
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: targetEmail,

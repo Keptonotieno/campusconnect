@@ -13,14 +13,21 @@ export const RegisterPage: React.FC = () => {
   );
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isStudentMode, setIsStudentMode] = useState(Boolean(entryUniversityContext || selectedUniversity));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !businessName.trim()) return;
+    setErrorMsg(null);
     setLoading(true);
-    await register(businessName.trim(), email.trim(), password, isStudentMode ? universitySlug : undefined);
-    setLoading(false);
+    try {
+      await register(businessName.trim(), email.trim(), password, isStudentMode ? universitySlug : undefined);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not create your account. Please verify your details and password strength.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -154,6 +161,13 @@ export const RegisterPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Error Alert */}
+              {errorMsg && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                  {errorMsg}
+                </div>
+              )}
+
               {/* Form */}
               <form onSubmit={handleSubmit} className="space-y-4 pt-1">
                 <div>
@@ -204,9 +218,11 @@ export const RegisterPage: React.FC = () => {
                   <input
                     type="password"
                     required
+                    minLength={10}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password"
+                    placeholder="Password (min 10 chars, upper, lower, number, symbol)"
+                    autoComplete="new-password"
                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#1D64EC] focus:ring-1 focus:ring-blue-500 shadow-2xs"
                   />
                 </div>
