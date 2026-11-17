@@ -61,13 +61,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  const isAdminPath = req.path.startsWith('/admin') || req.path.startsWith('/api/admin');
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
       "base-uri 'self'",
       "object-src 'none'",
-      "frame-ancestors 'self' https://aistudio.google.com https://*.google.com https://*.googleusercontent.com",
+      isAdminPath
+        ? "frame-ancestors 'self' https://aistudio.google.com"
+        : "frame-ancestors 'self' https://aistudio.google.com https://*.google.com",
       "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.firebaseapp.com https://accounts.google.com",
       "worker-src 'self' blob:",
       "img-src 'self' data: blob: https:",
@@ -84,19 +87,32 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
 
-  // Keep all administrative, auth, file, and private API routes out of caches and search indexes
+  // Keep all administrative, auth, student portal, and private API routes out of caches and search indexes
   if (
     req.path.startsWith('/admin') ||
+    req.path.startsWith('/student') ||
+    req.path.startsWith('/app') ||
     req.path.startsWith('/api/admin') ||
     req.path.startsWith('/api/auth') ||
     req.path.startsWith('/api/users') ||
     req.path.startsWith('/api/payments') ||
+    req.path.startsWith('/api/instagram') ||
     req.path.startsWith('/api/files')
   ) {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    const applyNoStore = () => {
+      if (!req.path.startsWith('/api/files') || !String(res.getHeader('Cache-Control') || '').startsWith('public')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    };
+    applyNoStore();
+    const originalWriteHead = res.writeHead.bind(res) as (...a: any[]) => any;
+    (res as any).writeHead = (...args: any[]) => {
+      applyNoStore();
+      return originalWriteHead(...args);
+    };
   }
 
   next();
@@ -889,38 +905,54 @@ app.post('/api/admin/instagram/:id/disconnect', requireAdminAuth, (req: Authenti
   }
 });
 
-// Workspace Instagram routes (require authenticated student or admin)
-app.get('/api/instagram/accounts', requireUserOrAdminAuth, (_req: AuthenticatedUserRequest, res: Response) => {
-  return res.json({ accounts: dbInstance.getInstagramAccounts() });
+// Workspace Instagram routes (require authenticated student or admin, strict ownership isolation for non-admins)
+app.get('/api/instagram/accounts', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
+  const all = dbInstance.getInstagramAccounts() as any[];
+  if (req.admin) {
+    return res.json({ accounts: all });
+  }
+  const scoped = all.filter(a => a.ownerUid && a.ownerUid === req.user!.id);
+  return res.json({ accounts: scoped });
 });
 
 app.post('/api/instagram/accounts', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
   try {
-    const actor = req.admin?.email || req.user?.email || 'user';
-    const account = dbInstance.connectInstagramAccount(req.body || {}, actor);
+    const isAdmin = Boolean(req.admin);
+    const actorEmail = req.admin?.email || req.user?.email || 'user';
+    const actorUid = req.admin?.adminId || req.user!.id;
+    const actorRole = isAdmin ? 'Admin' : 'Student';
+    const payload = isAdmin ? (req.body || {}) : { ...(req.body || {}), ownerUid: actorUid };
+    const account = dbInstance.connectInstagramAccount(payload, actorEmail, actorRole, actorUid);
     return res.json({ success: true, account });
   } catch (err: any) {
-    return res.status(400).json({ error: 'ConnectFailed', message: err.message });
+    const status = String(err?.message || '').includes('belongs to another') ? 403 : 400;
+    return res.status(status).json({ error: status === 403 ? 'Forbidden' : 'ConnectFailed', message: err.message });
   }
 });
 
 app.post('/api/instagram/accounts/:id/refresh', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
   try {
-    const actor = req.admin?.email || req.user?.email || 'user';
-    const account = dbInstance.refreshInstagramAccount(req.params.id, actor);
+    const isAdmin = Boolean(req.admin);
+    const actorEmail = req.admin?.email || req.user?.email || 'user';
+    const actorUid = req.admin?.adminId || req.user!.id;
+    const account = dbInstance.refreshInstagramAccount(req.params.id, actorEmail, isAdmin ? 'Admin' : 'Student', actorUid);
     return res.json({ success: true, account });
   } catch (err: any) {
-    return res.status(400).json({ error: 'RefreshFailed', message: err.message });
+    const status = String(err?.message || '').startsWith('Forbidden') ? 403 : 400;
+    return res.status(status).json({ error: status === 403 ? 'Forbidden' : 'RefreshFailed', message: err.message });
   }
 });
 
 app.post('/api/instagram/accounts/:id/disconnect', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
   try {
-    const actor = req.admin?.email || req.user?.email || 'user';
-    const account = dbInstance.disconnectInstagramAccount(req.params.id, actor);
+    const isAdmin = Boolean(req.admin);
+    const actorEmail = req.admin?.email || req.user?.email || 'user';
+    const actorUid = req.admin?.adminId || req.user!.id;
+    const account = dbInstance.disconnectInstagramAccount(req.params.id, actorEmail, isAdmin ? 'Admin' : 'Student', actorUid);
     return res.json({ success: true, account });
   } catch (err: any) {
-    return res.status(400).json({ error: 'DisconnectFailed', message: err.message });
+    const status = String(err?.message || '').startsWith('Forbidden') ? 403 : 400;
+    return res.status(status).json({ error: status === 403 ? 'Forbidden' : 'DisconnectFailed', message: err.message });
   }
 });
 
@@ -1446,12 +1478,22 @@ app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req:
 // -----------------------------------------------------------------------------
 
 app.post('/api/uploads/photo', requireUserOrAdminAuth, (req: AuthenticatedUserRequest, res: Response) => {
+  const clientIp = getNormalizedClientIp(req);
+  const ownerUid = req.admin?.adminId || req.user?.id || 'unknown';
+  const uploadLimit = dbInstance.consumeRateLimit(`upload:${ownerUid}:${clientIp}`, 25, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (!uploadLimit.allowed) {
+    res.setHeader('Retry-After', String(uploadLimit.retryAfterSeconds));
+    return res.status(429).json({
+      error: 'TooManyRequests',
+      message: `Upload rate limit reached. Please wait ${uploadLimit.retryAfterSeconds}s.`
+    });
+  }
+
   try {
     const { dataUrl, universityId } = req.body || {};
     if (!dataUrl || typeof dataUrl !== 'string') {
       return res.status(400).json({ error: 'BadRequest', message: 'Image dataUrl is required.' });
     }
-    const ownerUid = req.admin?.adminId || req.user?.id || 'unknown';
     const stored = validateAndStoreImageUpload(dataUrl, 8 * 1024 * 1024);
 
     dbInstance.registerUploadedFile({
@@ -1813,14 +1855,25 @@ app.get('/api/payment-config', (_req: Request, res: Response) => {
   });
 });
 
-app.get('/api/campuses', (_req: Request, res: Response) => {
-  return res.json({ campuses: dbInstance.getCampuses() });
+app.get('/api/campuses', (req: Request, res: Response) => {
+  const adminToken = extractAdminToken(req);
+  const adminSession = adminToken ? dbInstance.validateSession(adminToken) : null;
+  const isVerifiedAdmin = Boolean(adminSession && adminSession.role === 'Admin' && adminSession.mfaVerified);
+  const campuses = dbInstance.getCampuses().filter(c => isVerifiedAdmin || c.communityEnabled !== false);
+  return res.json({ campuses });
 });
 
 app.get('/api/campuses/:slug', (req: Request, res: Response) => {
   const campus = dbInstance.getCampusBySlug(req.params.slug);
   if (!campus) {
     return res.status(404).json({ error: 'NotFound', message: `Campus "${req.params.slug}" not found.` });
+  }
+  if (campus.communityEnabled === false) {
+    const adminToken = extractAdminToken(req);
+    const adminSession = adminToken ? dbInstance.validateSession(adminToken) : null;
+    if (!adminSession || adminSession.role !== 'Admin' || !adminSession.mfaVerified) {
+      return res.status(404).json({ error: 'NotFound', message: `Campus "${req.params.slug}" not found.` });
+    }
   }
   return res.json({ campus });
 });
@@ -2301,7 +2354,7 @@ function injectCommunityMetaHtml(rawHtml: string, req: Request): string {
   if (!slug) return rawHtml;
 
   const campus = dbInstance.getCampusBySlug(slug);
-  if (!campus) return rawHtml;
+  if (!campus || campus.communityEnabled === false) return rawHtml;
 
   const rawHandle = (campus.instagramHandle || campus.slug || '').trim();
   const handle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
@@ -2315,9 +2368,19 @@ function injectCommunityMetaHtml(rawHtml: string, req: Request): string {
     ? `${campus.description.trim()} Share your campus intro and get featured on ${handle}.`
     : `Official ${campus.name} ${classYear} student community on CampusConnect. Get featured on ${handle}.`;
 
-  const host = (req.headers['x-forwarded-host'] as string || req.get('host') || 'localhost:3000').split(',')[0].trim();
-  const proto = (req.headers['x-forwarded-proto'] as string || (req.secure ? 'https' : 'http')).split(',')[0].trim();
-  const canonicalUrl = `${proto}://${host}/ig/${encodeURIComponent(campus.slug)}`;
+  // Strictly validate forwarded host/proto to prevent Host Header / Scheme Injection
+  const configuredOrigin = process.env.APP_URL ? process.env.APP_URL.trim().replace(/\/$/, '') : '';
+  let baseOrigin = '';
+  if (configuredOrigin && /^https?:\/\/[a-zA-Z0-9.-]+(?::\d{1,5})?$/.test(configuredOrigin)) {
+    baseOrigin = configuredOrigin;
+  } else {
+    const rawHost = String(req.headers['x-forwarded-host'] || req.get('host') || 'localhost:3000').split(',')[0].trim();
+    const safeHost = /^[a-zA-Z0-9.-]{1,253}(?::\d{1,5})?$/.test(rawHost) ? rawHost : 'localhost:3000';
+    const rawProto = String(req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http')).split(',')[0].trim().toLowerCase();
+    const safeProto = rawProto === 'https' || rawProto === 'http' ? rawProto : 'https';
+    baseOrigin = `${safeProto}://${safeHost}`;
+  }
+  const canonicalUrl = `${baseOrigin}/ig/${encodeURIComponent(campus.slug)}`;
 
   const imageCheck = validateSafeHttpUrl(campus.coverUrl || campus.logoUrl || '');
   const ogImage = imageCheck.valid && imageCheck.normalized ? imageCheck.normalized : DEFAULT_SSR_OG_IMAGE;

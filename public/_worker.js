@@ -3,7 +3,7 @@
 
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
-  'Content-Security-Policy': "frame-ancestors 'self' https://aistudio.google.com https://*.google.com https://*.googleusercontent.com",
+  'Content-Security-Policy': "frame-ancestors 'self' https://aistudio.google.com https://*.google.com",
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(self)',
   'Cross-Origin-Opener-Policy': 'same-origin-allow-popups'
@@ -30,7 +30,8 @@ function jsonError(error, message, status = 503) {
     headers: {
       ...SECURITY_HEADERS,
       'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store'
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': 'noindex, nofollow'
     }
   });
 }
@@ -53,7 +54,10 @@ export default {
         const targetUrl = `${upstreamOrigin}${pathname}${url.search}`;
         const proxyReq = new Request(targetUrl, request);
         const upstreamRes = await fetch(proxyReq);
-        return withSecurityHeaders(upstreamRes, { 'Cache-Control': 'no-store' });
+        return withSecurityHeaders(upstreamRes, {
+          'Cache-Control': 'no-store',
+          'X-Robots-Tag': 'noindex, nofollow'
+        });
       }
 
       // Fail closed: Never forge auth, admin sessions, payments, or webhook approvals at the edge
@@ -67,6 +71,12 @@ export default {
     // Serve static frontend assets via Cloudflare Pages ASSETS binding
     if (env && typeof env.ASSETS?.fetch === 'function') {
       const assetRes = await env.ASSETS.fetch(request);
+      if (pathname.startsWith('/admin') || pathname.startsWith('/student') || pathname.startsWith('/app')) {
+        return withSecurityHeaders(assetRes, {
+          'Cache-Control': 'no-store',
+          'X-Robots-Tag': 'noindex, nofollow'
+        });
+      }
       return withSecurityHeaders(assetRes);
     }
 

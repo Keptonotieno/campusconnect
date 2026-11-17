@@ -739,29 +739,46 @@ class Database {
   }
 
   public connectInstagramAccount(
-    data: Partial<InstagramAccount> & { universityId?: string; universityName?: string },
-    actorEmail = 'system'
+    data: Partial<InstagramAccount> & { universityId?: string; universityName?: string; ownerUid?: string },
+    actorEmail = 'system',
+    actorRole: 'Admin' | 'Student' = 'Admin',
+    actorUid = 'admin'
   ): InstagramAccount {
     const cleanHandle = (data.username || '').trim().replace(/^@/, '');
-    if (!cleanHandle) {
-      throw new Error('Instagram username handle is required.');
+    if (!cleanHandle || !/^[a-zA-Z0-9._]{2,40}$/.test(cleanHandle)) {
+      throw new Error('Valid Instagram username handle is required (2-40 characters, letters/numbers/._).');
     }
     const existing = sqliteStorage.getAllInstagramAccounts().find(
       a => a.username.toLowerCase() === cleanHandle.toLowerCase()
-    );
+    ) as (InstagramAccount & { ownerUid?: string; universityId?: string; universityName?: string }) | undefined;
+
+    if (existing && actorRole !== 'Admin') {
+      if (!existing.ownerUid || existing.ownerUid !== actorUid) {
+        throw new Error('This Instagram account belongs to another workspace or campus administrator.');
+      }
+    }
+
+    const safePictureCheck = validateSafeHttpUrl(data.profilePictureUrl || '');
+    const resolvedPictureUrl =
+      (safePictureCheck.valid && safePictureCheck.normalized) ||
+      existing?.profilePictureUrl ||
+      'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80';
+
     const nowIso = new Date().toISOString();
-    const displayTitle = data.displayName?.trim() || existing?.displayName || cleanHandle
+    const displayTitle = (data.displayName?.trim() || existing?.displayName || cleanHandle
       .split(/[._-]/)
       .filter(Boolean)
       .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-      .join(' ') || cleanHandle;
+      .join(' ') || cleanHandle).slice(0, 80);
 
-    const account: InstagramAccount & { universityId?: string; universityName?: string } = {
+    const resolvedOwnerUid = existing?.ownerUid || data.ownerUid || (actorRole === 'Student' ? actorUid : undefined);
+
+    const account: InstagramAccount & { universityId?: string; universityName?: string; ownerUid?: string } = {
       id: existing?.id || `ig_${crypto.randomBytes(5).toString('hex')}`,
       businessId: existing?.businessId || data.businessId || `biz_${Date.now()}`,
       username: cleanHandle,
       displayName: displayTitle,
-      profilePictureUrl: data.profilePictureUrl || existing?.profilePictureUrl || 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
+      profilePictureUrl: resolvedPictureUrl,
       accountType: data.accountType || existing?.accountType || 'BUSINESS',
       followersCount: data.followersCount ?? existing?.followersCount ?? 0,
       followingCount: data.followingCount ?? existing?.followingCount ?? 0,
@@ -773,16 +790,17 @@ class Database {
       connectedAt: existing?.connectedAt || nowIso,
       tokenExpiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
       permissions: data.permissions || existing?.permissions || ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages', 'direct_publish'],
-      ...(data.universityId ? { universityId: data.universityId } : (existing as any)?.universityId ? { universityId: (existing as any).universityId } : {}),
-      ...(data.universityName ? { universityName: data.universityName } : (existing as any)?.universityName ? { universityName: (existing as any).universityName } : {})
+      ...(resolvedOwnerUid ? { ownerUid: resolvedOwnerUid } : {}),
+      ...(data.universityId ? { universityId: data.universityId } : existing?.universityId ? { universityId: existing.universityId } : {}),
+      ...(data.universityName ? { universityName: data.universityName } : existing?.universityName ? { universityName: existing.universityName } : {})
     };
 
     sqliteStorage.upsertInstagramAccount(account);
 
     this.logAudit({
-      actorUid: actorEmail === 'system' ? 'user' : 'admin',
+      actorUid,
       actorEmail,
-      actorRole: actorEmail === 'system' ? 'Student' : 'Admin',
+      actorRole,
       action: 'INSTAGRAM_CONNECTED',
       targetType: 'USER',
       targetId: account.id,
@@ -792,20 +810,28 @@ class Database {
     return account;
   }
 
-  public refreshInstagramAccount(id: string, actorEmail = 'system'): InstagramAccount {
-    const accounts = sqliteStorage.getAllInstagramAccounts();
+  public refreshInstagramAccount(
+    id: string,
+    actorEmail = 'system',
+    actorRole: 'Admin' | 'Student' = 'Admin',
+    actorUid = 'admin'
+  ): InstagramAccount {
+    const accounts = sqliteStorage.getAllInstagramAccounts() as (InstagramAccount & { ownerUid?: string })[];
     const acc = accounts.find(a => a.id === id || a.username === id);
     if (!acc) {
       throw new Error('Instagram account not found.');
+    }
+    if (actorRole !== 'Admin' && acc.ownerUid !== actorUid) {
+      throw new Error('Forbidden: you do not own this Instagram account.');
     }
     acc.status = 'CONNECTED';
     acc.tokenExpiresAt = new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString();
     sqliteStorage.upsertInstagramAccount(acc);
 
     this.logAudit({
-      actorUid: actorEmail === 'system' ? 'user' : 'admin',
+      actorUid,
       actorEmail,
-      actorRole: actorEmail === 'system' ? 'Student' : 'Admin',
+      actorRole,
       action: 'INSTAGRAM_SYNC_REFRESHED',
       targetType: 'USER',
       targetId: acc.id,
@@ -815,19 +841,27 @@ class Database {
     return acc;
   }
 
-  public disconnectInstagramAccount(id: string, actorEmail: string): InstagramAccount {
-    const accounts = sqliteStorage.getAllInstagramAccounts();
+  public disconnectInstagramAccount(
+    id: string,
+    actorEmail: string,
+    actorRole: 'Admin' | 'Student' = 'Admin',
+    actorUid = 'admin'
+  ): InstagramAccount {
+    const accounts = sqliteStorage.getAllInstagramAccounts() as (InstagramAccount & { ownerUid?: string })[];
     const acc = accounts.find(a => a.id === id);
     if (!acc) {
       throw new Error('Instagram account not found.');
+    }
+    if (actorRole !== 'Admin' && acc.ownerUid !== actorUid) {
+      throw new Error('Forbidden: you do not own this Instagram account.');
     }
     acc.status = 'DISCONNECTED';
     sqliteStorage.upsertInstagramAccount(acc);
 
     this.logAudit({
-      actorUid: 'admin',
+      actorUid,
       actorEmail,
-      actorRole: 'Admin',
+      actorRole,
       action: 'INSTAGRAM_DISCONNECTED',
       targetType: 'USER',
       targetId: acc.id,
