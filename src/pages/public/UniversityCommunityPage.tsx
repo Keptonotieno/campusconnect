@@ -38,6 +38,7 @@ import {
 } from '../../lib/payment';
 import { Footer } from '../../components/layout/Footer';
 import { CampusEmblemBadge } from '../../components/common/CampusEmblemBadge';
+import { buildUniversityCommunityMeta, updateMetaTags } from '../../services/metaTagsService';
 
 interface UniversityCommunityPageProps {
   university: University;
@@ -105,6 +106,16 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       setStudentEmailInput(currentUser.email);
     }
   }, [currentUser?.email]);
+
+  // Keep OpenGraph, Twitter Card, title, and description synced with the active campus view & step
+  useEffect(() => {
+    updateMetaTags(
+      buildUniversityCommunityMeta(university, {
+        viewMode: pageView,
+        step: pageView === 'BUILDER' ? builderStep : undefined
+      })
+    );
+  }, [university, pageView, builderStep]);
 
   // Step 3 Payment Details
   const [cardName, setCardName] = useState(currentUser?.name || '');

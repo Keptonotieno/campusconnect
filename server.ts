@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import express, { Request, Response, NextFunction } from 'express';
+import fs from 'node:fs';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import crypto from 'node:crypto';
@@ -16,7 +17,8 @@ import {
   signFileAccessToken,
   verifyFileAccessToken,
   timingSafeEqualStr,
-  validateSafeHttpUrl
+  validateSafeHttpUrl,
+  escapeHtml
 } from './server/security';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -2279,18 +2281,117 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 // VITE DEV SERVER OR PRODUCTION STATIC FILE SERVING
 // -----------------------------------------------------------------------------
 
+const DEFAULT_SSR_OG_IMAGE =
+  'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80';
+
+function extractCommunitySlugFromPath(reqPath: string): string | null {
+  const clean = (reqPath || '').split('?')[0].split('#')[0];
+  const match = clean.match(/^\/(?:ig|u|university|submit)\/([^/]+)\/?$/i);
+  if (!match) return null;
+  try {
+    const slug = decodeURIComponent(match[1]).replace(/^@/, '').trim();
+    return /^[a-zA-Z0-9._-]{2,120}$/.test(slug) ? slug : null;
+  } catch {
+    return null;
+  }
+}
+
+function injectCommunityMetaHtml(rawHtml: string, req: Request): string {
+  const slug = extractCommunitySlugFromPath(req.path);
+  if (!slug) return rawHtml;
+
+  const campus = dbInstance.getCampusBySlug(slug);
+  if (!campus) return rawHtml;
+
+  const rawHandle = (campus.instagramHandle || campus.slug || '').trim();
+  const handle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
+  const classYear = campus.classYear ? `Class of ${campus.classYear}` : 'Student Community';
+  const isBuilder = req.path.toLowerCase().startsWith('/submit/');
+
+  const rawTitle = isBuilder
+    ? `Submit Post – ${campus.name} (${handle}) | CampusConnect`
+    : `${campus.name} ${classYear} (${handle}) | CampusConnect`;
+  const rawDescription = campus.description?.trim()
+    ? `${campus.description.trim()} Share your campus intro and get featured on ${handle}.`
+    : `Official ${campus.name} ${classYear} student community on CampusConnect. Get featured on ${handle}.`;
+
+  const host = (req.headers['x-forwarded-host'] as string || req.get('host') || 'localhost:3000').split(',')[0].trim();
+  const proto = (req.headers['x-forwarded-proto'] as string || (req.secure ? 'https' : 'http')).split(',')[0].trim();
+  const canonicalUrl = `${proto}://${host}/ig/${encodeURIComponent(campus.slug)}`;
+
+  const imageCheck = validateSafeHttpUrl(campus.coverUrl || campus.logoUrl || '');
+  const ogImage = imageCheck.valid && imageCheck.normalized ? imageCheck.normalized : DEFAULT_SSR_OG_IMAGE;
+
+  const trimAtWord = (text: string, max: number) => {
+    const clean = text.replace(/\s+/g, ' ').trim();
+    if (clean.length <= max) return clean;
+    const sliced = clean.slice(0, max - 1);
+    const spaceIdx = sliced.lastIndexOf(' ');
+    return `${(spaceIdx > max * 0.6 ? sliced.slice(0, spaceIdx) : sliced).trimEnd()}…`;
+  };
+
+  const safeTitle = escapeHtml(trimAtWord(rawTitle, 100));
+  const safeDesc = escapeHtml(trimAtWord(rawDescription, 160));
+  const safeImage = escapeHtml(ogImage);
+  const safeUrl = escapeHtml(canonicalUrl);
+  const safeAlt = escapeHtml(`${campus.name} ${classYear} (${handle}) campus community cover`);
+
+  let html = rawHtml
+    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${safeTitle}</title>`)
+    .replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i, `<meta name="description" content="${safeDesc}" />`)
+    .replace(/<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:title" content="${safeTitle}" />`)
+    .replace(/<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:description" content="${safeDesc}" />`)
+    .replace(/<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:image" content="${safeImage}" />`)
+    .replace(/<meta\s+property="og:image:alt"\s+content="[^"]*"\s*\/?>/i, `<meta property="og:image:alt" content="${safeAlt}" />`)
+    .replace(/<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:title" content="${safeTitle}" />`)
+    .replace(/<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:description" content="${safeDesc}" />`)
+    .replace(/<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i, `<meta name="twitter:image" content="${safeImage}" />`);
+
+  if (!/property="og:url"/i.test(html)) {
+    html = html.replace('</head>', `    <meta property="og:url" content="${safeUrl}" />\n  </head>`);
+  }
+  if (!/rel="canonical"/i.test(html)) {
+    html = html.replace('</head>', `    <link rel="canonical" href="${safeUrl}" />\n  </head>`);
+  }
+
+  return html;
+}
+
 async function startServer() {
   if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
     });
+
+    app.get(['/ig/:slug', '/u/:slug', '/university/:slug', '/submit/:slug'], async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const indexPath = path.resolve(process.cwd(), 'index.html');
+        const template = fs.readFileSync(indexPath, 'utf-8');
+        const withMeta = injectCommunityMetaHtml(template, req);
+        const transformed = await vite.transformIndexHtml(req.originalUrl, withMeta);
+        res.status(200).setHeader('Content-Type', 'text/html').end(transformed);
+      } catch (err) {
+        next(err);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get('*', (req: Request, res: Response) => {
+      const indexPath = path.join(distPath, 'index.html');
+      try {
+        if (extractCommunitySlugFromPath(req.path)) {
+          const raw = fs.readFileSync(indexPath, 'utf-8');
+          const withMeta = injectCommunityMetaHtml(raw, req);
+          return res.status(200).setHeader('Content-Type', 'text/html').end(withMeta);
+        }
+      } catch {
+        // Fallback to standard static index.html
+      }
+      res.sendFile(indexPath);
     });
   }
 

@@ -12,6 +12,7 @@ import { SupportWidget } from './components/common/SupportWidget';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Building2, ExternalLink } from 'lucide-react';
 import { University } from './types';
+import { applyRouteMeta } from './services/metaTagsService';
 
 // Lightweight Eager Pages
 import { LandingPage } from './pages/public/LandingPage';
@@ -190,6 +191,16 @@ const AppContent: React.FC = () => {
 
   // Determine active matched university (STRICT - never fallback to EKU for a requested slug)
   const activeCampus = localMatchedUniversity || asyncResolvedCampus;
+
+  // Dynamically update document title, meta description, OpenGraph, Twitter Card, and JSON-LD per route
+  useEffect(() => {
+    applyRouteMeta(currentRoute, {
+      activeCampus,
+      requestedCampusSlug,
+      isResolvingCampus: isResolvingRemote,
+      campusCount: universities.length
+    });
+  }, [currentRoute, activeCampus, requestedCampusSlug, isResolvingRemote, universities.length]);
 
   // Render campus route if a campus slug was requested
   if (requestedCampusSlug) {
