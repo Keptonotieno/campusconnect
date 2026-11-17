@@ -13,7 +13,7 @@ import {
   Conversation
 } from '../types';
 import { VERIFIED_UNIVERSITIES, findUniversityBySlug, findUniversityById } from '../data/universities';
-import { processSubmissionPayment, FEATURED_POST_PRICE_USD } from '../lib/payment';
+import { processSubmissionPayment } from '../lib/payment';
 import { loginAdmin, isMasterAdminEmail } from '../lib/adminApi';
 import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -1144,7 +1144,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const payForSubmission = async (
     submissionId: string,
-    provider: 'STRIPE_CARD' | 'CARD' = 'STRIPE_CARD',
+    _provider: 'STRIPE_CARD' | 'CARD' = 'STRIPE_CARD',
     cardLast4?: string
   ): Promise<boolean> => {
     const sub = submissions.find((s) => s.id === submissionId);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { X, Send, MessageCircle } from 'lucide-react';
+import { X, Send } from 'lucide-react';
 
 interface ChatMsg {
   id: string;

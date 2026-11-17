@@ -23,16 +23,11 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Search, 
-  Eye, 
   Key, 
   Server, 
   Building2,
   ExternalLink,
-  Palette,
-  FileText,
-  Sparkles,
-  ChevronRight,
-  SlidersHorizontal
+  Palette
 } from 'lucide-react';
 import { EmailDiagnosticUtility } from './EmailDiagnosticUtility';
 

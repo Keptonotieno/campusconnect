@@ -6,7 +6,6 @@ import {
   MessageCircle, 
   BarChart3, 
   Settings, 
-  Bell, 
   Instagram, 
   X,
   ArrowRight
@@ -20,8 +19,7 @@ export const CommandPalette: React.FC = () => {
     accounts, 
     setSelectedAccountId, 
     setOAuthModalOpen,
-    conversations,
-    comments
+    conversations
   } = useApp();
 
   const [search, setSearch] = useState('');

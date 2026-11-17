@@ -3,14 +3,9 @@ import { useApp } from '../../context/AppContext';
 import { 
   Instagram, 
   Plus, 
-  ShieldCheck, 
   RefreshCw, 
   Unlink, 
-  CheckCircle2, 
   AlertTriangle, 
-  Lock,
-  ExternalLink,
-  Sparkles,
   MessageSquare
 } from 'lucide-react';
 import { InstagramAccount } from '../../types';

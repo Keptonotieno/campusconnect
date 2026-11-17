@@ -2,35 +2,25 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Sparkles, 
-  CheckCircle2, 
   Clock, 
-  AlertCircle, 
-  ExternalLink, 
   Instagram, 
   Plus, 
-  GraduationCap, 
-  MapPin, 
-  Building2, 
-  Bell, 
-  ShieldCheck,
-  UserCheck,
-  LayoutGrid,
-  Wallet,
-  User,
-  CreditCard,
-  Search,
-  Check,
-  ChevronRight,
-  Eye,
-  EyeOff,
-  Edit2,
-  Lock,
-  X,
-  FileText,
-  Trash2,
-  RotateCcw
+  LayoutGrid, 
+  Wallet, 
+  User, 
+  CreditCard, 
+  Search, 
+  Check, 
+  ChevronRight, 
+  Eye, 
+  EyeOff, 
+  Edit2, 
+  Lock, 
+  X, 
+  FileText, 
+  Trash2
 } from 'lucide-react';
-import { FeaturedSubmission, University } from '../../types';
+import { University } from '../../types';
 
 interface StoredDraft {
   id: string;
@@ -50,7 +40,6 @@ export const StudentDashboardPage: React.FC = () => {
     currentUser, 
     mySubmissions, 
     navigateTo, 
-    selectedUniversity, 
     setSelectedUniversity,
     universities,
     addToast,

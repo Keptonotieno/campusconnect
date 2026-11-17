@@ -10,13 +10,10 @@ import {
   Plus,
   LogOut,
   Instagram,
-  ShieldCheck,
-  ChevronRight,
   GraduationCap,
   Sparkles,
   Building2,
-  X,
-  UserCheck
+  X
 } from 'lucide-react';
 
 export const AppSidebar: React.FC = () => {
@@ -26,12 +23,10 @@ export const AppSidebar: React.FC = () => {
     currentUser,
     logout,
     accounts,
-    selectedAccountId,
     setSelectedAccountId,
     setOAuthModalOpen,
     unreadNotificationsCount,
     conversations,
-    isAdmin,
     isMobileSidebarOpen,
     setMobileSidebarOpen
   } = useApp();

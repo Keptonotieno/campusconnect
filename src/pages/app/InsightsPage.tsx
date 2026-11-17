@@ -5,15 +5,8 @@ import {
   Eye, 
   Heart, 
   TrendingUp, 
-  Calendar, 
   ArrowUpRight, 
-  ArrowDownRight, 
-  Globe, 
-  MousePointerClick,
-  Share2,
-  Bookmark,
-  Instagram,
-  Sparkles
+  Instagram
 } from 'lucide-react';
 
 export const InsightsPage: React.FC = () => {

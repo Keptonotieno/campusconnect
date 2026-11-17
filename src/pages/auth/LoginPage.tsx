@@ -5,87 +5,15 @@ import {
   RefreshCw, 
   Eye, 
   EyeOff,
-  Instagram,
   Sparkles,
-  ChevronRight,
-  ShieldCheck,
-  Check
+  AlertCircle
 } from 'lucide-react';
-import { auth } from '../../lib/firebase';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
-} from 'firebase/auth';
-import firebaseConfig from '../../../firebase-applet-config.json';
-import { isMasterAdminEmail, isMasterPassword } from '../../lib/adminApi';
-
-interface FirebaseDiagnosticReport {
-  timestamp: string;
-  emailTested: string;
-  firebaseStatus: 'FAILED' | 'SUCCESS' | 'NOT_TESTED';
-  firebaseErrorCode: string | null;
-  firebaseErrorMessage: string | null;
-  backendStatus: 'SUCCESS' | 'FAILED' | 'NOT_TESTED';
-  backendMessage: string | null;
-  backendToken?: string | null;
-  diagnosis: {
-    category: string;
-    title: string;
-    cause: string;
-    resolution: string;
-    isFirebaseConsoleActionRequired: boolean;
-    firebaseConsoleUrl?: string;
-  };
-  configSnapshot: {
-    projectId: string;
-    authDomain: string;
-    firestoreDatabaseId: string;
-    apiKeyPrefix: string;
-  };
-}
-
-function analyzeFirebaseError(code: string | null, message: string | null): FirebaseDiagnosticReport['diagnosis'] {
-  const projectId = firebaseConfig.projectId || 'gen-lang-client-0414859306';
-  const consoleUrl = `https://console.firebase.google.com/project/${projectId}/authentication/providers`;
-
-  switch (code) {
-    case 'auth/operation-not-allowed':
-      return {
-        category: 'PROVIDER_CONFIGURATION',
-        title: 'Email/Password Provider Disabled in Firebase Console',
-        cause: 'Firebase Authentication rejected the credentials because the "Email/Password" sign-in provider is disabled.',
-        resolution: 'Enable Email/Password provider in the Firebase Console.',
-        isFirebaseConsoleActionRequired: true,
-        firebaseConsoleUrl: consoleUrl
-      };
-    case 'auth/invalid-credential':
-    case 'auth/invalid-login-credentials':
-      return {
-        category: 'CREDENTIAL_MISMATCH',
-        title: 'Invalid Credentials in Firebase Auth',
-        cause: 'The email or password does not match any record registered in Firebase Authentication.',
-        resolution: 'Verify your email and password casing.',
-        isFirebaseConsoleActionRequired: false,
-        firebaseConsoleUrl: consoleUrl
-      };
-    default:
-      return {
-        category: 'UNKNOWN_OR_CUSTOM',
-        title: code ? `Firebase Auth Error: ${code}` : 'Authentication Status',
-        cause: message || 'Authentication completed with resilient session storage.',
-        resolution: 'You are signed in to your dashboard.',
-        isFirebaseConsoleActionRequired: false,
-        firebaseConsoleUrl: consoleUrl
-      };
-  }
-}
 
 export const LoginPage: React.FC = () => {
   const { 
     login, 
     register,
     navigateTo, 
-    addToast,
     currentUser,
     entryUniversityContext,
     setEntryUniversityContext,
@@ -175,49 +103,11 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Diagnostics state
-  const [diagnosticReport, setDiagnosticReport] = useState<FirebaseDiagnosticReport | null>(null);
-
-  const executeDiagnostics = async (testEmail?: string, testPass?: string) => {
-    const targetEmail = (testEmail || email || '').trim();
-    const targetPass = testPass || password || '';
-    if (!targetEmail) return;
-
-    let firebaseStatus: FirebaseDiagnosticReport['firebaseStatus'] = 'NOT_TESTED';
-    let firebaseErrorCode: string | null = null;
-    let firebaseErrorMessage: string | null = null;
-
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, targetEmail, targetPass);
-      firebaseStatus = 'SUCCESS';
-      firebaseErrorMessage = `Authenticated with UID: ${userCredential.user.uid}`;
-    } catch (fbErr: any) {
-      firebaseStatus = 'FAILED';
-      firebaseErrorCode = fbErr.code || 'unknown-error';
-      firebaseErrorMessage = fbErr.message || 'Firebase authentication failed.';
-    }
-
-    const diagnosis = analyzeFirebaseError(firebaseErrorCode, firebaseErrorMessage);
-    setDiagnosticReport({
-      timestamp: new Date().toISOString(),
-      emailTested: targetEmail,
-      firebaseStatus,
-      firebaseErrorCode,
-      firebaseErrorMessage,
-      backendStatus: 'SUCCESS',
-      backendMessage: 'Client authenticated',
-      diagnosis,
-      configSnapshot: {
-        projectId: firebaseConfig.projectId || '',
-        authDomain: firebaseConfig.authDomain || '',
-        firestoreDatabaseId: firebaseConfig.firestoreDatabaseId || '',
-        apiKeyPrefix: (firebaseConfig.apiKey || '').substring(0, 10) + '...'
-      }
-    });
-  };
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Switch between Sign in and Create account with lazy loading
   const handleSwitchMode = (targetMode: 'SIGN_IN' | 'CREATE_ACCOUNT') => {
+    setAuthError(null);
     setIsLazyLoading(true);
     setTimeout(() => {
       setMode(targetMode);
@@ -228,6 +118,7 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
+    setAuthError(null);
     setLoading(true);
 
     try {
@@ -238,8 +129,7 @@ export const LoginPage: React.FC = () => {
         await login(email.trim(), password);
       }
     } catch (err: any) {
-      console.warn('Login attempt handled with diagnostics:', err);
-      executeDiagnostics(email.trim(), password);
+      setAuthError(err?.message || 'Unable to authenticate with those credentials. Please check and try again.');
     } finally {
       setLoading(false);
     }
@@ -485,6 +375,14 @@ export const LoginPage: React.FC = () => {
                   </p>
                 </div>
 
+                {/* Inline Auth Error Alert */}
+                {authError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                    <span>{authError}</span>
+                  </div>
+                )}
+
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="space-y-4 pt-1">
                   
@@ -614,6 +512,14 @@ export const LoginPage: React.FC = () => {
                     )}
                   </p>
                 </div>
+
+                {/* Inline Auth Error Alert */}
+                {authError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                    <span>{authError}</span>
+                  </div>
+                )}
 
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="space-y-4 pt-1">

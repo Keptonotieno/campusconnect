@@ -6,12 +6,9 @@ import {
   Instagram, 
   ArrowRight, 
   Search, 
-  Sparkles, 
   GraduationCap, 
   ExternalLink,
-  ChevronRight,
-  SlidersHorizontal,
-  Users
+  SlidersHorizontal
 } from 'lucide-react';
 import { University } from '../../types';
 import { CampusEmblemBadge } from '../../components/common/CampusEmblemBadge';

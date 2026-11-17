@@ -3,21 +3,12 @@ import { useApp } from '../../context/AppContext';
 import { 
   Instagram, 
   Menu, 
-  X, 
-  ArrowRight, 
-  Sparkles, 
-  GraduationCap, 
-  ShieldCheck, 
-  LogOut, 
-  User, 
-  Building2,
-  ChevronDown
+  X 
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { currentRoute, navigateTo, isAuthenticated, currentUser, logout, isAdmin } = useApp();
+  const { currentRoute, navigateTo, isAuthenticated, currentUser, logout } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [campusDropdownOpen, setCampusDropdownOpen] = useState(false);
 
   const handleNavScroll = (sectionId: string) => {
     setMobileMenuOpen(false);

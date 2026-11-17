@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertCircle, RefreshCw, Home, ShieldAlert } from 'lucide-react';
 
 interface Props {
@@ -30,6 +30,24 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
+    try {
+      const rawCampuses = localStorage.getItem('campusconnect_campuses');
+      if (rawCampuses) {
+        const parsed = JSON.parse(rawCampuses);
+        if (!Array.isArray(parsed)) {
+          localStorage.removeItem('campusconnect_campuses');
+        } else {
+          const valid = parsed.filter((c: any) => Boolean(c && typeof c === 'object' && (c.id || c.slug)));
+          if (valid.length === 0) {
+            localStorage.removeItem('campusconnect_campuses');
+          } else {
+            localStorage.setItem('campusconnect_campuses', JSON.stringify(valid));
+          }
+        }
+      }
+    } catch {
+      try { localStorage.removeItem('campusconnect_campuses'); } catch {}
+    }
     this.setState({ hasError: false, error: null, errorInfo: null });
     if (this.props.onReset) {
       this.props.onReset();

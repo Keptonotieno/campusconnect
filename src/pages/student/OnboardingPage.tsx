@@ -1,22 +1,15 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
-  GraduationCap, 
-  Building2, 
-  User, 
-  Sparkles, 
   ArrowRight, 
-  Check, 
   Instagram, 
-  Home, 
-  BookOpen, 
-  HelpCircle 
+  BookOpen
 } from 'lucide-react';
 
 import { VERIFIED_UNIVERSITIES } from '../../data/universities';
 
 export const OnboardingPage: React.FC = () => {
-  const { currentUser, universities, selectedUniversity, entryUniversityContext, completeOnboarding, navigateTo } = useApp();
+  const { currentUser, universities, selectedUniversity, entryUniversityContext, completeOnboarding } = useApp();
 
   const [course, setCourse] = useState(currentUser?.course || '');
   const [graduationYear, setGraduationYear] = useState(currentUser?.graduationYear || '2028');

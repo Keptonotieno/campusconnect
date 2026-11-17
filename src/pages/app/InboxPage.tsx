@@ -3,19 +3,10 @@ import { useApp } from '../../context/AppContext';
 import { 
   Search, 
   Send, 
-  Smile, 
-  Paperclip, 
-  MoreVertical, 
   Star, 
   CheckCheck, 
-  Instagram, 
-  User, 
-  ShieldCheck, 
   Archive, 
-  Trash2,
-  ExternalLink,
-  MessageSquare,
-  Sparkles
+  MessageSquare
 } from 'lucide-react';
 
 export const InboxPage: React.FC = () => {

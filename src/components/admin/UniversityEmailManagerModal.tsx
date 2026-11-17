@@ -16,7 +16,6 @@ import {
 } from '../../lib/adminApi';
 import { 
   X, 
-  Mail, 
   FileText, 
   Check, 
   RefreshCw, 
@@ -24,10 +23,7 @@ import {
   Eye, 
   Sparkles, 
   RotateCcw, 
-  CheckCircle2, 
-  AlertCircle,
   Palette,
-  ExternalLink,
   Monitor,
   Smartphone
 } from 'lucide-react';

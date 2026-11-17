@@ -11,8 +11,7 @@ import {
   CentralEmailConfig,
   UniversityEmailIdentity,
   UniversityEmailTemplate,
-  DetailedEmailLog,
-  UniversityEmailEventType
+  DetailedEmailLog
 } from '../src/types';
 import { VERIFIED_UNIVERSITIES } from '../src/data/universities';
 

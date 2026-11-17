@@ -255,12 +255,6 @@ function getLocalUsers(): User[] {
   return [];
 }
 
-function saveLocalUsers(users: User[]) {
-  try {
-    localStorage.setItem('campusconnect_users', JSON.stringify(users));
-  } catch {}
-}
-
 function getLocalCampuses(): University[] {
   try {
     const raw = localStorage.getItem('campusconnect_campuses');
@@ -303,22 +297,6 @@ function appendLocalAuditLog(action: string, targetType: AuditLogItem['targetTyp
     logs.unshift(newLog);
     localStorage.setItem('campusconnect_audit_logs', JSON.stringify(logs.slice(0, 100)));
   } catch {}
-}
-
-function getLocalAdminEmail(): string {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    if (raw) {
-      const u = JSON.parse(raw);
-      if (u?.email) return u.email;
-    }
-    const rawUser = localStorage.getItem('campusconnect_user');
-    if (rawUser) {
-      const u = JSON.parse(rawUser);
-      if (u?.email) return u.email;
-    }
-  } catch {}
-  return '';
 }
 
 /**
@@ -484,9 +462,7 @@ function handleLocalFallbackRoute<T>(endpoint: string, options: RequestInit = {}
   const cleanEndpoint = endpoint.split('?')[0];
 
   // 1. Overview metrics
-  // 1. Overview metrics
   if (cleanEndpoint === '/api/admin/overview' && method === 'GET') {
-    const subs = getLocalSubmissions();
     const payments = getLocalPayments();
     const campuses = getLocalCampuses();
     const integrations = getLocalIntegrations();

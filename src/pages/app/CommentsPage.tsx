@@ -7,9 +7,6 @@ import {
   EyeOff, 
   Trash2, 
   Check, 
-  ExternalLink,
-  ShieldAlert,
-  Filter,
   Instagram
 } from 'lucide-react';
 
@@ -20,7 +17,6 @@ export const CommentsPage: React.FC = () => {
     deleteComment, 
     hideComment, 
     selectedAccount,
-    navigateTo,
     accounts,
     setOAuthModalOpen
   } = useApp();

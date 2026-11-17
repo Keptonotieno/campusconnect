@@ -92,22 +92,6 @@ export function verifyPassword(password: string, hash: string, salt: string): bo
 
 class Database {
   private loginAttempts: Record<string, { count: number; lockedUntil?: number }> = {};
-  private emailConfig: EmailConfig = {
-    provider: 'RESEND',
-    senderEmail: 'notifications@campusconnect.app',
-    senderName: 'CampusConnect Global',
-    senderDomain: 'campusconnect.app',
-    replyTo: 'support@campusconnect.app',
-    smtpHost: '',
-    smtpPort: 587,
-    tlsEnabled: true,
-    status: 'DEGRADED',
-    sendingEnabled: true,
-    dailyLimit: 5000,
-    spfVerified: false,
-    dkimVerified: false,
-    dmarcVerified: false
-  };
 
   constructor() {
     this.ensureMasterAdminAccounts();

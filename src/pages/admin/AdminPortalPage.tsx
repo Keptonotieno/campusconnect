@@ -2,21 +2,17 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useApp } from '../../context/AppContext';
 import { 
   ShieldCheck, 
-  ShieldAlert,
   Lock, 
   LogOut,
-  Check, 
   X, 
   Instagram, 
   ExternalLink, 
   Copy, 
   Filter, 
   Search, 
-  Clock, 
   AlertCircle, 
   CheckCircle2, 
   Building2, 
-  FileText, 
   DollarSign, 
   Eye, 
   EyeOff,
@@ -24,20 +20,16 @@ import {
   RefreshCw,
   Plus,
   Mail,
-  Send,
-  Radio,
   Layers,
   ChevronRight,
   User,
   CreditCard,
-  Settings,
   Sun,
   Moon,
   Key,
   Sliders,
   Trash2,
-  GraduationCap,
-  Users
+  GraduationCap
 } from 'lucide-react';
 import { 
   collection, 
@@ -49,7 +41,7 @@ import {
   query, 
   where 
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { db } from '../../lib/firebase';
 import { 
   FeaturedSubmission, 
   University, 
@@ -59,8 +51,6 @@ import {
   User as StudentUser,
   CentralEmailConfig,
   DetailedEmailLog,
-  UniversityEmailIdentity,
-  UniversityEmailTemplate,
   ResendDomainStatus
 } from '../../types';
 import { VERIFIED_UNIVERSITIES } from '../../data/universities';
@@ -70,8 +60,6 @@ import {
   loginAdmin, 
   logoutAdmin, 
   checkAdminSession, 
-  isMasterAdminEmail, 
-  isMasterPassword, 
   fetchAdminUsers,
   fetchAdminOverview, 
   fetchAdminCampuses, 
@@ -85,7 +73,6 @@ import {
   refreshAdminInstagram,
   disconnectAdminInstagram, 
   fetchAdminEmail, 
-  sendAdminTestEmail, 
   fetchAdminAuditLogs, 
   fetchAdminIntegrations, 
   updateAdminIntegration, 
@@ -98,7 +85,6 @@ import {
   EmailConfigData, 
   getStoredAdminToken,
   fetchCentralEmailConfig,
-  updateCentralEmailConfig,
   retryEmailLog
 } from '../../lib/adminApi';
 import { CentralEmailConfigModule } from '../../components/admin/CentralEmailConfigModule';
@@ -112,7 +98,6 @@ export const AdminPortalPage: React.FC = () => {
     publishToInstagram, 
     addToast,
     refreshCampuses,
-    universities,
     addOrUpdateCampus,
     removeCampus,
     navigateTo 
@@ -165,7 +150,6 @@ export const AdminPortalPage: React.FC = () => {
 
   // Registered Students Management State
   const [registeredStudents, setRegisteredStudents] = useState<StudentUser[]>([]);
-  const [loadingStudents, setLoadingStudents] = useState<boolean>(false);
   const [studentSearch, setStudentSearch] = useState('');
   const [studentStatusFilter, setStudentStatusFilter] = useState<'ALL' | 'VERIFIED' | 'UNVERIFIED'>('ALL');
 
@@ -207,6 +191,11 @@ export const AdminPortalPage: React.FC = () => {
   });
   const [loadingCampuses, setLoadingCampuses] = useState<boolean>(false);
 
+  const campusesRef = useRef<University[]>(campuses);
+  useEffect(() => {
+    campusesRef.current = campuses;
+  }, [campuses]);
+
   // Real-time Firestore sync & direct dynamic fetching for universities
   useEffect(() => {
     const universitiesRef = collection(db, 'universities');
@@ -244,7 +233,8 @@ export const AdminPortalPage: React.FC = () => {
                 ...(map.get(key) || {}),
                 ...u,
                 primaryColor: u.primaryColor || '#004B87',
-                accentColor: u.accentColor || '#0284C7'
+                accentColor: u.accentColor || '#0284C7',
+                communityEnabled: u.communityEnabled !== false
               });
             });
             firestoreCampuses.forEach(u => {
@@ -254,47 +244,42 @@ export const AdminPortalPage: React.FC = () => {
                 ...(map.get(key) || {}),
                 ...u,
                 primaryColor: u.primaryColor || '#004B87',
-                accentColor: u.accentColor || '#0284C7'
+                accentColor: u.accentColor || '#0284C7',
+                communityEnabled: u.communityEnabled !== false
               });
             });
             const merged = Array.from(map.values());
             try {
               localStorage.setItem('campusconnect_campuses', JSON.stringify(merged));
             } catch {}
-            merged.forEach((item) => addOrUpdateCampus(item));
             return merged;
           });
+
+          // Sync Firestore updates into AppContext outside the state updater
+          firestoreCampuses.forEach((item) => addOrUpdateCampus(item));
         } else {
-          // If Firestore returns 0 documents, preserve any local or in-memory campuses and sync them up
-          setCampuses(prev => {
-            const validPrev = (prev || []).filter((c): c is University => Boolean(c && c.id));
-            if (validPrev.length > 0) {
-              validPrev.forEach(async (c) => {
-                try {
-                  await setDoc(doc(db, 'universities', c.id), c, { merge: true });
-                } catch {}
-              });
-              return validPrev;
-            }
+          // Preserve verified / cached campuses if Firestore snapshot is empty
+          const validCurrent = (campusesRef.current || []).filter((c): c is University => Boolean(c && c.id));
+          let sourceList = validCurrent;
+          if (sourceList.length === 0) {
             try {
               const stored = localStorage.getItem('campusconnect_campuses');
               if (stored) {
                 const parsed = JSON.parse(stored);
                 if (Array.isArray(parsed)) {
-                  const validStored = parsed.filter((c): c is University => Boolean(c && c.id));
-                  if (validStored.length > 0) {
-                    validStored.forEach(async (c) => {
-                      try {
-                        await setDoc(doc(db, 'universities', c.id), c, { merge: true });
-                      } catch {}
-                    });
-                    return validStored;
-                  }
+                  sourceList = parsed.filter((c): c is University => Boolean(c && c.id));
                 }
               }
             } catch {}
-            return [];
-          });
+          }
+          if (sourceList.length > 0) {
+            setCampuses(sourceList);
+            sourceList.forEach(async (c) => {
+              try {
+                await setDoc(doc(db, 'universities', c.id), c, { merge: true });
+              } catch {}
+            });
+          }
         }
         setLoadingCampuses(false);
       },
@@ -346,10 +331,6 @@ export const AdminPortalPage: React.FC = () => {
   const [campusError, setCampusError] = useState<string | null>(null);
   const [overviewCampusSearch, setOverviewCampusSearch] = useState('');
 
-  // Email Test State
-  const [testEmailRecipient, setTestEmailRecipient] = useState('');
-  const [sendingTestEmail, setSendingTestEmail] = useState(false);
-
   // Webhook Test State (Workflow D)
   const [webhookSubmitting, setWebhookSubmitting] = useState(false);
   const [webhookResult, setWebhookResult] = useState<any>(null);
@@ -357,9 +338,6 @@ export const AdminPortalPage: React.FC = () => {
   // Submissions State
   const [submissionFilter, setSubmissionFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'PUBLISHED'>('ALL');
   const [backendSubmissions, setBackendSubmissions] = useState<FeaturedSubmission[]>([]);
-  const [selectedSubForReview, setSelectedSubForReview] = useState<FeaturedSubmission | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [publishUrls, setPublishUrls] = useState<Record<string, string>>({});
 
   // Safe Date Formatters to prevent RangeError: Invalid time value on mobile/tablet WebKit/V8
   const safeFormatDateTime = (val: any, fallback = '—'): string => {
@@ -452,7 +430,34 @@ export const AdminPortalPage: React.FC = () => {
       if (centralEmail?.resendStatus) {
         setResendDomainStatus(centralEmail.resendStatus);
       }
-      // Campuses are maintained as a dynamic live list fetched directly from Firestore
+      // Merge backend SQLite campuses with live Firestore state
+      if (Array.isArray(cp?.campuses) && cp.campuses.length > 0) {
+        setCampuses(prev => {
+          const merged = new Map<string, University>();
+          prev.forEach(u => {
+            if (u && (u.slug || u.id)) {
+              merged.set((u.slug || u.id).toLowerCase(), u);
+            }
+          });
+          cp.campuses.forEach((u: any) => {
+            if (u && (u.slug || u.id)) {
+              const key = String(u.slug || u.id).toLowerCase();
+              const existing = merged.get(key);
+              merged.set(key, {
+                ...(existing || {}),
+                ...u,
+                id: u.id || existing?.id || `uni_${key}`,
+                slug: u.slug || existing?.slug || key,
+                name: u.name || existing?.name || key,
+                primaryColor: u.primaryColor || existing?.primaryColor || '#004B87',
+                accentColor: u.accentColor || existing?.accentColor || '#0284C7',
+                communityEnabled: u.communityEnabled !== false
+              });
+            }
+          });
+          return Array.from(merged.values());
+        });
+      }
       if (Array.isArray(py?.payments)) {
         setPayments(py.payments);
       }
@@ -933,14 +938,6 @@ export const AdminPortalPage: React.FC = () => {
     }
   };
 
-  // Copy Canonical Public URL
-  const handleCopyCanonicalUrl = (slug: string) => {
-    const canonicalPath = `/ig/${slug}`;
-    const fullUrl = `${window.location.origin}${canonicalPath}`;
-    navigator.clipboard.writeText(fullUrl);
-    addToast('URL Copied', `Canonical link copied: ${canonicalPath}`, 'success');
-  };
-
   // Generate & Copy Direct Instagram Bio Link
   const handleCopyBioLink = (slug: string) => {
     const bioUrl = `https://campusconnect.app/ig/${slug}`;
@@ -948,28 +945,6 @@ export const AdminPortalPage: React.FC = () => {
       navigator.clipboard.writeText(bioUrl);
     } catch {}
     addToast('Instagram Bio Link Copied', `Copied: ${bioUrl}. Ready to paste in Instagram Bio!`, 'success');
-  };
-
-  // Send Test Email
-  const handleSendTestEmail = async () => {
-    setSendingTestEmail(true);
-    try {
-      const res: any = await sendAdminTestEmail(testEmailRecipient.trim() || undefined);
-      if (res?.success === false && res?.sandboxMode) {
-        addToast('External Inbox Blocked (Sandbox Mode)', res.message || 'Blocked by Resend Sandbox until a domain is verified.', 'error');
-      } else if (res?.success === false) {
-        addToast('Email Failed', res.message || 'Failed to deliver test email.', 'error');
-      } else if (res?.sandboxMode) {
-        addToast('Sandbox Test Delivered', res.message || 'Sandbox copy delivered.', 'info');
-      } else {
-        addToast('Email Delivered', res?.message || 'Test email delivered.', 'success');
-      }
-      loadAllAdminData();
-    } catch (err: any) {
-      addToast('Email Failed', err.message || 'Failed to send test email.', 'error');
-    } finally {
-      setSendingTestEmail(false);
-    }
   };
 
   // Test Webhook Simulator (Workflow D)
@@ -2335,13 +2310,22 @@ export const AdminPortalPage: React.FC = () => {
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
-                      <img 
-                        src={c?.logoUrl} 
-                        alt={c?.name || 'University'}
-                        className={`w-12 h-12 rounded-xl object-cover p-0.5 border shrink-0 ${
-                          isDarkMode ? 'bg-[#0A0E1A] border-slate-700' : 'bg-white border-slate-200'
-                        }`} 
-                      />
+                      {c?.logoUrl ? (
+                        <img 
+                          src={c.logoUrl} 
+                          alt={c?.name || 'University'}
+                          className={`w-12 h-12 rounded-xl object-cover p-0.5 border shrink-0 ${
+                            isDarkMode ? 'bg-[#0A0E1A] border-slate-700' : 'bg-white border-slate-200'
+                          }`} 
+                        />
+                      ) : (
+                        <div
+                          className="w-12 h-12 rounded-xl text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs"
+                          style={{ backgroundColor: c?.primaryColor || '#004B87' }}
+                        >
+                          {(c?.name || 'U').charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div className="flex items-center gap-1.5">
                         <span 
                           className="w-3.5 h-3.5 rounded-full border border-white/50 shadow-xs" 
@@ -2349,11 +2333,11 @@ export const AdminPortalPage: React.FC = () => {
                           title={`Brand Color: ${c?.primaryColor || '#004B87'}`}
                         />
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          c.communityEnabled 
+                          c?.communityEnabled !== false
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
                             : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
                         }`}>
-                          {c.communityEnabled ? 'ACTIVE' : 'DEACTIVATED'}
+                          {c?.communityEnabled !== false ? 'ACTIVE' : 'DEACTIVATED'}
                         </span>
                       </div>
                     </div>
@@ -3058,7 +3042,7 @@ export const AdminPortalPage: React.FC = () => {
                   <tbody className={`divide-y ${
                     isDarkMode ? 'divide-slate-800 text-slate-300' : 'divide-slate-100 text-slate-700 bg-white'
                   }`}>
-                    {(payments || []).map(p => (
+                    {filteredPayments.map(p => (
                       <tr key={p.id} className={`transition-colors ${isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-blue-50/40'}`}>
                         <td className="px-4 py-3 font-mono font-medium text-blue-500">{p.providerTransactionReference || p.id}</td>
                         <td className={`px-4 py-3 font-semibold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{p.studentName || 'Student'}</td>
@@ -3077,7 +3061,7 @@ export const AdminPortalPage: React.FC = () => {
                         <td className={`px-4 py-3 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{safeFormatDateTime(p.verifiedAt || p.createdAt)}</td>
                       </tr>
                     ))}
-                    {(payments || []).length === 0 && (
+                    {filteredPayments.length === 0 && (
                       <tr>
                         <td colSpan={7} className="px-6 py-12 text-center text-slate-400 text-xs">
                           No payments recorded yet. Live payment transactions will appear here when students verify submissions.
@@ -3601,7 +3585,7 @@ export const AdminPortalPage: React.FC = () => {
                           type="button"
                           onClick={() => {
                             setPublishModalSub(sub);
-                            setCustomPublishUrl(publishUrls[sub.id] || '');
+                            setCustomPublishUrl('');
                           }}
                           className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 hover:from-purple-500 hover:to-rose-400 text-white font-bold text-xs shadow-md shadow-pink-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all"
                         >
@@ -4537,7 +4521,7 @@ export const AdminPortalPage: React.FC = () => {
                   "{publishModalSub.caption}"
                   <br /><br />
                   <span className="text-blue-500">
-                    #{publishModalSub.universityName.replace(/[^a-zA-Z0-9]/g, '')} #Freshers2028 #CampusConnect #ClassOf2028
+                    #{(publishModalSub.universityName || 'University').replace(/[^a-zA-Z0-9]/g, '')} #Freshers2028 #CampusConnect #ClassOf2028
                   </span>
                 </div>
               </div>

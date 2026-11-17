@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
@@ -10,17 +10,15 @@ import { CommandPalette } from './components/common/CommandPalette';
 import { InstagramOAuthModal } from './components/common/InstagramOAuthModal';
 import { SupportWidget } from './components/common/SupportWidget';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { Building2, AlertCircle, ArrowRight, ShieldCheck, Instagram, ExternalLink } from 'lucide-react';
+import { Building2, ExternalLink } from 'lucide-react';
 import { University } from './types';
 
-// Public & Community Pages
+// Lightweight Eager Pages
 import { LandingPage } from './pages/public/LandingPage';
-import { UniversityCommunityPage } from './pages/public/UniversityCommunityPage';
-import { CampusesDirectoryPage } from './pages/public/CampusesDirectoryPage';
-import { 
-  TermsPage, 
-  PrivacyPage, 
-  ForgotPasswordPage, 
+import {
+  TermsPage,
+  PrivacyPage,
+  ForgotPasswordPage,
   DataDeletionPage,
   VerifyEmailPage,
   ResetPasswordPage
@@ -28,31 +26,64 @@ import {
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 
-// Student Portal Pages
-import { StudentDashboardPage } from './pages/student/StudentDashboardPage';
-import { SubmitPhotoPage } from './pages/student/SubmitPhotoPage';
-import { OnboardingPage } from './pages/student/OnboardingPage';
+// Lazy-loaded Heavy Portal & Workspace Pages (Code Splitting)
+const UniversityCommunityPage = lazy(() =>
+  import('./pages/public/UniversityCommunityPage').then(m => ({ default: m.UniversityCommunityPage }))
+);
+const CampusesDirectoryPage = lazy(() =>
+  import('./pages/public/CampusesDirectoryPage').then(m => ({ default: m.CampusesDirectoryPage }))
+);
+const StudentDashboardPage = lazy(() =>
+  import('./pages/student/StudentDashboardPage').then(m => ({ default: m.StudentDashboardPage }))
+);
+const SubmitPhotoPage = lazy(() =>
+  import('./pages/student/SubmitPhotoPage').then(m => ({ default: m.SubmitPhotoPage }))
+);
+const OnboardingPage = lazy(() =>
+  import('./pages/student/OnboardingPage').then(m => ({ default: m.OnboardingPage }))
+);
+const AdminPortalPage = lazy(() =>
+  import('./pages/admin/AdminPortalPage').then(m => ({ default: m.AdminPortalPage }))
+);
+const DashboardPage = lazy(() =>
+  import('./pages/app/DashboardPage').then(m => ({ default: m.DashboardPage }))
+);
+const InboxPage = lazy(() =>
+  import('./pages/app/InboxPage').then(m => ({ default: m.InboxPage }))
+);
+const CommentsPage = lazy(() =>
+  import('./pages/app/CommentsPage').then(m => ({ default: m.CommentsPage }))
+);
+const InsightsPage = lazy(() =>
+  import('./pages/app/InsightsPage').then(m => ({ default: m.InsightsPage }))
+);
+const AccountsPage = lazy(() =>
+  import('./pages/app/AccountsPage').then(m => ({ default: m.AccountsPage }))
+);
+const NotificationsPage = lazy(() =>
+  import('./pages/app/NotificationsPage').then(m => ({ default: m.NotificationsPage }))
+);
+const SettingsPage = lazy(() =>
+  import('./pages/app/SettingsPage').then(m => ({ default: m.SettingsPage }))
+);
 
-// Admin Portal Page
-import { AdminPortalPage } from './pages/admin/AdminPortalPage';
-
-// Instagram Workspace Pages
-import { DashboardPage } from './pages/app/DashboardPage';
-import { InboxPage } from './pages/app/InboxPage';
-import { CommentsPage } from './pages/app/CommentsPage';
-import { InsightsPage } from './pages/app/InsightsPage';
-import { AccountsPage } from './pages/app/AccountsPage';
-import { NotificationsPage } from './pages/app/NotificationsPage';
-import { SettingsPage } from './pages/app/SettingsPage';
+const PageLoader: React.FC = () => (
+  <div className="min-h-[60vh] flex items-center justify-center p-6">
+    <div className="flex items-center gap-3 text-slate-500 text-xs font-semibold">
+      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <span>Loading...</span>
+    </div>
+  </div>
+);
 
 const AppContent: React.FC = () => {
-  const { 
-    currentRoute, 
+  const {
+    currentRoute,
     navigateTo,
-    isAuthenticated, 
-    getUniversityBySlug, 
+    isAuthenticated,
+    getUniversityBySlug,
     fetchCampusBySlug,
-    universities 
+    universities
   } = useApp();
 
   // 1. Identify if the current URL explicitly requests a specific campus portal
@@ -177,10 +208,12 @@ const AppContent: React.FC = () => {
       return (
         <div className="min-h-screen bg-white text-slate-900 flex flex-col antialiased font-sans">
           <main className="flex-1">
-            <UniversityCommunityPage 
-              university={activeCampus} 
-              initialView={currentRoute.startsWith('/submit/') ? 'BUILDER' : undefined}
-            />
+            <Suspense fallback={<PageLoader />}>
+              <UniversityCommunityPage
+                university={activeCampus}
+                initialView={currentRoute.startsWith('/submit/') ? 'BUILDER' : undefined}
+              />
+            </Suspense>
           </main>
           <ToastContainer />
           <SupportWidget />
@@ -189,7 +222,7 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // If not found after search, show a clear University Not Found page (NEVER show EKU!)
+    // If not found after search, show a clear University Not Found page
     if (hasAttemptedFetch && !activeCampus) {
       return (
         <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col antialiased font-sans">
@@ -237,9 +270,9 @@ const AppContent: React.FC = () => {
                       className="w-full p-2.5 rounded-xl border border-slate-100 hover:border-blue-500 hover:bg-blue-50/50 flex items-center justify-between transition-all cursor-pointer text-left"
                     >
                       <div className="flex items-center gap-2.5">
-                        <span 
-                          className="w-3 h-3 rounded-full shrink-0" 
-                          style={{ backgroundColor: u?.primaryColor || '#004B87' }} 
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: u?.primaryColor || '#004B87' }}
                         />
                         <div>
                           <div className="text-xs font-bold text-slate-900">{u.name}</div>
@@ -287,7 +320,9 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
         <main className="flex-1">
           <ErrorBoundary fallbackTitle="Admin Portal Recovery">
-            <AdminPortalPage />
+            <Suspense fallback={<PageLoader />}>
+              <AdminPortalPage />
+            </Suspense>
           </ErrorBoundary>
         </main>
         <ToastContainer />
@@ -301,7 +336,9 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
         <Navbar />
         <main className="flex-1">
-          <SubmitPhotoPage />
+          <Suspense fallback={<PageLoader />}>
+            <SubmitPhotoPage />
+          </Suspense>
         </main>
         <Footer />
         <ToastContainer />
@@ -317,7 +354,9 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col antialiased font-sans">
         <Navbar />
         <main className="flex-1">
-          <OnboardingPage />
+          <Suspense fallback={<PageLoader />}>
+            <OnboardingPage />
+          </Suspense>
         </main>
         <Footer />
         <ToastContainer />
@@ -325,11 +364,13 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 4b. Dedicated Student Dashboard & My Submissions Portal (Images 2, 3, 4, 5, 6)
+  // 4b. Dedicated Student Dashboard & My Submissions Portal
   if (currentRoute === '/student' || currentRoute.startsWith('/student') || currentRoute === '/my-submissions' || currentRoute === '/app/student') {
     return (
       <div className="min-h-screen bg-[#FBFBFA] text-slate-900 flex flex-col antialiased font-sans">
-        <StudentDashboardPage />
+        <Suspense fallback={<PageLoader />}>
+          <StudentDashboardPage />
+        </Suspense>
         <SupportWidget />
         <ToastContainer />
       </div>
@@ -353,15 +394,15 @@ const AppContent: React.FC = () => {
   }
 
   if (isAppRoute && isAuthenticated) {
-    let PageComponent = DashboardPage;
+    let PageComponent: React.ComponentType = DashboardPage;
 
-    if (currentRoute.startsWith('/app/inbox')) PageComponent = InboxPage as any;
-    else if (currentRoute.startsWith('/app/comments')) PageComponent = CommentsPage as any;
-    else if (currentRoute.startsWith('/app/insights')) PageComponent = InsightsPage as any;
-    else if (currentRoute.startsWith('/app/accounts')) PageComponent = AccountsPage as any;
-    else if (currentRoute.startsWith('/app/notifications')) PageComponent = NotificationsPage as any;
-    else if (currentRoute.startsWith('/app/settings')) PageComponent = SettingsPage as any;
-    else if (currentRoute.startsWith('/app/student') || currentRoute.startsWith('/student')) PageComponent = StudentDashboardPage as any;
+    if (currentRoute.startsWith('/app/inbox')) PageComponent = InboxPage;
+    else if (currentRoute.startsWith('/app/comments')) PageComponent = CommentsPage;
+    else if (currentRoute.startsWith('/app/insights')) PageComponent = InsightsPage;
+    else if (currentRoute.startsWith('/app/accounts')) PageComponent = AccountsPage;
+    else if (currentRoute.startsWith('/app/notifications')) PageComponent = NotificationsPage;
+    else if (currentRoute.startsWith('/app/settings')) PageComponent = SettingsPage;
+    else if (currentRoute.startsWith('/app/student') || currentRoute.startsWith('/student')) PageComponent = StudentDashboardPage;
     else PageComponent = DashboardPage;
 
     return (
@@ -370,7 +411,9 @@ const AppContent: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <AppHeader />
           <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-            <PageComponent />
+            <Suspense fallback={<PageLoader />}>
+              <PageComponent />
+            </Suspense>
           </main>
         </div>
         <MobileNav />
@@ -384,7 +427,7 @@ const AppContent: React.FC = () => {
 
   // 6. Public Pages Router
   const pathOnly = currentRoute.split('?')[0];
-  let PublicComponent = LandingPage;
+  let PublicComponent: React.ComponentType = LandingPage;
 
   if (pathOnly === '/terms') PublicComponent = TermsPage;
   else if (pathOnly === '/privacy') PublicComponent = PrivacyPage;
@@ -405,7 +448,9 @@ const AppContent: React.FC = () => {
       )}
 
       <main className="flex-1">
-        <PublicComponent />
+        <Suspense fallback={<PageLoader />}>
+          <PublicComponent />
+        </Suspense>
       </main>
 
       {!isAuthOrStaticPage && (

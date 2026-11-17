@@ -11,9 +11,7 @@ import {
   Users, 
   ShieldCheck, 
   ChevronDown, 
-  ChevronUp, 
-  Sparkles, 
-  Instagram
+  ChevronUp
 } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {

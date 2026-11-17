@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { VERIFIED_UNIVERSITIES } from '../../data/universities';
-import { Grid, MessageSquare, MessageCircle, BarChart3, Check } from 'lucide-react';
+import { Grid, MessageSquare, MessageCircle, BarChart3 } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
   const { register, navigateTo, selectedUniversity, entryUniversityContext, universities } = useApp();

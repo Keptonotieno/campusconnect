@@ -81,7 +81,7 @@ export function requireAdminAuth(req: AuthenticatedAdminRequest, res: Response, 
 // -----------------------------------------------------------------------------
 
 // Check if initial admin is bootstrapped
-app.get('/api/auth/admin-status', (req: Request, res: Response) => {
+app.get('/api/auth/admin-status', (_req: Request, res: Response) => {
   const adminCount = dbInstance.getAdminCount();
   res.json({
     bootstrapped: adminCount > 0,
@@ -999,7 +999,7 @@ app.post('/api/admin/submissions/:id/review', requireAdminAuth, (req: Authentica
 // Admin-Only Publish to University Instagram Account
 app.post('/api/admin/submissions/:id/publish-instagram', requireAdminAuth, (req: AuthenticatedAdminRequest, res: Response) => {
   try {
-    const { targetInstagramHandle, customPostUrl, studentName, universityName } = req.body;
+    const { targetInstagramHandle, customPostUrl } = req.body;
     const cleanHandle = (targetInstagramHandle || '@campusconnect').replace(/^@/, '');
     const postCode = Math.random().toString(36).substring(2, 11);
     const postUrl = customPostUrl || `https://www.instagram.com/p/C_${postCode}/`;
@@ -1190,7 +1190,7 @@ app.get('/api/campuses/:slug', (req: Request, res: Response) => {
 // Stripe Payment Verification Endpoint (Initiated after user card authorization)
 app.post('/api/payments/verify', (req: Request, res: Response) => {
   try {
-    const { submissionId, studentUid, studentName, universityId, provider, idempotencyKey } = req.body;
+    const { submissionId, studentUid, studentName, universityId, idempotencyKey } = req.body;
     
     if (!submissionId || !studentUid) {
       return res.status(400).json({ error: 'BadRequest', message: 'submissionId and studentUid are required.' });
@@ -1257,16 +1257,15 @@ app.post('/api/payments/verify', (req: Request, res: Response) => {
 // Payment Gateway Webhook Receiver (Stripe Gateway)
 app.post('/api/payments/webhook', (req: Request, res: Response) => {
   try {
-    const { 
-      event, 
-      transactionId, 
-      submissionId, 
-      studentUid, 
-      studentName, 
-      universityId, 
-      amountUsd, 
-      status, 
-      idempotencyKey 
+    const {
+      transactionId,
+      submissionId,
+      studentUid,
+      studentName,
+      universityId,
+      amountUsd,
+      status,
+      idempotencyKey
     } = req.body;
 
     const existingPayments = dbInstance.getPayments();

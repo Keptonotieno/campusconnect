@@ -1,8 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
-  Building2, 
-  MapPin, 
   Instagram, 
   ExternalLink, 
   Sparkles, 
@@ -19,18 +17,13 @@ import {
   Eye, 
   ArrowRight,
   Search,
-  Users,
   AlertCircle,
   Upload,
   ChevronLeft,
   X,
   CreditCard,
   CheckCircle2,
-  Share2,
-  Trash2,
   Star,
-  Layers,
-  Sparkle,
   Zap,
   Image as ImageIcon,
   RotateCcw
@@ -62,8 +55,6 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
     isAuthenticated, 
     setEntryUniversityContext,
     addSubmission,
-    createSubmission,
-    payForSubmission,
     universities,
     addToast 
   } = useApp();
@@ -126,7 +117,6 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
   // Payment Execution State
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [completedPaymentRef, setCompletedPaymentRef] = useState('');
-  const [completedSubId, setCompletedSubId] = useState('');
 
   // Primary brand colors for this specific university
   const primaryColor = university?.primaryColor || '#004B87';
@@ -691,7 +681,6 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
       }
 
       setCompletedPaymentRef(txnRef);
-      setCompletedSubId(submissionId);
       setBuilderStep('SUCCESS');
       setSavedDraftForCampus(null);
       setShowDraftBanner(false);
@@ -1655,7 +1644,7 @@ export const UniversityCommunityPage: React.FC<UniversityCommunityPageProps> = (
                   {/* Multi-photo thumbnail reel */}
                   {photos.length > 1 && (
                     <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                      {photos.map((p, idx) => (
+                      {photos.map((p, _idx) => (
                         <div 
                           key={p.id}
                           className={`w-12 h-12 rounded-lg overflow-hidden border shrink-0 ${

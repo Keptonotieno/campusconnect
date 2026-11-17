@@ -344,11 +344,17 @@ export default {
       return jsonResponse({
         campuses: [
           {
-            id: 'morehead-state-university',
+            id: 'uni_moreheadstate2031class',
             name: 'Morehead State University',
-            slug: 'morehead-state-university',
+            slug: 'moreheadstate2031class',
             classYear: '2031',
-            instagramHandle: 'moreheadstate2031class',
+            instagramHandle: '@moreheadstate2031class',
+            instagramProfileUrl: 'https://instagram.com/moreheadstate2031class',
+            officialWebsiteUrl: 'https://www.moreheadstate.edu',
+            location: 'Morehead, Kentucky, USA',
+            description: 'Official student community portal for incoming Eagles and student organizations.',
+            logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=400&q=80',
+            coverUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1200&q=80',
             primaryColor: '#004B87',
             accentColor: '#0284C7',
             communityEnabled: true

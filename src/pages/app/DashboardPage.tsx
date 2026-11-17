@@ -6,18 +6,8 @@ import {
   Heart, 
   Instagram, 
   Check, 
-  ArrowRight, 
   Grid, 
-  Plus, 
-  Search,
-  ExternalLink,
-  ChevronRight,
-  ShieldCheck,
-  GraduationCap,
-  Sparkles,
-  Mail,
-  Bell,
-  X
+  Search
 } from 'lucide-react';
 import { University } from '../../types';
 

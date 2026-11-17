@@ -5,14 +5,11 @@ import {
   Sparkles, 
   ShieldCheck, 
   Check, 
-  AlertCircle, 
   ArrowRight, 
   Instagram, 
   Lock, 
   CreditCard, 
-  Eye,
-  CheckCircle2,
-  HelpCircle
+  CheckCircle2
 } from 'lucide-react';
 import { generateWatermarkedDerivative } from '../../lib/watermark';
 import { FEATURED_POST_PRICE_USD } from '../../lib/payment';
@@ -46,7 +43,6 @@ export const SubmitPhotoPage: React.FC = () => {
   const [targetUni, setTargetUni] = useState<University>(defaultUni);
 
   // Form states
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [originalPreview, setOriginalPreview] = useState<string>('');
   const [watermarkedPreview, setWatermarkedPreview] = useState<string>('');
   const [isWatermarking, setIsWatermarking] = useState(false);
@@ -86,7 +82,6 @@ export const SubmitPhotoPage: React.FC = () => {
       return;
     }
 
-    setPhotoFile(file);
     const dataUrl = await new Promise<string>((resolve) => {
       const reader = new FileReader();
       reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
