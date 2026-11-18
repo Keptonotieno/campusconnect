@@ -27,8 +27,8 @@ const PORT = Number(process.env.PORT) || 3000;
 const app = express();
 
 app.disable('x-powered-by');
-if (process.env.TRUST_PROXY === 'true') {
-  app.set('trust proxy', 1);
+if (process.env.TRUST_PROXY !== 'false') {
+  app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : ['loopback', 'linklocal', 'uniquelocal']);
 }
 
 // Capture raw body for cryptographic webhook signature verification before JSON parsing

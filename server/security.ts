@@ -16,18 +16,24 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 let cachedMasterKey: Buffer | null = null;
+let cachedSigningKey: Buffer | null = null;
 
 export function getMasterKey(): Buffer {
   if (cachedMasterKey) return cachedMasterKey;
 
-  const envKey = (process.env.APP_ENCRYPTION_KEY || process.env.SESSION_SECRET || '').trim();
+  const envKey = (process.env.APP_ENCRYPTION_KEY || '').trim();
   if (envKey.length >= 16) {
-    cachedMasterKey = crypto.createHash('sha256').update(envKey).digest();
+    cachedMasterKey = crypto.createHash('sha256').update(`campusconnect:enc:v1:${envKey}`).digest();
     return cachedMasterKey;
   }
 
   try {
     if (fs.existsSync(MASTER_KEY_FILE)) {
+      try {
+        fs.chmodSync(MASTER_KEY_FILE, 0o600);
+      } catch {
+        // Ignore on filesystems that disallow chmod
+      }
       const hex = fs.readFileSync(MASTER_KEY_FILE, 'utf8').trim();
       if (/^[a-f0-9]{64}$/i.test(hex)) {
         cachedMasterKey = Buffer.from(hex, 'hex');
@@ -36,6 +42,11 @@ export function getMasterKey(): Buffer {
     }
     const generated = crypto.randomBytes(32);
     fs.writeFileSync(MASTER_KEY_FILE, generated.toString('hex'), { mode: 0o600, encoding: 'utf8' });
+    try {
+      fs.chmodSync(MASTER_KEY_FILE, 0o600);
+    } catch {
+      // Ignore on filesystems that disallow chmod
+    }
     cachedMasterKey = generated;
     return cachedMasterKey;
   } catch {
@@ -43,6 +54,17 @@ export function getMasterKey(): Buffer {
     cachedMasterKey = crypto.randomBytes(32);
     return cachedMasterKey;
   }
+}
+
+export function getSigningKey(): Buffer {
+  if (cachedSigningKey) return cachedSigningKey;
+  const envSession = (process.env.SESSION_SECRET || '').trim();
+  if (envSession.length >= 16) {
+    cachedSigningKey = crypto.createHash('sha256').update(`campusconnect:hmac:v1:${envSession}`).digest();
+    return cachedSigningKey;
+  }
+  cachedSigningKey = crypto.createHmac('sha256', getMasterKey()).update('campusconnect-hmac-subkey').digest();
+  return cachedSigningKey;
 }
 
 export function getUploadsDir(): string {
@@ -195,7 +217,7 @@ export function sha256Hex(value: string): string {
 }
 
 export function hmacSha256Hex(payload: string, secret?: string | Buffer): string {
-  const key = secret ?? crypto.createHmac('sha256', getMasterKey()).update('campusconnect-hmac-subkey').digest();
+  const key = secret ?? getSigningKey();
   return crypto.createHmac('sha256', key).update(payload).digest('hex');
 }
 
@@ -397,13 +419,64 @@ export function sanitizeHexColor(val: unknown, fallback = '#1D64EC'): string {
   return /^#[0-9a-fA-F]{3,8}$/.test(str) ? str : fallback;
 }
 
-export function getNormalizedClientIp(req: Request): string {
-  let raw = req.socket?.remoteAddress || '127.0.0.1';
-  if (process.env.TRUST_PROXY === 'true' && req.headers['x-forwarded-for']) {
-    const fwd = String(req.headers['x-forwarded-for']).split(',')[0].trim();
-    if (fwd) raw = fwd;
+export function isTrustedProxyIp(ipRaw: string): boolean {
+  const ip = (ipRaw || '').replace(/^::ffff:/, '').trim();
+  if (!net.isIP(ip)) return false;
+
+  if (net.isIPv4(ip)) {
+    const parts = ip.split('.').map(Number);
+    if (parts[0] === 127) return true; // Loopback 127.0.0.0/8
+    if (parts[0] === 10) return true; // RFC1918 10.0.0.0/8
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // RFC1918 172.16.0.0/12
+    if (parts[0] === 192 && parts[1] === 168) return true; // RFC1918 192.168.0.0/16
+    if (parts[0] === 169 && parts[1] === 254) return true; // Link-local 169.254.0.0/16
+    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true; // CGNAT 100.64.0.0/10
+    return false;
   }
-  return raw.replace(/^::ffff:/, '') || '127.0.0.1';
+
+  const lower = ip.toLowerCase();
+  return (
+    lower === '::1' ||
+    lower.startsWith('fe80:') ||
+    lower.startsWith('fc') ||
+    lower.startsWith('fd')
+  );
+}
+
+export function getNormalizedClientIp(req: Request): string {
+  const remoteRaw = (req.socket?.remoteAddress || '127.0.0.1').replace(/^::ffff:/, '').trim();
+  const remoteIp = net.isIP(remoteRaw) ? remoteRaw : '127.0.0.1';
+
+  const trustDisabled = process.env.TRUST_PROXY === 'false';
+  const trustProxy = !trustDisabled && (process.env.TRUST_PROXY === 'true' || isTrustedProxyIp(remoteIp));
+
+  if (trustProxy) {
+    const xffHeader = req.headers['x-forwarded-for'];
+    if (xffHeader) {
+      const chain = (Array.isArray(xffHeader) ? xffHeader.join(',') : String(xffHeader))
+        .split(',')
+        .map(part => part.trim().replace(/^::ffff:/, ''))
+        .filter(candidate => Boolean(net.isIP(candidate)));
+
+      // Walk right-to-left to pick the rightmost non-proxy public IP (prevents left-side XFF spoofing)
+      for (let i = chain.length - 1; i >= 0; i--) {
+        if (!isTrustedProxyIp(chain[i])) {
+          return chain[i];
+        }
+      }
+      if (chain.length > 0) {
+        return chain[0];
+      }
+    }
+
+    const cfIp = String(req.headers['cf-connecting-ip'] || '').trim().replace(/^::ffff:/, '');
+    if (cfIp && net.isIP(cfIp)) return cfIp;
+
+    const realIp = String(req.headers['x-real-ip'] || '').trim().replace(/^::ffff:/, '');
+    if (realIp && net.isIP(realIp)) return realIp;
+  }
+
+  return remoteIp;
 }
 
 // -----------------------------------------------------------------------------

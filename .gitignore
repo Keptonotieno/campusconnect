@@ -33,3 +33,6 @@ data/users.json
 data/instagram.json
 data/university-email-identities.json
 data/campuses.json
+data/*.key
+data/.master.key
+data/uploads_private/
