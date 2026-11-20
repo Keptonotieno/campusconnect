@@ -1736,7 +1736,7 @@ export const AdminPortalPage: React.FC = () => {
             <option value="INSTAGRAM">📸 Instagram Accounts ({(instagramAccounts || []).length})</option>
             <option value="PAYMENTS">💳 Payment Transactions ({(payments || []).length})</option>
             <option value="EMAIL">✉️ Email Infrastructure & Templates</option>
-            <option value="SUBMISSIONS">✨ Photo Moderation ({(submissions || []).length})</option>
+            <option value="SUBMISSIONS">✨ Photo Moderation ({(backendSubmissions || []).length})</option>
             <option value="AUDIT_LOGS">🛡️ Security & Audit Logs ({(auditLogs || []).length})</option>
           </select>
 
@@ -1788,7 +1788,7 @@ export const AdminPortalPage: React.FC = () => {
             { id: 'INSTAGRAM', label: 'Instagram Accounts', icon: Instagram, count: (instagramAccounts || []).length },
             { id: 'PAYMENTS', label: 'Payment Transactions', icon: CreditCard, count: (payments || []).length },
             { id: 'EMAIL', label: 'Email Infrastructure & Templates', icon: Mail },
-            { id: 'SUBMISSIONS', label: 'Photo Moderation', icon: Sparkles, count: (submissions || []).length },
+            { id: 'SUBMISSIONS', label: 'Photo Moderation', icon: Sparkles, count: (backendSubmissions || []).length },
             { id: 'AUDIT_LOGS', label: 'Security & Audit Logs', icon: ShieldCheck, count: (auditLogs || []).length },
           ].map(tab => {
             const Icon = tab.icon;

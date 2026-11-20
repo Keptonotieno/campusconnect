@@ -40,7 +40,7 @@ const jsonWithRawBody = express.json({
 });
 
 const uploadJsonParser = express.json({
-  limit: '10mb'
+  limit: '25mb'
 });
 
 app.use((req: Request, res: Response, next: NextFunction) => {
